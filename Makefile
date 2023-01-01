@@ -1,6 +1,6 @@
 UNAME_S := $(shell uname -s)
 target   := sdlarch
-sources  := sdlarch.c glad.c
+sources  := sdlarch.c vendor/glad/glad.c
 CFLAGS   := -Wall -g
 ifeq ($(UNAME_S),Darwin)
 LFLAGS   := -static-libstdc++

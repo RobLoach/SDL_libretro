@@ -1,7 +1,7 @@
 
 #include <SDL.h>
-#include "libretro.h"
-#include "glad.h"
+#include "vendor/libretro-common/include/libretro.h"
+#include "vendor/glad/glad.h"
 
 static SDL_Window *g_win = NULL;
 static SDL_GLContext *g_ctx = NULL;
