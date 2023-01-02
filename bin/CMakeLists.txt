@@ -1,12 +1,6 @@
 # CMAKE Modules
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../cmake")
 
-set(SDL_SHARED FALSE)
-set(SDL2_DISABLE_UNINSTALL TRUE)
-
-# Dependencies
-#find_package(SDL2 REQUIRED)
-
 if( ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
     set(USE_FLAGS "-s USE_SDL=2")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
@@ -15,7 +9,10 @@ if( ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
     set(CMAKE_EXECUTABLE_SUFFIX .html)
 else()
     find_package(SDL2 REQUIRED)
-    set(SDL2_LIBRARIES SDL2::SDL2 SDL2::SDL2main)
+    set(SDL2_LIBRARIES
+        SDL2::SDL2
+        SDL2::SDL2main
+    )
 endif()
 
 # Resources
@@ -24,9 +21,9 @@ set(examples_resources)
 list(APPEND examples_resources ${resources})
 file(COPY ${examples_resources} DESTINATION "resources/")
 
-# SDL_libretro_example
-add_executable(SDL_libretro_example SDL_libretro_example.c)
-target_link_libraries(SDL_libretro_example PRIVATE
+# SDL_libretro
+add_executable(SDL_libretro SDL_libretro.c)
+target_link_libraries(SDL_libretro PRIVATE
     ${SDL2_LIBRARIES}
-    SDL_libretro
+    SDL_libretro_h
 )
