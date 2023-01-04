@@ -310,7 +310,9 @@ void SDL_libretro_UnloadCore() {
         return;
     }
 
-    SDL_libretro_instance->retro_deinit();
+    if (SDL_libretro_instance->retro_deinit != NULL) {
+        SDL_libretro_instance->retro_deinit();
+    }
 
     if (SDL_libretro_instance->handle != NULL) {
         SDL_UnloadObject(SDL_libretro_instance->handle);

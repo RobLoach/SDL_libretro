@@ -29,7 +29,7 @@ void Init(SDL_App* app) {
     AppData* appData = (AppData*)app->userData;
 
     // Initialize SDL
-	if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS) != 0) {
         SDL_Log("SDL_Init(): %s", SDL_GetError());
         SDL_AppClose(app);
         app->exitStatus = 1;
