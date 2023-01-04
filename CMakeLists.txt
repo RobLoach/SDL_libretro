@@ -6,7 +6,7 @@ project(SDL_libretro
     LANGUAGES C
 )
 
-set(CMAKE_EXE_EXPORTS_C_FLAG "-Wl,--export-dynamic") # Shared libraries with no builtin soname may not be linked safely by.
+#set(CMAKE_EXE_EXPORTS_C_FLAG "-Wl,--export-dynamic") # Shared libraries with no builtin soname may not be linked safely by.
 
 # Options
 if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -14,7 +14,7 @@ if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_CURRENT_SOURCE_DIR}")
 else()
     set(SDL_LIBRETRO_IS_MAIN FALSE)
 endif()
-option(SDL_LIBRETRO_BUILD "Examples" ${SDL_LIBRETRO_IS_MAIN})
+option(SDL_LIBRETRO_BUILD "Example" ${SDL_LIBRETRO_IS_MAIN})
 
 # SDL_libretro
 add_library(SDL_libretro_h INTERFACE)

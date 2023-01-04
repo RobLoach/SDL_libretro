@@ -12,25 +12,17 @@
 typedef struct AppData {
     SDL_Window* window;
     SDL_Renderer* renderer;
-    SDL_libretro* core;
     const char* coreToLoad;
     const char* contentToLoad;
 } AppData;
 
 bool LoadCore(AppData* appData, const char* core, const char* content) {
-    appData->core = SDL_libretro_LoadCore(core);
     SDL_Log("Loading core: %s", core);
-    if (appData->core == NULL) {
-        SDL_Log("Failed to load core %s - %s", core, SDL_GetError());
-        return false;
-    }
-
-    return true;
+    return SDL_libretro_LoadCore(core);
 }
 
 void UnloadCore(AppData* appData) {
-    SDL_libretro_UnloadCore(appData->core);
-    appData->core = NULL;
+    SDL_libretro_UnloadCore();
 }
 
 void Init(SDL_App* app) {
