@@ -17,8 +17,17 @@
 #include SDL_LIBRETRO_LIBRETRO_H
 
 SDL_bool SDL_libretro_LoadCore(const char* coreFile);
+SDL_bool SDL_libretro_LoadGame(const char* filename);
 void SDL_libretro_UnloadCore();
 SDL_bool SDL_libretro_CoreIsLoaded();
+SDL_bool SDL_libretro_GameIsLoaded();
+void SDL_libretro_Update();
+SDL_Texture* SDL_libretro_GetTexture(SDL_Renderer* renderer);
+SDL_PixelFormatEnum SDL_libretro_GetPixelFormat();
+int SDL_libretro_GetWidth();
+int SDL_libretro_GetHeight();
+void SDL_libretro_Render(SDL_Renderer* renderer);
+void SDL_libretro_UnloadGame();
 
 #endif  // SDL_LIBRETRO_H__
 
@@ -32,9 +41,20 @@ SDL_bool SDL_libretro_CoreIsLoaded();
 typedef struct SDL_libretro {
     void* handle;
     enum retro_pixel_format pixel_format;
+    bool gameLoaded;
     struct retro_audio_callback audio_callback;
     struct retro_game_geometry game_geometry;
     bool supports_no_game;
+    const uint8_t* inputKeyboardState;
+    struct retro_system_info system_info;
+    unsigned inputJoypadState[RETRO_DEVICE_ID_JOYPAD_R3+1];
+    struct retro_system_timing system_timing;
+    int width;
+    int height;
+
+    SDL_Texture* texture;
+
+    SDL_AudioDeviceID audioDevice;
 
 	void (*retro_init)(void);
 	void (*retro_deinit)(void);
@@ -74,7 +94,7 @@ SDL_libretro* SDL_libretro_instance = NULL;
 } while (0)
 #define SDL_libretro_LoadCoreFunction(S) SDL_libretro_LoadFunction(SDL_libretro_instance->S, S)
 
-static void SDL_libretro_Log(enum retro_log_level level, const char *fmt, ...) {
+void SDL_libretro_Log(enum retro_log_level level, const char *fmt, ...) {
 	char buffer[4096] = {0};
 	static const char * levelstr[] = { "dbg", "inf", "wrn", "err" };
 	va_list va;
@@ -99,6 +119,73 @@ static void SDL_libretro_Log(enum retro_log_level level, const char *fmt, ...) {
         default:
             break;
     }
+}
+
+int SDL_libretro_GetWidth() {
+    if (SDL_libretro_instance != NULL) {
+        return SDL_libretro_instance->width;
+    }
+
+    return 0;
+}
+
+int SDL_libretro_GetHeight() {
+    if (SDL_libretro_instance != NULL) {
+        return SDL_libretro_instance->height;
+    }
+
+    return 0;
+}
+
+SDL_PixelFormatEnum SDL_libretro_GetPixelFormat() {
+	switch (SDL_libretro_instance->pixel_format) {
+        case RETRO_PIXEL_FORMAT_0RGB1555:
+            return SDL_PIXELFORMAT_ARGB1555;
+        case RETRO_PIXEL_FORMAT_XRGB8888:
+            return SDL_PIXELFORMAT_ARGB8888;
+        case RETRO_PIXEL_FORMAT_RGB565:
+            return SDL_PIXELFORMAT_RGB565;
+	}
+
+    return RETRO_PIXEL_FORMAT_0RGB1555;
+}
+
+void SDL_libretro_AudioDeinit() {
+    if (SDL_libretro_instance->audioDevice <= 0) {
+        return;
+    }
+
+    SDL_CloseAudioDevice(SDL_libretro_instance->audioDevice);
+    SDL_libretro_instance->audioDevice = 0;
+}
+
+SDL_bool SDL_libretro_AudioInit() {
+    SDL_libretro_AudioDeinit();
+    SDL_AudioSpec desired;
+    SDL_AudioSpec obtained;
+
+    SDL_zero(desired);
+    SDL_zero(obtained);
+
+    desired.format = AUDIO_S16;
+    desired.freq   = SDL_libretro_instance->system_timing.sample_rate;
+    desired.channels = 2;
+    desired.samples = 4096;
+
+    SDL_libretro_instance->audioDevice = SDL_OpenAudioDevice(NULL, 0, &desired, &obtained, 0);
+    if (!SDL_libretro_instance->audioDevice) {
+        SDL_libretro_Log(RETRO_LOG_ERROR, "[libretro] Failed to open playback device: %s", SDL_GetError());
+        return false;
+    }
+
+    SDL_PauseAudioDevice(SDL_libretro_instance->audioDevice, 0);
+
+    // Let the core know that the audio device has been initialized.
+    if (SDL_libretro_instance->audio_callback.set_state) {
+        SDL_libretro_instance->audio_callback.set_state(true);
+    }
+
+    return true;
 }
 
 
@@ -137,7 +224,7 @@ bool SDL_libretro_Environment(unsigned cmd, void *data) {
         //     SDL_assert(outvar->key && outvar->value);
         // }
 
-        return true;
+        return false;
     }
     case RETRO_ENVIRONMENT_GET_VARIABLE: {
         // struct retro_variable *var = (struct retro_variable *)data;
@@ -152,7 +239,7 @@ bool SDL_libretro_Environment(unsigned cmd, void *data) {
         //     }
         // }
 
-        return true;
+        return false;
     }
     case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
         bool *bval = (bool*)data;
@@ -183,11 +270,30 @@ bool SDL_libretro_Environment(unsigned cmd, void *data) {
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
 		const enum retro_pixel_format *fmt = (enum retro_pixel_format *)data;
 
-		if (*fmt > RETRO_PIXEL_FORMAT_RGB565) {
+		if (*fmt > RETRO_PIXEL_FORMAT_RGB565 || *fmt < 0) {
 			return false;
         }
 
         SDL_libretro_instance->pixel_format = *fmt;
+
+        switch (SDL_libretro_instance->pixel_format){
+            case RETRO_PIXEL_FORMAT_RGB565:
+            SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_RGB565");
+            break;
+            case RETRO_PIXEL_FORMAT_0RGB1555:
+            SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_0RGB1555");
+            break;
+            case RETRO_PIXEL_FORMAT_XRGB8888:
+            SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_XRGB8888");
+            break;
+        }
+
+        // Invalidate the texture so it's recreated if needed.
+        // if (SDL_libretro_instance->texture != NULL) {
+        //     SDL_DestroyTexture(SDL_libretro_instance->texture);
+        //     SDL_libretro_instance->texture = NULL;
+        // }
+
 		return true;
 	}
     case RETRO_ENVIRONMENT_SET_HW_RENDER: {
@@ -236,6 +342,173 @@ bool SDL_libretro_Environment(unsigned cmd, void *data) {
     return false;
 }
 
+void SDL_libretro_VideoRefresh(const void *data, unsigned width, unsigned height, size_t pitch) {
+
+    if (SDL_libretro_instance == NULL) {
+        return;
+    }
+    // TODO: Update the SDL texture for the video refresh.
+    if (SDL_libretro_instance->texture == NULL) {
+        return;
+    }
+
+    // Lock the texture from reading
+    void* pix;
+    int pitch2;
+    if (SDL_LockTexture(SDL_libretro_instance->texture, NULL, (void**)&pix, &pitch2) != 0) {
+        SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to lock the texture: %s", SDL_GetError());
+    }
+
+    // TODO: Is there a faster way to update the pixel data than memcpy?
+    SDL_memcpy(pix, data, height * pitch);
+
+    // Update the texture pixels using SDL_UpdateTexture()
+    // if (SDL_UpdateTexture(SDL_libretro_instance->texture, NULL, data, pitch2) != 0) {
+    //     SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to update the texture pixels: %s", SDL_GetError());
+    // }
+
+    // Unlock the texture for reading
+    SDL_UnlockTexture(SDL_libretro_instance->texture);
+
+    //SDL_Log("Creating text");
+}
+
+void SDL_libretro_Render(SDL_Renderer* renderer) {
+    // Find the aspect ratio.
+    float aspect = SDL_libretro_instance->game_geometry.aspect_ratio;
+    if (aspect <= 0) {
+        aspect = (float)SDL_libretro_instance->width / (float)SDL_libretro_instance->height;
+    }
+
+    int screenWidth, screenHeight;
+    if (SDL_GetRendererOutputSize(renderer, &screenWidth, &screenHeight) != 0) {
+        SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to get output size: %s", SDL_GetError());
+        return;
+    }
+
+    // Calculate the optimal width/height to display in the screen size.
+    int height = screenHeight;
+    int width = height * aspect;
+    if (width > screenWidth) {
+        height = (float)screenWidth / aspect;
+        width = screenWidth;
+    }
+
+    // Draw the texture in the middle of the screen.
+    int x = (screenWidth - width) / 2;
+    int y = (screenHeight - height) / 2;
+    SDL_Rect destRect = {x, y, width, height};
+    SDL_Texture* texture = SDL_libretro_GetTexture(renderer);
+    if (texture != NULL) {
+        SDL_RenderCopy(renderer, texture, NULL, &destRect);
+    }
+}
+
+void SDL_libretro_InputPoll(void) {
+    // TODO: Add Joypad
+    // TODO: Add Mouse Support
+    // TODO: Add multiplayer support
+
+    // Keyboard
+    SDL_libretro_instance->inputKeyboardState = SDL_GetKeyboardState(NULL);
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_A] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_X];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_B] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_Z];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_Y] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_A];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_X] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_S];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_UP] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_UP];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_DOWN] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_DOWN];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_LEFT] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_LEFT];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_RIGHT] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_RIGHT];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_START] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_RETURN];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_SELECT] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_BACKSPACE];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_L] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_Q];
+    SDL_libretro_instance->inputJoypadState[RETRO_DEVICE_ID_JOYPAD_R] = SDL_libretro_instance->inputKeyboardState[SDL_SCANCODE_W];
+}
+
+int16_t SDL_libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id) {
+    // TODO: Add Mouse, Keyboard, and Gamepad support
+	if (port || index || device != RETRO_DEVICE_JOYPAD)
+		return 0;
+
+	return SDL_libretro_instance->inputJoypadState[id];
+}
+
+size_t SDL_libretro_AudioWrite(const int16_t *buf, unsigned frames) {
+    if (SDL_libretro_instance->audioDevice > 0) {
+        SDL_QueueAudio(SDL_libretro_instance->audioDevice, buf, sizeof(*buf) * frames * 2);
+    }
+    return frames;
+}
+
+SDL_Texture* SDL_libretro_GetTexture(SDL_Renderer* renderer) {
+    if (SDL_libretro_instance == NULL && renderer != NULL) {
+        return NULL;
+    }
+    if (SDL_libretro_instance->texture != NULL) {
+        return SDL_libretro_instance->texture;
+    }
+
+    SDL_libretro_instance->texture = SDL_CreateTexture(renderer, SDL_libretro_GetPixelFormat(), SDL_TEXTUREACCESS_STREAMING, SDL_libretro_instance->width, SDL_libretro_instance->height);
+    if (SDL_libretro_instance->texture == NULL) {
+        SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to create texture from renderer: %s", SDL_GetError());
+    }
+    return SDL_libretro_instance->texture;
+}
+
+void SDL_libretro_AudioSample(int16_t left, int16_t right) {
+	int16_t buf[2] = {left, right};
+	SDL_libretro_AudioWrite(buf, 1);
+}
+
+size_t SDL_libretro_AudioSampleBatch(const int16_t *data, size_t frames) {
+	return SDL_libretro_AudioWrite(data, frames);
+}
+
+void SDL_libretro_ResizeToAspect(double ratio, int sw, int sh, int *dw, int *dh) {
+	*dw = sw;
+	*dh = sh;
+
+	if (ratio <= 0)
+		ratio = (double)sw / sh;
+
+	if ((float)sw / (float)sh < 1.0f)
+		*dw = *dh * ratio;
+	else
+		*dh = *dw / ratio;
+}
+
+void SDL_libretro_VideoConfigure() {
+    if (SDL_libretro_instance == NULL) {
+        return;
+    }
+
+    if (SDL_libretro_instance->retro_get_system_av_info == NULL) {
+        return;
+    }
+    // if (SDL_libretro_instance->surface != NULL) {
+    //     SDL_FreeSurface(SDL_libretro_instance->surface);
+    // }
+
+    // Load the audio video details.
+    struct retro_system_av_info av;
+    SDL_libretro_instance->retro_get_system_av_info(&av);
+    SDL_libretro_instance->game_geometry.base_width = av.geometry.base_width;
+    SDL_libretro_instance->game_geometry.base_height = av.geometry.base_height;
+    SDL_libretro_instance->game_geometry.max_width = av.geometry.max_width;
+    SDL_libretro_instance->game_geometry.max_height = av.geometry.max_height;
+    SDL_libretro_instance->game_geometry.aspect_ratio = av.geometry.aspect_ratio;
+
+    SDL_libretro_instance->system_timing.fps = av.timing.fps;
+    SDL_libretro_instance->system_timing.sample_rate = av.timing.sample_rate;
+
+	SDL_libretro_ResizeToAspect(av.geometry.aspect_ratio, av.geometry.base_width * 1, av.geometry.base_height * 1, &SDL_libretro_instance->width, &SDL_libretro_instance->height);
+
+    // SDL_libretro_instance->surface = SDL_CreateRGBSurfaceWithFormat(0, SDL_libretro_instance->width, SDL_libretro_instance->height, 0, SDL_libretro_GetPixelFormat());
+    // if (SDL_libretro_instance->surface == NULL) {
+    //     SDL_libretro_Log(RETRO_LOG_ERROR, "[libretro] Error creating surface: %s", SDL_GetError());
+    // }
+}
+
 /**
  * Loads the given core file.
  */
@@ -246,7 +519,6 @@ SDL_bool SDL_libretro_LoadCore(const char* coreFile) {
 	void (*set_input_state)(retro_input_state_t) = NULL;
 	void (*set_audio_sample)(retro_audio_sample_t) = NULL;
 	void (*set_audio_sample_batch)(retro_audio_sample_batch_t) = NULL;
-	
 
     SDL_libretro_UnloadCore();
     SDL_libretro_instance = (SDL_libretro*)SDL_malloc(sizeof(SDL_libretro));
@@ -255,8 +527,8 @@ SDL_bool SDL_libretro_LoadCore(const char* coreFile) {
         return false;
     }
 
-    // Initialize some variables.
-    SDL_libretro_instance->supports_no_game = false;
+    // Ensure everything starts as nothing..
+    SDL_memset(SDL_libretro_instance, 0, sizeof(SDL_libretro));
 
     // Load the core
     SDL_libretro_instance->handle = SDL_LoadObject(coreFile);
@@ -291,15 +563,122 @@ SDL_bool SDL_libretro_LoadCore(const char* coreFile) {
     }
 
     set_environment(SDL_libretro_Environment);
-	// set_video_refresh(SDL_libretro_VideoRefresh);
-	// set_input_poll(SDL_libretro_InputPoll);
-	// set_input_state(SDL_libretro_InputState);
-	// set_audio_sample(SDL_libretro_AudioSample);
-	// set_audio_sample_batch(SDL_libretro_AudioSampleBatch);
+	set_video_refresh(SDL_libretro_VideoRefresh);
+	set_input_poll(SDL_libretro_InputPoll);
+	set_input_state(SDL_libretro_InputState);
+	set_audio_sample(SDL_libretro_AudioSample);
+	set_audio_sample_batch(SDL_libretro_AudioSampleBatch);
 
-    //SDL_libretro_instance->retro_init();
+    SDL_libretro_instance->retro_get_system_info(&SDL_libretro_instance->system_info);
+
+    SDL_libretro_instance->retro_init();
 
     return true;
+}
+
+SDL_bool SDL_libretro_LoadGame(const char* filename) {
+    if (SDL_libretro_instance == NULL) {
+        SDL_libretro_Log(RETRO_LOG_ERROR, "Core not loaded");
+        return false;
+    }
+
+	struct retro_game_info info;
+    info.path = filename;
+    info.meta = "";
+    info.data = NULL;
+    info.size = 0;
+
+    if (filename) {
+        // Check if we take the buffer of data.
+        if (!SDL_libretro_instance->system_info.need_fullpath) {
+            SDL_RWops *file = SDL_RWFromFile(filename, "rb");
+            Sint64 size;
+
+            if (!file) {
+                SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to load %s: %s", filename, SDL_GetError());
+                return false;
+            }
+
+            size = SDL_RWsize(file);
+
+            if (size < 0) {
+                SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to get file size of %s: %s", filename, SDL_GetError());
+                SDL_RWclose(file);
+                return false;
+            }
+
+            info.size = size;
+            info.data = SDL_malloc(info.size);
+
+            if (!info.data){
+                SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to allocate memory for file data");
+                SDL_RWclose(file);
+                return false;
+            }
+
+            if (SDL_RWread(file, (void*)info.data, info.size, 1) == 0) {
+                SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to read data for file %s: %s", filename, SDL_GetError());
+                SDL_free((void*)info.data);
+                SDL_RWclose(file);
+                return false;
+            }
+
+            SDL_RWclose(file);
+        }
+    }
+
+    // Load the game
+    if (!SDL_libretro_instance->retro_load_game(&info)) {
+        SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to load game");
+        if (info.data != NULL) {
+            SDL_free((void*)info.data);
+        }
+        return false;
+    }
+
+    if (info.data != NULL) {
+        SDL_free((void*)info.data);
+    }
+
+    SDL_libretro_VideoConfigure();
+    SDL_libretro_AudioInit();
+
+    // TODO: Allow changing the joypad device?
+    SDL_libretro_instance->retro_set_controller_port_device(0, RETRO_DEVICE_JOYPAD);
+    return SDL_libretro_instance->gameLoaded = true;
+}
+
+void SDL_libretro_Update() {
+    if (SDL_libretro_instance == NULL) {
+        return;
+    }
+    // Update the game loop timer.
+    // if (runloop_frame_time.callback) {
+    //     retro_time_t current = cpu_features_get_time_usec();
+    //     retro_time_t delta = current - runloop_frame_time_last;
+
+    //     if (!runloop_frame_time_last)
+    //         delta = runloop_frame_time.reference;
+    //     runloop_frame_time_last = current;
+    //     runloop_frame_time.callback(delta);
+    // }
+
+    // Ask the core to emit the audio.
+    if (SDL_libretro_instance->audio_callback.callback) {
+        SDL_libretro_instance->audio_callback.callback();
+    }
+    SDL_libretro_instance->retro_run();
+}
+
+void SDL_libretro_UnloadGame() {
+    if (SDL_libretro_instance == NULL) {
+        return;
+    }
+    // retro_unload_game
+    if (SDL_libretro_GameIsLoaded() && SDL_libretro_instance->retro_unload_game != NULL) {
+        SDL_libretro_instance->retro_unload_game();
+    }
+    SDL_libretro_instance->gameLoaded = false;
 }
 
 /**
@@ -310,13 +689,33 @@ void SDL_libretro_UnloadCore() {
         return;
     }
 
+    SDL_libretro_UnloadGame();
+
+    // retro_deinit
     if (SDL_libretro_instance->retro_deinit != NULL) {
         SDL_libretro_instance->retro_deinit();
     }
+    SDL_Log("SDL_UnloadObject");
 
+    // Unload the handle
     if (SDL_libretro_instance->handle != NULL) {
         SDL_UnloadObject(SDL_libretro_instance->handle);
     }
+    SDL_Log("SDL_libretro_AudioDeinit");
+
+    // Audio
+    SDL_libretro_AudioDeinit();
+    // if (SDL_libretro_instance->surface != NULL) {
+    //     SDL_FreeSurface(SDL_libretro_instance->surface);
+    //     SDL_libretro_instance->surface = NULL;
+    // }
+    SDL_Log("SDL_DestroyTexture");
+
+    if (SDL_libretro_instance->texture != NULL) {
+        //SDL_DestroyTexture(SDL_libretro_instance->texture);
+        SDL_libretro_instance->texture = NULL;
+    }
+    SDL_Log("SDL_free");
 
     SDL_free(SDL_libretro_instance);
     SDL_libretro_instance = NULL;
@@ -324,6 +723,14 @@ void SDL_libretro_UnloadCore() {
 
 SDL_bool SDL_libretro_CoreIsLoaded() {
     return SDL_libretro_instance != NULL;
+}
+
+SDL_bool SDL_libretro_GameIsLoaded() {
+    if (SDL_libretro_instance == NULL) {
+        return false;
+    }
+
+    return SDL_libretro_instance->gameLoaded;
 }
 
 #endif  // SDL_LIBRETRO_IMPLEMENTATION_ONCE

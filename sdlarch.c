@@ -1,4 +1,3 @@
-
 #include <SDL.h>
 #include "vendor/libretro-common/include/libretro.h"
 #include "vendor/glad/glad.h"
