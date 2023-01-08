@@ -6,7 +6,7 @@ add_executable(SDL_libretro SDL_libretro.c)
 
 if(${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
     set(SHELL_FILE "${CMAKE_CURRENT_SOURCE_DIR}/SDL_libretro.html")
-    set(PRELOAD_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../build-emscripten/assets@/")
+    set(PRELOAD_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../wasm@/")
 
     set(USE_FLAGS "-s USE_SDL=2 -sMAIN_MODULE=1")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${USE_FLAGS}")
