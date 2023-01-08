@@ -1,3 +1,5 @@
 [submodule "vendor/libretro-fceumm"]
 	path = vendor/libretro-fceumm
 	url = https://github.com/libretro/libretro-fceumm.git
+    ignore = dirty
+
