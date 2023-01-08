@@ -19,6 +19,7 @@
 SDL_bool SDL_libretro_LoadCore(const char* coreFile);
 SDL_bool SDL_libretro_LoadGame(const char* filename);
 void SDL_libretro_UnloadCore();
+void SDL_libretro_UnloadGame();
 SDL_bool SDL_libretro_CoreIsLoaded();
 SDL_bool SDL_libretro_GameIsLoaded();
 void SDL_libretro_Update();
@@ -27,7 +28,6 @@ SDL_PixelFormatEnum SDL_libretro_GetPixelFormat();
 int SDL_libretro_GetWidth();
 int SDL_libretro_GetHeight();
 void SDL_libretro_Render(SDL_Renderer* renderer);
-void SDL_libretro_UnloadGame();
 
 #endif  // SDL_LIBRETRO_H__
 
@@ -40,20 +40,21 @@ void SDL_libretro_UnloadGame();
 
 typedef struct SDL_libretro {
     void* handle;
+
     enum retro_pixel_format pixel_format;
-    bool gameLoaded;
     struct retro_audio_callback audio_callback;
     struct retro_game_geometry game_geometry;
+    struct retro_system_info system_info;
+    struct retro_system_timing system_timing;
+    bool gameLoaded;
     bool supports_no_game;
     const uint8_t* inputKeyboardState;
-    struct retro_system_info system_info;
     unsigned inputJoypadState[RETRO_DEVICE_ID_JOYPAD_R3+1];
-    struct retro_system_timing system_timing;
+
     int width;
     int height;
 
     SDL_Texture* texture;
-
     SDL_AudioDeviceID audioDevice;
 
 	void (*retro_init)(void);
@@ -145,9 +146,11 @@ SDL_PixelFormatEnum SDL_libretro_GetPixelFormat() {
             return SDL_PIXELFORMAT_ARGB8888;
         case RETRO_PIXEL_FORMAT_RGB565:
             return SDL_PIXELFORMAT_RGB565;
+        case RETRO_PIXEL_FORMAT_UNKNOWN:
+            return SDL_PIXELFORMAT_ARGB1555;
 	}
 
-    return RETRO_PIXEL_FORMAT_0RGB1555;
+    return SDL_PIXELFORMAT_ARGB1555;
 }
 
 void SDL_libretro_AudioDeinit() {
@@ -187,7 +190,6 @@ SDL_bool SDL_libretro_AudioInit() {
 
     return true;
 }
-
 
 bool SDL_libretro_Environment(unsigned cmd, void *data) {
 	switch (cmd) {
@@ -270,29 +272,28 @@ bool SDL_libretro_Environment(unsigned cmd, void *data) {
 	case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT: {
 		const enum retro_pixel_format *fmt = (enum retro_pixel_format *)data;
 
-		if (*fmt > RETRO_PIXEL_FORMAT_RGB565 || *fmt < 0) {
-			return false;
+        switch (*fmt){
+            case RETRO_PIXEL_FORMAT_RGB565:
+                SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_RGB565");
+                break;
+            case RETRO_PIXEL_FORMAT_0RGB1555:
+                SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_0RGB1555");
+                break;
+            case RETRO_PIXEL_FORMAT_XRGB8888:
+                SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_XRGB8888");
+                break;
+            case RETRO_PIXEL_FORMAT_UNKNOWN:
+            default:
+                SDL_libretro_Log(RETRO_LOG_INFO, "Pixel format can't be RETRO_PIXEL_FORMAT_UNKNOWN");
+                return false;
         }
 
         SDL_libretro_instance->pixel_format = *fmt;
-
-        switch (SDL_libretro_instance->pixel_format){
-            case RETRO_PIXEL_FORMAT_RGB565:
-            SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_RGB565");
-            break;
-            case RETRO_PIXEL_FORMAT_0RGB1555:
-            SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_0RGB1555");
-            break;
-            case RETRO_PIXEL_FORMAT_XRGB8888:
-            SDL_libretro_Log(RETRO_LOG_INFO, "Set pixel format to: RETRO_PIXEL_FORMAT_XRGB8888");
-            break;
-        }
-
         // Invalidate the texture so it's recreated if needed.
-        // if (SDL_libretro_instance->texture != NULL) {
-        //     SDL_DestroyTexture(SDL_libretro_instance->texture);
-        //     SDL_libretro_instance->texture = NULL;
-        // }
+        if (SDL_libretro_instance->texture != NULL) {
+            SDL_DestroyTexture(SDL_libretro_instance->texture);
+            SDL_libretro_instance->texture = NULL;
+        }
 
 		return true;
 	}
@@ -374,6 +375,11 @@ void SDL_libretro_VideoRefresh(const void *data, unsigned width, unsigned height
 }
 
 void SDL_libretro_Render(SDL_Renderer* renderer) {
+    SDL_Texture* texture = SDL_libretro_GetTexture(renderer);
+    if (!texture) {
+        return;
+    }
+
     // Find the aspect ratio.
     float aspect = SDL_libretro_instance->game_geometry.aspect_ratio;
     if (aspect <= 0) {
@@ -398,10 +404,7 @@ void SDL_libretro_Render(SDL_Renderer* renderer) {
     int x = (screenWidth - width) / 2;
     int y = (screenHeight - height) / 2;
     SDL_Rect destRect = {x, y, width, height};
-    SDL_Texture* texture = SDL_libretro_GetTexture(renderer);
-    if (texture != NULL) {
-        SDL_RenderCopy(renderer, texture, NULL, &destRect);
-    }
+    SDL_RenderCopy(renderer, texture, NULL, &destRect);
 }
 
 void SDL_libretro_InputPoll(void) {
@@ -441,17 +444,21 @@ size_t SDL_libretro_AudioWrite(const int16_t *buf, unsigned frames) {
 }
 
 SDL_Texture* SDL_libretro_GetTexture(SDL_Renderer* renderer) {
-    if (SDL_libretro_instance == NULL && renderer != NULL) {
+    if (SDL_libretro_instance == NULL || renderer == NULL) {
         return NULL;
     }
+
+    // If the texture exists already, return it.
     if (SDL_libretro_instance->texture != NULL) {
         return SDL_libretro_instance->texture;
     }
 
+    // Create the texture
     SDL_libretro_instance->texture = SDL_CreateTexture(renderer, SDL_libretro_GetPixelFormat(), SDL_TEXTUREACCESS_STREAMING, SDL_libretro_instance->width, SDL_libretro_instance->height);
     if (SDL_libretro_instance->texture == NULL) {
         SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to create texture from renderer: %s", SDL_GetError());
     }
+
     return SDL_libretro_instance->texture;
 }
 
@@ -468,13 +475,16 @@ void SDL_libretro_ResizeToAspect(double ratio, int sw, int sh, int *dw, int *dh)
 	*dw = sw;
 	*dh = sh;
 
-	if (ratio <= 0)
+	if (ratio <= 0) {
 		ratio = (double)sw / sh;
+    }
 
-	if ((float)sw / (float)sh < 1.0f)
+	if ((float)sw / (float)sh < 1.0f) {
 		*dw = *dh * ratio;
-	else
+    }
+	else {
 		*dh = *dw / ratio;
+    }
 }
 
 void SDL_libretro_VideoConfigure() {
@@ -485,6 +495,7 @@ void SDL_libretro_VideoConfigure() {
     if (SDL_libretro_instance->retro_get_system_av_info == NULL) {
         return;
     }
+
     // if (SDL_libretro_instance->surface != NULL) {
     //     SDL_FreeSurface(SDL_libretro_instance->surface);
     // }
@@ -502,11 +513,6 @@ void SDL_libretro_VideoConfigure() {
     SDL_libretro_instance->system_timing.sample_rate = av.timing.sample_rate;
 
 	SDL_libretro_ResizeToAspect(av.geometry.aspect_ratio, av.geometry.base_width * 1, av.geometry.base_height * 1, &SDL_libretro_instance->width, &SDL_libretro_instance->height);
-
-    // SDL_libretro_instance->surface = SDL_CreateRGBSurfaceWithFormat(0, SDL_libretro_instance->width, SDL_libretro_instance->height, 0, SDL_libretro_GetPixelFormat());
-    // if (SDL_libretro_instance->surface == NULL) {
-    //     SDL_libretro_Log(RETRO_LOG_ERROR, "[libretro] Error creating surface: %s", SDL_GetError());
-    // }
 }
 
 /**
@@ -533,7 +539,7 @@ SDL_bool SDL_libretro_LoadCore(const char* coreFile) {
     // Load the core
     SDL_libretro_instance->handle = SDL_LoadObject(coreFile);
     if (SDL_libretro_instance->handle == NULL) {
-        SDL_Log("[libretro] Failed to load object: %s", SDL_GetError());
+        SDL_libretro_Log(RETRO_LOG_ERROR, "Failed to load core: %s", SDL_GetError());
         SDL_libretro_UnloadCore();
         return false;
     }
@@ -557,7 +563,7 @@ SDL_bool SDL_libretro_LoadCore(const char* coreFile) {
 	SDL_libretro_LoadFunction(set_audio_sample_batch, retro_set_audio_sample_batch);
 
     if (SDL_libretro_instance->retro_api_version() > 1) {
-        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "[libretro] Only libretro API 1 is supported");
+        SDL_libretro_Log(RETRO_LOG_ERROR, "Only libretro API 1 is supported");
         SDL_libretro_UnloadCore();
         return false;
     }
@@ -636,6 +642,7 @@ SDL_bool SDL_libretro_LoadGame(const char* filename) {
         return false;
     }
 
+    // Unload the file data now that it's loaded.
     if (info.data != NULL) {
         SDL_free((void*)info.data);
     }
@@ -667,6 +674,8 @@ void SDL_libretro_Update() {
     if (SDL_libretro_instance->audio_callback.callback) {
         SDL_libretro_instance->audio_callback.callback();
     }
+
+    // Run the core
     SDL_libretro_instance->retro_run();
 }
 
@@ -674,10 +683,12 @@ void SDL_libretro_UnloadGame() {
     if (SDL_libretro_instance == NULL) {
         return;
     }
+
     // retro_unload_game
     if (SDL_libretro_GameIsLoaded() && SDL_libretro_instance->retro_unload_game != NULL) {
         SDL_libretro_instance->retro_unload_game();
     }
+
     SDL_libretro_instance->gameLoaded = false;
 }
 
@@ -689,28 +700,26 @@ void SDL_libretro_UnloadCore() {
         return;
     }
 
+    // Game
     SDL_libretro_UnloadGame();
 
     // retro_deinit
     if (SDL_libretro_instance->retro_deinit != NULL) {
         SDL_libretro_instance->retro_deinit();
     }
-    SDL_Log("SDL_UnloadObject");
 
     // Unload the handle
+    SDL_Log("SDL_UnloadObject");
     if (SDL_libretro_instance->handle != NULL) {
         SDL_UnloadObject(SDL_libretro_instance->handle);
     }
-    SDL_Log("SDL_libretro_AudioDeinit");
 
     // Audio
+    SDL_Log("SDL_libretro_AudioDeinit");
     SDL_libretro_AudioDeinit();
-    // if (SDL_libretro_instance->surface != NULL) {
-    //     SDL_FreeSurface(SDL_libretro_instance->surface);
-    //     SDL_libretro_instance->surface = NULL;
-    // }
-    SDL_Log("SDL_DestroyTexture");
 
+    // Texture
+    SDL_Log("SDL_DestroyTexture");
     if (SDL_libretro_instance->texture != NULL) {
         //SDL_DestroyTexture(SDL_libretro_instance->texture);
         SDL_libretro_instance->texture = NULL;

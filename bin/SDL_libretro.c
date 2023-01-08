@@ -27,11 +27,20 @@ bool LoadCore(AppData* appData, const char* core, const char* content) {
 void Init(SDL_App* app) {
     AppData* appData = (AppData*)app->userData;
 
+    // Input Validation
+    if (appData->coreToLoad == NULL) {
+        SDL_Log("Use ./sdl_libretro core=fceumm_libretro.so content=kirby.nes");
+        app->shouldClose = true;
+        app->exitStatus = 1;
+        return;
+    }
+
     // Initialize SDL
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_EVENTS) != 0) {
         SDL_Log("SDL_Init(): %s", SDL_GetError());
         SDL_AppClose(app);
         app->exitStatus = 1;
+        app->shouldClose = true;
         return;
     }
 
@@ -41,6 +50,7 @@ void Init(SDL_App* app) {
         SDL_Log("SDL_CreateWindow(): %s", SDL_GetError());
         SDL_AppClose(app);
         app->exitStatus = 1;
+        app->shouldClose = true;
         return;
     }
 
@@ -50,15 +60,13 @@ void Init(SDL_App* app) {
         SDL_Log("SDL_CreateRenderer(): %s", SDL_GetError());
         SDL_AppClose(app);
         app->exitStatus = 1;
+        app->shouldClose = true;
         return;
     }
 
     // Core
-    if (appData->coreToLoad != NULL) {
-        LoadCore(appData, appData->coreToLoad, appData->contentToLoad);
-    }
+    LoadCore(appData, appData->coreToLoad, appData->contentToLoad);
 }
-
 
 void Update(SDL_App* app) {
     AppData* appData = (AppData*)app->userData;
@@ -81,27 +89,31 @@ void Update(SDL_App* app) {
 
     SDL_libretro_Update();
 
-    // Clear the background
-    SDL_SetRenderDrawColor(appData->renderer, 0, 0, 0, 255);
-    SDL_RenderClear(appData->renderer);
+    if (appData->renderer != NULL) {
+        // Clear the background
+        SDL_SetRenderDrawColor(appData->renderer, 0, 0, 0, 255);
+        SDL_RenderClear(appData->renderer);
 
-    // Render the game on the screen
-    SDL_libretro_Render(appData->renderer);
+        // Render the game on the screen
+        SDL_libretro_Render(appData->renderer);
 
-    SDL_RenderPresent(appData->renderer);
+        SDL_RenderPresent(appData->renderer);
+    }
 }
 
 void Close(SDL_App* app) {
     AppData* appData = (AppData*)app->userData;
-    SDL_Log("UnloadCore");
     SDL_libretro_UnloadCore();
+
     SDL_Log("SDL_DestroyRenderer");
     if (appData->renderer != NULL) {
 	    //SDL_DestroyRenderer(appData->renderer);
     }
     appData->renderer = NULL;
+
     SDL_Log("SDL_DestroyWindow");
 	SDL_DestroyWindow(appData->window);
+    appData->window = NULL;
     SDL_Log("SDL_Quit");
 	SDL_Quit();
     SDL_Log("sargs_shutdown");
@@ -129,7 +141,7 @@ SDL_App Main(int argc, char* argv[]) {
         .allocator = {
             .alloc = SDL_libretro_MemAlloc,
             .free = SDL_libretro_MemFree,
-        }
+        },
     });
 
     appData->coreToLoad = sargs_exists("core") ? sargs_value("core") : NULL;
