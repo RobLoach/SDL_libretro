@@ -354,20 +354,20 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
             if (!data) return false;
             struct retro_log_callback* cb = (struct retro_log_callback*)data;
-            cb->log = SDL_Libretro_Logger;
+            cb->log = &SDL_Libretro_Logger;
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_PERF_INTERFACE: {
             if (!data) return false;
             struct retro_perf_callback* perf = (struct retro_perf_callback*)data;
-            perf->get_time_usec = SDL_Libretro_GetTimeUSEC;
-            perf->get_cpu_features = SDL_Libretro_GetCPUFeatures;
-            perf->get_perf_counter = SDL_Libretro_GetPerfCounter;
-            perf->perf_register = SDL_Libretro_PerfRegister;
-            perf->perf_start = SDL_Libretro_PerfStart;
-            perf->perf_stop = SDL_Libretro_PerfStop;
-            perf->perf_log = SDL_Libretro_PerfLog;
+            perf->get_time_usec = &SDL_Libretro_GetTimeUSEC;
+            perf->get_cpu_features = &SDL_Libretro_GetCPUFeatures;
+            perf->get_perf_counter = &SDL_Libretro_GetPerfCounter;
+            perf->perf_register = &SDL_Libretro_PerfRegister;
+            perf->perf_start = &SDL_Libretro_PerfStart;
+            perf->perf_stop = &SDL_Libretro_PerfStop;
+            perf->perf_log = &SDL_Libretro_PerfLog;
             return true;
         }
 
@@ -388,9 +388,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             const struct retro_system_av_info* av = (const struct retro_system_av_info*)data;
             lr->core.fps = av->timing.fps;
             lr->core.aspectRatio = av->geometry.aspect_ratio;
-            // A base-resolution change is picked up by VideoRefresh on the next
-            // frame; aspect is applied at render time. Only the audio stream
-            // (frequency fixed at open) needs an explicit reopen, deferred to RunFrame.
+
+            // A base-resolution change is picked up by VideoRefresh on the next frame; aspect is applied at render time. Only the audio stream (frequency fixed at open) needs an explicit reopen, deferred to RunFrame.
             if (av->timing.sample_rate != lr->core.sampleRate) {
                 lr->core.sampleRate = av->timing.sample_rate;
                 if (lr->core.audioStream) {
@@ -501,7 +500,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     const struct retro_core_option_v2_definition* def = &opts->definitions[i];
                     const char* defaultVal = def->default_value ? def->default_value : "";
 
-                    /* Build pipe-separated values list */
+                    // Build pipe-separated values list.
                     char valuesList[512] = {0};
                     size_t pos = 0;
                     for (unsigned v = 0; v < RETRO_NUM_CORE_OPTION_VALUES_MAX && def->values[v].value; v++) {
