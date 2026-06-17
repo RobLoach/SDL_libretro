@@ -5,11 +5,16 @@
  * SDL_libretro - input subsystem
  */
 
-
+/**
+ * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
+ * 
+ * @see RETRO_DEVICE_ID_JOYPAD_B
+ * @see SDL_GAMEPAD_BUTTON_SOUTH
+ */
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button) {
     switch (button) {
-        case RETRO_DEVICE_ID_JOYPAD_B:      return SDL_GAMEPAD_BUTTON_SOUTH;
-        case RETRO_DEVICE_ID_JOYPAD_Y:      return SDL_GAMEPAD_BUTTON_WEST;
+        case RETRO_DEVICE_ID_JOYPAD_B:       return SDL_GAMEPAD_BUTTON_SOUTH;
+        case RETRO_DEVICE_ID_JOYPAD_Y:       return SDL_GAMEPAD_BUTTON_WEST;
         case RETRO_DEVICE_ID_JOYPAD_SELECT:  return SDL_GAMEPAD_BUTTON_BACK;
         case RETRO_DEVICE_ID_JOYPAD_START:   return SDL_GAMEPAD_BUTTON_START;
         case RETRO_DEVICE_ID_JOYPAD_UP:      return SDL_GAMEPAD_BUTTON_DPAD_UP;
@@ -26,6 +31,13 @@ static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button
     }
 }
 
+/**
+ * Ports a RETROK_* to a SDL_SCANCODE_*
+ * 
+ * @see RETROK_BACKSPACE
+ * @see SDL_SCANCODE_BACKSPACE
+ * @see SDL_Libretro_ScancodeToRetroKey()
+ */
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
     switch (key) {
         case RETROK_BACKSPACE:    return SDL_SCANCODE_BACKSPACE;
@@ -149,9 +161,13 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
     }
 }
 
-/* Inverse of SDL_Libretro_RetroKeyToScancode: SDL physical key -> RETROK_*.
-   Mirrors the canonical pairings of the forward table (so the ambiguous
-   scancodes mapped by several RETROK_* values collapse to their primary key). */
+/**
+ * Ports a SDL physical key to a RETROK_*.
+ * 
+ * @see SDL_SCANCODE_BACKSPACE
+ * @see RETROK_BACKSPACE
+ * @see SDL_Libretro_RetroKeyToScancode()
+ */
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode) {
     switch (scancode) {
         case SDL_SCANCODE_BACKSPACE:    return RETROK_BACKSPACE;
@@ -435,9 +451,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
                 unsigned retrokey = SDL_Libretro_ScancodeToRetroKey(event->key.scancode);
                 uint16_t modmask = SDL_Libretro_KeymodToRetroMod(event->key.mod);
 
-                /* Derive the Unicode character: event->key.key is the SDL virtual
-                   keycode, which is the Unicode codepoint for printable keys. Pass
-                   it through only when it is a real printable codepoint. */
+                // Determine the character if one is available for the key event.
                 uint32_t character = 0;
                 if (event->key.key > 0x20 && event->key.key < 0x110000 &&
                     !(event->key.key & SDLK_SCANCODE_MASK)) {
