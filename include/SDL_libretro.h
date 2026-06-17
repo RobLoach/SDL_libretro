@@ -66,8 +66,6 @@ bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr);
 
 /* Game loading */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer);
-bool SDL_Libretro_LoadGameFromMemory(SDL_Libretro* lr, const void* data, size_t size,
-                                            const char* contentPath, SDL_Renderer* renderer);
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr);
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr);
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr);
@@ -92,6 +90,9 @@ void SDL_Libretro_SetVolume(SDL_Libretro* lr, float volume);
 float SDL_Libretro_GetVolume(const SDL_Libretro* lr);
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed);
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr);
+void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs);
+unsigned SDL_Libretro_GetAudioLatency(const SDL_Libretro* lr);
+double SDL_Libretro_GetSampleRate(const SDL_Libretro* lr);
 
 /* Input */
 void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event);
@@ -131,6 +132,7 @@ bool SDL_Libretro_SetVFS(SDL_Libretro* lr, const SDL_Libretro_VFSCallbacks* vfs)
 
 /* OSD messages */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration);
+const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
 
 #ifdef __cplusplus
 }
@@ -217,7 +219,7 @@ typedef struct SDL_LibretroCoreData {
     /* Video */
     SDL_Texture* texture;
     SDL_Renderer* renderer;
-    bool textureRebuild;
+    bool videoReinitPending;
 
     /* Audio */
     SDL_AudioStream* audioStream;
@@ -226,6 +228,7 @@ typedef struct SDL_LibretroCoreData {
     int16_t singleSampleBuffer[SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
     size_t singleSampleCount;
     int audioDropWarnCount;
+    bool audioReinitPending;
 
     /* Input */
     SDL_Window* window;
@@ -281,19 +284,20 @@ typedef struct SDL_LibretroCoreData {
     struct retro_memory_descriptor* memoryMapDescriptors;
     unsigned memoryMapDescriptorCount;
 
-    /* DRC */
-    float drcAdjustment;
-    bool drcEnabled;
+    // Dynamic Rate Control
+    bool drcEnabled; /** Dynamic Rate Control. @see SDL_Libretro_UpdateDRC() */
+    float drcAdjustment; /** How much the dynamic rate control should be adjusted. */
+    double drcDriftAvg;
 
-    /* Perf */
+    // Performance Counter
     struct retro_perf_counter* perfCounters[64];
     unsigned perfCounterCount;
     retro_perf_tick_t gameTimeNSEC;
 } SDL_LibretroCoreData;
 
 struct SDL_Libretro {
-    /* Persistent settings */
-    float volume;
+    // Persistent Settings Across Cores
+    float volume; /** The audio volume. */
     float speed;
     double speedAccumulator;
     Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */
@@ -302,6 +306,8 @@ struct SDL_Libretro {
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
     char systemDirectory[SDL_LIBRETRO_MAX_PATH];
     char coreAssetsDirectory[SDL_LIBRETRO_MAX_PATH];
+    char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
+    char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
     char username[128];
 
     /* OSD message */
@@ -331,6 +337,8 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
 static void SDL_Libretro_AudioSample(int16_t left, int16_t right);
 static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames);
 static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr);
+static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed);
+static unsigned SDL_Libretro_UpdateAudioThreshold(SDL_Libretro* lr);
 
 static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);

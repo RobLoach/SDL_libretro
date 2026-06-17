@@ -49,8 +49,6 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    SDL_Libretro_InitAudio(lr);
-
     bool running = true;
     while (running && !SDL_Libretro_ShouldClose(lr)) {
         SDL_Event event;
@@ -58,6 +56,38 @@ int main(int argc, char* argv[]) {
             if (event.type == SDL_EVENT_QUIT) {
                 running = false;
             }
+
+            // Fast Forward
+            else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F && !event.key.repeat) {
+                SDL_Libretro_SetSpeed(lr, 2.0f);
+            }
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F) {
+                SDL_Libretro_SetSpeed(lr, 1.0f);
+            }
+
+            // Slow Motion
+            else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_E && !event.key.repeat) {
+                SDL_Libretro_SetSpeed(lr, 0.5f);
+            }
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_E) {
+                SDL_Libretro_SetSpeed(lr, 1.0f);
+            }
+
+            // Reset
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_R) {
+                SDL_Libretro_Reset(lr);
+                SDL_Libretro_SetMessage(lr, "Reset", 2.0f);
+            }
+
+            // Volume
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_MINUS) {
+                SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) - 0.1f);
+            }
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_EQUALS) {
+                SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
+            }
+
+            // Pass all events to SDL_Libretro.
             SDL_Libretro_HandleEvent(lr, &event);
         }
 
@@ -66,6 +96,14 @@ int main(int argc, char* argv[]) {
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         SDL_Libretro_Render(lr, NULL);
+
+        // Draw the current OSD message, if there is one.
+        const char* message = SDL_Libretro_GetMessage(lr);
+        if (message) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderDebugText(renderer, 19.0f, 19.0f, message);
+        }
+
         SDL_RenderPresent(renderer);
     }
 

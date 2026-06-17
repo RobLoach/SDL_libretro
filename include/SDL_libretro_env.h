@@ -132,6 +132,10 @@ static const char* SDL_Libretro_GetDirectory(SDL_Libretro* lr, unsigned cmd) {
             return lr->saveDirectory[0] ? lr->saveDirectory : NULL;
         case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
             return lr->coreAssetsDirectory[0] ? lr->coreAssetsDirectory : NULL;
+        case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY:
+            return lr->playlistDirectory[0] ? lr->playlistDirectory : NULL;
+        case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY:
+            return lr->fileBrowserStartDirectory[0] ? lr->fileBrowserStartDirectory : NULL;
         default:
             return NULL;
     }
@@ -193,11 +197,19 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             switch (fmt) {
                 case RETRO_PIXEL_FORMAT_0RGB1555:
                 case RETRO_PIXEL_FORMAT_XRGB8888:
-                case RETRO_PIXEL_FORMAT_RGB565:
+                case RETRO_PIXEL_FORMAT_RGB565: {
+                    bool changed = (fmt != lr->core.pixelFormat);
                     lr->core.pixelFormat = fmt;
+                    /* The texture's format is fixed at creation. The load path
+                     * builds it from this field; a runtime change (texture already
+                     * exists) defers a rebuild to the next RunFrame. */
+                    if (changed && lr->core.texture) {
+                        lr->core.videoReinitPending = true;
+                    }
                     return true;
+                }
                 default:
-                    lr->core.pixelFormat = RETRO_PIXEL_FORMAT_RGB565;
+                    /* Unsupported: signal false without clobbering the current format. */
                     return false;
             }
         }
@@ -374,22 +386,25 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO: {
             if (!data) return false;
             const struct retro_system_av_info* av = (const struct retro_system_av_info*)data;
-            lr->core.width = av->geometry.base_width;
-            lr->core.height = av->geometry.base_height;
             lr->core.fps = av->timing.fps;
-            lr->core.sampleRate = av->timing.sample_rate;
             lr->core.aspectRatio = av->geometry.aspect_ratio;
-            SDL_Libretro_InitVideo(lr);
+            // A base-resolution change is picked up by VideoRefresh on the next
+            // frame; aspect is applied at render time. Only the audio stream
+            // (frequency fixed at open) needs an explicit reopen, deferred to RunFrame.
+            if (av->timing.sample_rate != lr->core.sampleRate) {
+                lr->core.sampleRate = av->timing.sample_rate;
+                if (lr->core.audioStream) {
+                    lr->core.audioReinitPending = true;
+                }
+            }
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
             if (!data) return false;
             const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
-            lr->core.width = geom->base_width;
-            lr->core.height = geom->base_height;
+            // Geometry updates during runtime are applied in SDL_Libretro_VideoRefresh().
             lr->core.aspectRatio = geom->aspect_ratio;
-            lr->core.textureRebuild = true;
             return true;
         }
 
@@ -456,6 +471,10 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: {
             if (!data) return false;
             lr->core.minimumAudioLatencyMs = *(const unsigned*)data;
+            // Apply the new latency target live if audio is already running.
+            if (lr->core.audioStream) {
+                SDL_Libretro_UpdateAudioThreshold(lr);
+            }
             return true;
         }
 

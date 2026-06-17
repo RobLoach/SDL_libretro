@@ -21,7 +21,7 @@ Consumers define `SDL_LIBRETRO_IMPLEMENTATION` in **exactly one** translation un
 - `include/SDL_libretro.h` — umbrella: public API + private types + implementation fan-out
 - `include/SDL_libretro_core.h` — lifecycle (create, destroy, load core/game)
 - `include/SDL_libretro_video.h` — texture creation, pixel format conversion, video refresh callback
-- `include/SDL_libretro_audio.h` — ring buffer with atomics, SDL_AudioStream, sample callbacks
+- `include/SDL_libretro_audio.h` — SDL_AudioStream push model, dynamic rate control, sample callbacks
 - `include/SDL_libretro_input.h` — gamepad/keyboard/mouse polling, RETROK→SDL_Scancode table
 - `include/SDL_libretro_env.h` — environment callback dispatch (the big switch)
 - `include/SDL_libretro_options.h` — core variables/options (dynamic arrays, not fixed-size)
@@ -39,11 +39,13 @@ Uses `SDL_LoadObject()` / `SDL_LoadFunction()` instead of libretro-common's `dyl
 
 - `RETRO_PIXEL_FORMAT_RGB565` → `SDL_PIXELFORMAT_RGB565` (direct)
 - `RETRO_PIXEL_FORMAT_XRGB8888` → `SDL_PIXELFORMAT_XRGB8888` (direct — no conversion needed, unlike raylib)
-- `RETRO_PIXEL_FORMAT_0RGB1555` → software convert to RGB565
+- `RETRO_PIXEL_FORMAT_0RGB1555` → `SDL_PIXELFORMAT_XRGB1555` (direct)
 
 ### Audio
 
-Push model via `SDL_PutAudioStreamData()` — the device stream is opened with a NULL callback so samples are queued directly from the main thread during `retro_run()`. No cross-thread sharing or atomics needed. Back-pressure drops batches when the queued byte count exceeds a threshold derived from `minimumAudioLatencyMs` (default 100 ms). int16→float conversion at queue time.
+Push model via `SDL_PutAudioStreamData()` — the device stream is opened with a NULL callback so samples are queued directly from the main thread during `retro_run()`. No cross-thread sharing or atomics needed. int16→float conversion at queue time. Back-pressure drops batches when the queued byte count exceeds `audioQueueThresholdBytes`, derived from the audio latency (`minimumAudioLatencyMs`, default 100 ms; settable at runtime via `SDL_Libretro_SetAudioLatency`) and floored to a few sample batches so a tiny latency can't starve the queue.
+
+**Dynamic rate control (DRC):** each frame `SDL_Libretro_UpdateDRC` sets the stream's frequency ratio to `speed × drcAdjustment`. `speed` makes fast-forward/slow-mo track pitch and consumption; `drcAdjustment` is a proportional ±0.5 % nudge (normal speed only) that holds the queue near 50 % fill so it never drifts to empty (underrun) or full (drops). A runtime sample-rate change (`SET_SYSTEM_AV_INFO`) reopens the stream, since the stream frequency is fixed at open time.
 
 ## Build
 

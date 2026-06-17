@@ -236,8 +236,9 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         return false;
     }
 
-    if (lr->core.audio_callback.set_state) {
-        lr->core.audio_callback.set_state(true);
+    // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
+    if (!SDL_Libretro_InitAudio(lr)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "SDL_libretro: Audio unavailable: %s", SDL_GetError());
     }
 
     SDL_Log("SDL_libretro: Game loaded (%ux%u @ %.2f fps, %.0f Hz)",
@@ -246,71 +247,17 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     return true;
 }
 
-bool SDL_Libretro_LoadGameFromMemory(SDL_Libretro* lr, const void* data, size_t size,
-                                      const char* contentPath, SDL_Renderer* renderer) {
-    if (!lr || !lr->core.loaded || !renderer || !data) {
-        SDL_SetError("SDL_libretro: Invalid arguments");
-        return false;
-    }
-
-    lr->core.renderer = renderer;
-    lr->core.window = SDL_GetRenderWindow(renderer);
-
-    if (contentPath) {
-        SDL_strlcpy(lr->core.contentPath, contentPath, sizeof(lr->core.contentPath));
-    }
-
-    struct retro_game_info gameInfo = {0};
-    gameInfo.path = contentPath;
-    gameInfo.data = data;
-    gameInfo.size = size;
-
-    lr->core.symbols.retro_set_video_refresh(SDL_Libretro_VideoRefresh);
-    lr->core.symbols.retro_set_audio_sample(SDL_Libretro_AudioSample);
-    lr->core.symbols.retro_set_audio_sample_batch(SDL_Libretro_AudioSampleBatch);
-    lr->core.symbols.retro_set_input_poll(SDL_Libretro_InputPoll);
-    lr->core.symbols.retro_set_input_state(SDL_Libretro_InputState);
-
-    bool result = lr->core.symbols.retro_load_game(&gameInfo);
-    if (!result) {
-        SDL_SetError("SDL_libretro: Core rejected the game");
-        return false;
-    }
-
-    struct retro_system_av_info avInfo = {0};
-    lr->core.symbols.retro_get_system_av_info(&avInfo);
-    lr->core.width = avInfo.geometry.base_width;
-    lr->core.height = avInfo.geometry.base_height;
-    lr->core.fps = avInfo.timing.fps;
-    lr->core.sampleRate = avInfo.timing.sample_rate;
-    lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
-
-    if (!SDL_Libretro_InitVideo(lr)) {
-        lr->core.symbols.retro_unload_game();
-        return false;
-    }
-
-    if (lr->core.audio_callback.set_state) {
-        lr->core.audio_callback.set_state(true);
-    }
-
-    return true;
-}
-
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
-    if (lr->core.audio_callback.set_state) {
-        lr->core.audio_callback.set_state(false);
-    }
-
-    SDL_Libretro_CloseAudio(lr);
-    SDL_Libretro_CloseVideo(lr);
-
+    // Call retro_unload_game() prior to closing the audio and video.
     if (lr->core.contentPath[0] != '\0') {
         lr->core.symbols.retro_unload_game();
         lr->core.contentPath[0] = '\0';
     }
+
+    SDL_Libretro_CloseAudio(lr);
+    SDL_Libretro_CloseVideo(lr);
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
@@ -327,6 +274,13 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
         return false;
     }
     lr->core.symbols.retro_reset();
+
+    // Drop the audio queued from before the reset so it doesn't continue into the reset.
+    if (lr->core.audioStream) {
+        SDL_ClearAudioStream(lr->core.audioStream);
+        lr->core.singleSampleCount = 0;
+        lr->core.drcDriftAvg = 0.0;
+    }
     return true;
 }
 
@@ -343,9 +297,12 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
         lr->core.runloop_frame_time_last = referenceUsec;
         lr->core.runloop_frame_time.callback(delta);
     }
+
+    // Run the frame.
     lr->core.symbols.retro_run();
 
-    if (lr->core.audio_callback.callback) {
+    // Only pump the core's async-audio callback when audio is actually up.
+    if (lr->core.audioStream && lr->core.audio_callback.callback) {
         lr->core.audio_callback.callback();
     }
 }
@@ -353,11 +310,21 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
 void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
-    // Clamp speed defensively in case it was poked around SetSpeed.
-    float speed = lr->speed;
-    if (speed <= 0.0f) {
-        speed = 0.1f;
+    // Pending Video Driver Reinit
+    if (lr->core.videoReinitPending) {
+        lr->core.videoReinitPending = false;
+        SDL_Libretro_InitVideo(lr);
     }
+
+    // Pending Audio Driver Reinit
+    if (lr->core.audioReinitPending) {
+        lr->core.audioReinitPending = false;
+        SDL_Libretro_InitAudio(lr);
+    }
+
+    // Keep audio consumption locked to speed + nudge the queue toward its target
+    // fill. Done here, above all three return paths below, so it runs every frame.
+    SDL_Libretro_UpdateDRC(lr, lr->speed);
 
     // Wall-clock delta since the previous RunFrame.
     Uint64 nowNS = SDL_GetTicksNS();
@@ -369,36 +336,37 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         return;
     }
 
-    double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9; /* seconds */
+    // Calculate the frame time in seconds.
+    double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9;
     lr->lastTickNS = nowNS;
 
     // Target frame period from the core's declared fps (default 60).
     double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
 
     // Reference frame-time the core is told about, in microseconds.
-    retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)speed);
+    retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)lr->speed);
 
     // At normal speed, when the loop is already paced close to the core's frame rate (e.g. a vsync'd 60 Hz display with a ~60 fps core), run exactly one tick and discard the accumulator. This avoids the beat-frequency judder of occasionally emitting 0 or 2 ticks. Gating on the *measured* cadence keeps the core bounded when vsync is off / FPS uncapped.
     double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
-    if (speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
+    if (lr->speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
         lr->speedAccumulator = 0.0;
         SDL_Libretro_Tick(lr, referenceUsec);
         return;
     }
 
-    lr->speedAccumulator += frameTime * (double)speed;
+    lr->speedAccumulator += frameTime * (double)lr->speed;
 
-    /* Cap iterations to avoid a spiral of death on slow hardware. */
-    int maxTicks = (int)(speed + 1.0f);
+    // Cap iterations to avoid a spiral of death on slow hardware.
+    int maxTicks = (int)(lr->speed + 1.0f);
     if (maxTicks < 1) maxTicks = 1;
 
-    /* Clamp the accumulator so a frame-time spike (game load, window drag,
-     * menu pause) can't leave a backlog that runs the core fast afterwards. */
+    // Clamp the accumulator so a frame-time spike (game load, window drag, menu pause) can't leave a backlog that runs the core fast afterwards.
     double maxAccumulator = framePeriod * (double)maxTicks;
     if (lr->speedAccumulator > maxAccumulator) {
         lr->speedAccumulator = maxAccumulator;
     }
 
+    // Run the required number of ticks to catch up to what's needed.
     while (lr->speedAccumulator >= framePeriod && maxTicks-- > 0) {
         lr->speedAccumulator -= framePeriod;
         SDL_Libretro_Tick(lr, referenceUsec);
@@ -456,6 +424,13 @@ float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     if (!lr) return;
     lr->speed = SDL_max(speed, 0.1f);
+
+    // Reset DRC so the next steady state re-settles from a neutral ratio, and apply the new rate immediately for instant pitch response.
+    if (lr->core.audioStream) {
+        lr->core.drcAdjustment = 1.0f;
+        lr->core.drcDriftAvg = 0.0;
+        SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->speed * lr->core.drcAdjustment);
+    }
 }
 
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
@@ -478,8 +453,36 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
 /* OSD */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
     if (!lr) return;
-    SDL_strlcpy(lr->osdMessage, msg ? msg : "", sizeof(lr->osdMessage));
+
+    // Allow clearing the message.
+    if (msg == NULL || msg[0] == '\0') {
+        lr->osdEndTimeMs = 0;
+        lr->osdMessage[0] = '\0';
+        return;
+    }
+
+    SDL_strlcpy(lr->osdMessage, msg, sizeof(lr->osdMessage));
     lr->osdEndTimeMs = SDL_GetTicks() + (Uint64)(duration * 1000.0);
+}
+
+/**
+ * Retrieves the active on-screen message.
+ *
+ * @return A string for the message to display. NULL if there there is no message to display.
+ */
+const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
+    if (!lr || lr->osdMessage[0] == '\0' || lr->osdEndTimeMs == 0) {
+        return NULL;
+    }
+
+    // Timeout the message if needed.
+    if (SDL_GetTicks() > lr->osdEndTimeMs) {
+        lr->osdMessage[0] = '\0';
+        lr->osdEndTimeMs = 0;
+        return NULL;
+    }
+
+    return lr->osdMessage;
 }
 
 /* VFS */

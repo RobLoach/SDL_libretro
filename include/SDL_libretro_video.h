@@ -40,8 +40,7 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
 
     SDL_SetTextureScaleMode(lr->core.texture, SDL_SCALEMODE_NEAREST);
-
-    lr->core.textureRebuild = false;
+    lr->core.videoReinitPending = false;
     return true;
 }
 
@@ -58,7 +57,7 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || !data) return;
 
-    // See if the video needs to be reinitialized.
+    // Rebuild the texture when the core's frame dimensions change.
     if (width != lr->core.width || height != lr->core.height) {
         lr->core.width = width;
         lr->core.height = height;
