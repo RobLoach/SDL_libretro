@@ -377,9 +377,10 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 47:
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
             if (!data) return false;
-            *(int*)data = 1 | 2; /* video | audio */
+            *(int*)data = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
             return true;
         }
 
