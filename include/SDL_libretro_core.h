@@ -178,33 +178,19 @@ bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
     return lr && lr->core.loaded;
 }
 
-bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
-    if (!lr || !lr->core.loaded || !renderer) {
-        SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
-        return false;
-    }
-
+/*
+ * Shared post-load sequence used by both SDL_Libretro_LoadGame and
+ * SDL_Libretro_LoadGame_IO: wire up the retro callbacks, hand the game info to
+ * the core, then read back and store the AV info and initialize video.
+ *
+ * Buffer ownership for info->data is the CALLER's responsibility; this helper
+ * never frees it (the core copies the data during retro_load_game when it does
+ * not require a full path).
+ */
+static bool SDL_Libretro_FinishLoadGame(SDL_Libretro* lr, const struct retro_game_info* info,
+                                        SDL_Renderer* renderer) {
     lr->core.renderer = renderer;
     lr->core.window = SDL_GetRenderWindow(renderer);
-
-    struct retro_game_info gameInfo = {0};
-    void* fileData = NULL;
-
-    if (gamePath) {
-        SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
-        gameInfo.path = gamePath;
-
-        if (!lr->core.needFullpath) {
-            size_t fileSize = 0;
-            fileData = SDL_LoadFile(gamePath, &fileSize);
-            if (!fileData) {
-                SDL_SetError("SDL_libretro: Failed to load game file '%s'", gamePath);
-                return false;
-            }
-            gameInfo.data = fileData;
-            gameInfo.size = fileSize;
-        }
-    }
 
     lr->core.symbols.retro_set_video_refresh(SDL_Libretro_VideoRefresh);
     lr->core.symbols.retro_set_audio_sample(SDL_Libretro_AudioSample);
@@ -212,13 +198,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     lr->core.symbols.retro_set_input_poll(SDL_Libretro_InputPoll);
     lr->core.symbols.retro_set_input_state(SDL_Libretro_InputState);
 
-    bool result = lr->core.symbols.retro_load_game(gamePath ? &gameInfo : NULL);
-
-    if (fileData) {
-        SDL_free(fileData);
-    }
-
-    if (!result) {
+    if (!lr->core.symbols.retro_load_game(info)) {
         SDL_SetError("SDL_libretro: Core rejected the game");
         return false;
     }
@@ -242,51 +222,81 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     return true;
 }
 
-bool SDL_Libretro_LoadGameFromMemory(SDL_Libretro* lr, const void* data, size_t size,
-                                      const char* contentPath, SDL_Renderer* renderer) {
-    if (!lr || !lr->core.loaded || !renderer || !data) {
+bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
+    if (!lr || !lr->core.loaded || !renderer) {
+        SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
+        return false;
+    }
+
+    struct retro_game_info gameInfo = {0};
+    void* fileData = NULL;
+
+    if (gamePath) {
+        SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
+        gameInfo.path = gamePath;
+
+        if (!lr->core.needFullpath) {
+            size_t fileSize = 0;
+            fileData = SDL_LoadFile(gamePath, &fileSize);
+            if (!fileData) {
+                SDL_SetError("SDL_libretro: Failed to load game file '%s'", gamePath);
+                return false;
+            }
+            gameInfo.data = fileData;
+            gameInfo.size = fileSize;
+        }
+    }
+
+    bool result = SDL_Libretro_FinishLoadGame(lr, gamePath ? &gameInfo : NULL, renderer);
+
+    if (fileData) {
+        SDL_free(fileData);
+    }
+
+    return result;
+}
+
+bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* stream,
+                              const char* contentPath, SDL_Renderer* renderer) {
+    if (!lr || !lr->core.loaded || !renderer || !stream) {
         SDL_SetError("SDL_libretro: Invalid arguments");
         return false;
     }
 
-    lr->core.renderer = renderer;
-    lr->core.window = SDL_GetRenderWindow(renderer);
+    /* A stream has no real path on disk, so cores that require a full path
+     * cannot be served from one. */
+    if (lr->core.needFullpath) {
+        SDL_SetError("SDL_libretro: Core '%s' requires a full content path and cannot load from a stream",
+            lr->core.libraryName);
+        return false;
+    }
 
     if (contentPath) {
         SDL_strlcpy(lr->core.contentPath, contentPath, sizeof(lr->core.contentPath));
+    }
+
+    /* Read the whole stream into memory; pass false so the CALLER keeps
+     * ownership of the stream (and is responsible for closing it). */
+    size_t size = 0;
+    void* data = SDL_LoadFile_IO(stream, &size, false);
+    if (!data) {
+        /* SDL_SetError already set by SDL_LoadFile_IO. */
+        return false;
     }
 
     struct retro_game_info gameInfo = {0};
     gameInfo.path = contentPath;
     gameInfo.data = data;
     gameInfo.size = size;
+    gameInfo.meta = NULL;
 
-    lr->core.symbols.retro_set_video_refresh(SDL_Libretro_VideoRefresh);
-    lr->core.symbols.retro_set_audio_sample(SDL_Libretro_AudioSample);
-    lr->core.symbols.retro_set_audio_sample_batch(SDL_Libretro_AudioSampleBatch);
-    lr->core.symbols.retro_set_input_poll(SDL_Libretro_InputPoll);
-    lr->core.symbols.retro_set_input_state(SDL_Libretro_InputState);
+    bool result = SDL_Libretro_FinishLoadGame(lr, &gameInfo, renderer);
 
-    bool result = lr->core.symbols.retro_load_game(&gameInfo);
-    if (!result) {
-        SDL_SetError("SDL_libretro: Core rejected the game");
-        return false;
-    }
+    /* The core copies the content during retro_load_game (need_fullpath is
+     * false here), so the temporary buffer can be released now. */
+    SDL_free(data);
 
-    struct retro_system_av_info avInfo = {0};
-    lr->core.symbols.retro_get_system_av_info(&avInfo);
-    lr->core.width = avInfo.geometry.base_width;
-    lr->core.height = avInfo.geometry.base_height;
-    lr->core.fps = avInfo.timing.fps;
-    lr->core.sampleRate = avInfo.timing.sample_rate;
-    lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
-
-    if (!SDL_Libretro_InitVideo(lr)) {
-        lr->core.symbols.retro_unload_game();
-        return false;
-    }
-
-    return true;
+    return result;
 }
 
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {

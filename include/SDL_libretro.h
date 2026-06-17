@@ -66,7 +66,7 @@ bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr);
 
 /* Game loading */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer);
-bool SDL_Libretro_LoadGameFromMemory(SDL_Libretro* lr, const void* data, size_t size,
+bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* stream,
                                             const char* contentPath, SDL_Renderer* renderer);
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr);
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr);
@@ -351,6 +351,9 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     const char* label, const char* valuesList, const char* displayList,
     const char* tooltip, const char* categoryKey);
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
+
+static bool SDL_Libretro_FinishLoadGame(SDL_Libretro* lr, const struct retro_game_info* info,
+    SDL_Renderer* renderer);
 
 /* Subsystem implementation fragments (lifecycle last; it references the rest) */
 #include "SDL_libretro_video.h"
