@@ -10,7 +10,7 @@
  *
  * Every other translation unit includes "SDL_libretro.h" normally.
  *
- * Copyright (c) 2020-2026 Rob Loach (@RobLoach)
+ * Copyright (c) 2026 Rob Loach (@RobLoach)
  *
  * This software is provided "as-is", without any express or implied warranty.
  * In no event will the authors be held liable for any damages arising from
@@ -299,6 +299,7 @@ struct SDL_Libretro {
     float volume;
     float speed;
     double speedAccumulator;
+    Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */
     SDL_Scancode keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
@@ -340,6 +341,8 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
+static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
+static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
 
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
