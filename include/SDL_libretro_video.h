@@ -65,7 +65,21 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
         SDL_Libretro_InitVideo(lr);
     }
 
-    SDL_UpdateTexture(lr->core.texture, NULL, data, (int)pitch);
+    void* pixels = NULL;
+    int texPitch = 0;
+    if (SDL_LockTexture(lr->core.texture, NULL, &pixels, &texPitch)) {
+        const int bpp = SDL_BYTESPERPIXEL(
+            SDL_Libretro_GetTextureFormat(lr->core.pixelFormat));
+        const int rowBytes = (int)width * bpp;
+        const unsigned char* src = (const unsigned char*)data;
+        unsigned char* dst = (unsigned char*)pixels;
+        for (unsigned y = 0; y < height; y++) {
+            memcpy(dst, src, rowBytes);
+            src += pitch;
+            dst += texPitch;
+        }
+        SDL_UnlockTexture(lr->core.texture);
+    }
 }
 
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
