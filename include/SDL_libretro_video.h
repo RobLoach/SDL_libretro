@@ -8,38 +8,12 @@
 
 #include <string.h>
 
-static void SDL_Libretro_PixelFormatARGB1555ToRGB565(void* output, const void* input,
-    int width, int height, int out_stride, int in_stride) {
-    const uint16_t* in = (const uint16_t*)input;
-    uint16_t* out = (uint16_t*)output;
-    int in_pixels = in_stride / 2;
-    int out_pixels = out_stride / 2;
-
-    for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-            uint16_t col = in[y * in_pixels + x];
-            uint16_t rg = (col << 1) & ((0x1f << 11) | (0x1f << 6));
-            uint16_t b = col & 0x1f;
-            out[y * out_pixels + x] = rg | b;
-        }
-    }
-}
-
 static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt) {
     switch (fmt) {
         case RETRO_PIXEL_FORMAT_XRGB8888: return SDL_PIXELFORMAT_XRGB8888;
         case RETRO_PIXEL_FORMAT_RGB565:   return SDL_PIXELFORMAT_RGB565;
-        case RETRO_PIXEL_FORMAT_0RGB1555: return SDL_PIXELFORMAT_RGB565;
+        case RETRO_PIXEL_FORMAT_0RGB1555: return SDL_PIXELFORMAT_XRGB1555;
         default:                          return SDL_PIXELFORMAT_RGB565;
-    }
-}
-
-static int SDL_Libretro_GetBytesPerPixel(enum retro_pixel_format fmt) {
-    switch (fmt) {
-        case RETRO_PIXEL_FORMAT_XRGB8888: return 4;
-        case RETRO_PIXEL_FORMAT_RGB565:   return 2;
-        case RETRO_PIXEL_FORMAT_0RGB1555: return 2;
-        default:                          return 2;
     }
 }
 
@@ -67,14 +41,6 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
 
     SDL_SetTextureScaleMode(lr->core.texture, SDL_SCALEMODE_NEAREST);
 
-    int bpp = SDL_Libretro_GetBytesPerPixel(lr->core.pixelFormat);
-    size_t bufSize = (size_t)lr->core.width * lr->core.height * bpp;
-    if (bufSize > lr->core.frameBufferSize) {
-        SDL_free(lr->core.frameBuffer);
-        lr->core.frameBuffer = SDL_malloc(bufSize);
-        lr->core.frameBufferSize = bufSize;
-    }
-
     lr->core.textureRebuild = false;
     return true;
 }
@@ -86,35 +52,20 @@ static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
         SDL_DestroyTexture(lr->core.texture);
         lr->core.texture = NULL;
     }
-    if (lr->core.frameBuffer) {
-        SDL_free(lr->core.frameBuffer);
-        lr->core.frameBuffer = NULL;
-        lr->core.frameBufferSize = 0;
-    }
 }
 
 static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || !data) return;
 
+    // See if the video needs to be reinitialized.
     if (width != lr->core.width || height != lr->core.height) {
         lr->core.width = width;
         lr->core.height = height;
         SDL_Libretro_InitVideo(lr);
     }
 
-    int bpp = SDL_Libretro_GetBytesPerPixel(lr->core.pixelFormat);
-
-    if (lr->core.pixelFormat == RETRO_PIXEL_FORMAT_0RGB1555) {
-        int out_stride = (int)(width * 2);
-        SDL_Libretro_PixelFormatARGB1555ToRGB565(
-            lr->core.frameBuffer, data,
-            (int)width, (int)height,
-            out_stride, (int)pitch);
-        SDL_UpdateTexture(lr->core.texture, NULL, lr->core.frameBuffer, out_stride);
-    } else {
-        SDL_UpdateTexture(lr->core.texture, NULL, data, (int)pitch);
-    }
+    SDL_UpdateTexture(lr->core.texture, NULL, data, (int)pitch);
 }
 
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
