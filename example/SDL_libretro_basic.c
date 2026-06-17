@@ -25,6 +25,10 @@ int main(int argc, char* argv[]) {
         SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
+    /* Pace presentation to the display's refresh so RunFrame's lock-to-frame
+     * path can keep the core at its target framerate. */
+    SDL_SetRenderVSync(renderer, 1);
+
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");

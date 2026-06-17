@@ -301,6 +301,7 @@ struct SDL_Libretro {
     float volume;
     float speed;
     double speedAccumulator;
+    Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */
     SDL_Scancode keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
