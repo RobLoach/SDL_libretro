@@ -52,10 +52,25 @@ static retro_perf_tick_t SDL_Libretro_GetPerfCounter(void) {
 
 static void SDL_Libretro_PerfRegister(struct retro_perf_counter* counter) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (lr && counter) {
-        lr->core.perf_counter_last = counter;
-        counter->registered = true;
+    if (!lr || !counter) return;
+
+    // Avoid registering the same counter twice.
+    for (unsigned i = 0; i < lr->core.perfCounterCount; i++) {
+        if (lr->core.perfCounters[i] == counter) {
+            counter->registered = true;
+            return;
+        }
     }
+
+    if (lr->core.perfCounterCount >= SDL_arraysize(lr->core.perfCounters)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                    "PERF: counter registry full (%u), dropping '%s'",
+                    lr->core.perfCounterCount, counter->ident ? counter->ident : "?");
+        return;
+    }
+
+    lr->core.perfCounters[lr->core.perfCounterCount++] = counter;
+    counter->registered = true;
 }
 
 static void SDL_Libretro_PerfStart(struct retro_perf_counter* counter) {
@@ -66,8 +81,27 @@ static void SDL_Libretro_PerfStop(struct retro_perf_counter* counter) {
     if (counter) counter->total += (retro_perf_tick_t)SDL_GetPerformanceCounter() - counter->start;
 }
 
+/**
+ * Displays the active performance timers in the log.
+ */
 static void SDL_Libretro_PerfLog(void) {
-    /* No-op for now */
+    SDL_Libretro* lr = SDL_Libretro_active;
+    if (!lr) return;
+
+    // SDL_GetPerformanceCounter() is the tick source used by the perf counters, so its frequency converts accumulated ticks to seconds. */
+    Uint64 freq = SDL_GetPerformanceFrequency();
+
+    for (unsigned i = 0; i < lr->core.perfCounterCount; i++) {
+        const struct retro_perf_counter* counter = lr->core.perfCounters[i];
+        if (!counter) continue;
+
+        double ms = freq ? ((double)counter->total / (double)freq) * 1000.0 : 0.0;
+        SDL_Log("[PERF] %s: %llu calls, %llu ticks (%.4f ms)",
+                counter->ident ? counter->ident : "?",
+                (unsigned long long)counter->call_cnt,
+                (unsigned long long)counter->total,
+                ms);
+    }
 }
 
 static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
