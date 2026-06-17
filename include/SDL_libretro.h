@@ -10,7 +10,7 @@
  *
  * Every other translation unit includes "SDL_libretro.h" normally.
  *
- * Copyright (c) 2020-2026 Rob Loach (@RobLoach)
+ * Copyright (c) 2026 Rob Loach (@RobLoach)
  *
  * This software is provided "as-is", without any express or implied warranty.
  * In no event will the authors be held liable for any damages arising from

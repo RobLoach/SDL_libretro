@@ -318,13 +318,13 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
     return true;
 }
 
-/* Run a single core tick: report the frame-time delta (if the core asked for
- * one) and then advance the core by exactly one frame. */
+/**
+ * Advance the core a single tick. Also report to the frame-time callback if needed.
+ */
 static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
     if (lr->core.runloop_frame_time.callback) {
         retro_usec_t delta = referenceUsec;
-        /* First tick (or right after a reset) has no measured cadence yet, so
-         * fall back to the reference the core declared. */
+        // First tick (or right after a reset) has no measured cadence yet, so fall back to the reference the core declared.
         if (!lr->core.runloop_frame_time_last) {
             delta = lr->core.runloop_frame_time.reference;
         }
@@ -337,16 +337,16 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
 void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
-    /* Clamp speed defensively in case it was poked around SetSpeed. */
+    // Clamp speed defensively in case it was poked around SetSpeed.
     float speed = lr->speed;
     if (speed <= 0.0f) {
         speed = 0.1f;
     }
 
-    /* Wall-clock delta since the previous RunFrame. */
+    // Wall-clock delta since the previous RunFrame.
     Uint64 nowNS = SDL_GetTicksNS();
     if (lr->lastTickNS == 0) {
-        /* First call: seed the clock and run exactly one tick. */
+        // First call: seed the clock and run exactly one tick.
         lr->lastTickNS = nowNS;
         lr->speedAccumulator = 0.0;
         SDL_Libretro_Tick(lr, 0);
@@ -356,19 +356,13 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9; /* seconds */
     lr->lastTickNS = nowNS;
 
-    /* Target frame period from the core's declared fps (default 60). */
+    // Target frame period from the core's declared fps (default 60).
     double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
 
-    /* Reference frame-time the core is told about, in microseconds. Scaled by
-     * speed so the core's notion of elapsed time tracks fast-forward/slow-mo. */
+    // Reference frame-time the core is told about, in microseconds.
     retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)speed);
 
-    /* Lock-to-frame fast path: at normal speed, when the loop is already paced
-     * close to the core's frame rate (e.g. a vsync'd 60 Hz display with a
-     * ~60 fps core), run exactly one tick and discard the accumulator. This
-     * avoids the beat-frequency judder of occasionally emitting 0 or 2 ticks.
-     * Gating on the *measured* cadence keeps the core bounded when vsync is
-     * off / FPS uncapped. */
+    // At normal speed, when the loop is already paced close to the core's frame rate (e.g. a vsync'd 60 Hz display with a ~60 fps core), run exactly one tick and discard the accumulator. This avoids the beat-frequency judder of occasionally emitting 0 or 2 ticks. Gating on the *measured* cadence keeps the core bounded when vsync is off / FPS uncapped.
     double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
     if (speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
         lr->speedAccumulator = 0.0;
