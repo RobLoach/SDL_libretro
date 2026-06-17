@@ -1,9 +1,10 @@
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_SERIALIZE_IMPL_ONCE)
+#define SDL_LIBRETRO_SERIALIZE_IMPL_ONCE
+
 /*
  * SDL_libretro - save state and SRAM
  */
 
-#include "SDL_libretro_internal.h"
-#include "../include/SDL_libretro.h"
 
 #include <string.h>
 
@@ -65,3 +66,5 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
     lr->core.symbols.retro_cheat_reset();
 }
+
+#endif /* SDL_LIBRETRO_SERIALIZE_IMPL_ONCE */

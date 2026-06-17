@@ -1,9 +1,10 @@
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_OPTIONS_IMPL_ONCE)
+#define SDL_LIBRETRO_OPTIONS_IMPL_ONCE
+
 /*
  * SDL_libretro - core options management
  */
 
-#include "SDL_libretro_internal.h"
-#include "../include/SDL_libretro.h"
 
 #include <string.h>
 
@@ -12,7 +13,7 @@ static char* SDL_Libretro_Strdup(const char* s) {
     return SDL_strdup(s);
 }
 
-void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
+static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
     const char* label, const char* valuesList, const char* displayList,
     const char* tooltip, const char* categoryKey) {
     if (!lr || !key) return;
@@ -49,7 +50,7 @@ void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* 
     lr->core.optionsVisibilityDirty = true;
 }
 
-void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
+static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
     if (!lr || !lr->core.options) return;
 
     for (unsigned i = 0; i < lr->core.optionCount; i++) {
@@ -128,3 +129,5 @@ bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr) {
     lr->core.optionsDirty = false;
     return dirty;
 }
+
+#endif /* SDL_LIBRETRO_OPTIONS_IMPL_ONCE */

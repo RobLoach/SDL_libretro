@@ -1,13 +1,13 @@
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CORE_IMPL_ONCE)
+#define SDL_LIBRETRO_CORE_IMPL_ONCE
+
 /*
  * SDL_libretro - core lifecycle implementation
  */
 
-#include "SDL_libretro_internal.h"
-#include "../include/SDL_libretro.h"
 
 #include <string.h>
 
-SDL_Libretro* SDL_Libretro_active = NULL;
 
 #define LOAD_SYM(sym) do { \
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
@@ -409,3 +409,7 @@ bool SDL_Libretro_SetVFS(SDL_Libretro* lr, const SDL_Libretro_VFSCallbacks* vfs)
     }
     return true;
 }
+
+#undef LOAD_SYM
+
+#endif /* SDL_LIBRETRO_CORE_IMPL_ONCE */

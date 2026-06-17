@@ -1,13 +1,14 @@
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
+#define SDL_LIBRETRO_VIDEO_IMPL_ONCE
+
 /*
  * SDL_libretro - video subsystem
  */
 
-#include "SDL_libretro_internal.h"
-#include "../include/SDL_libretro.h"
 
 #include <string.h>
 
-void SDL_Libretro_PixelFormatARGB1555ToRGB565(void* output, const void* input,
+static void SDL_Libretro_PixelFormatARGB1555ToRGB565(void* output, const void* input,
     int width, int height, int out_stride, int in_stride) {
     const uint16_t* in = (const uint16_t*)input;
     uint16_t* out = (uint16_t*)output;
@@ -42,7 +43,7 @@ static int SDL_Libretro_GetBytesPerPixel(enum retro_pixel_format fmt) {
     }
 }
 
-bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
+static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     if (!lr || !lr->core.renderer) return false;
 
     if (lr->core.texture) {
@@ -78,7 +79,7 @@ bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     return true;
 }
 
-void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
+static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
     if (!lr) return;
 
     if (lr->core.texture) {
@@ -92,7 +93,7 @@ void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
     }
 }
 
-void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch) {
+static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || !data) return;
 
@@ -177,3 +178,5 @@ double SDL_Libretro_GetFPS(const SDL_Libretro* lr) {
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr) {
     return lr ? lr->core.rotation * 90 : 0;
 }
+
+#endif /* SDL_LIBRETRO_VIDEO_IMPL_ONCE */

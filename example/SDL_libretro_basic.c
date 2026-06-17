@@ -6,6 +6,8 @@
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+
+#define SDL_LIBRETRO_IMPLEMENTATION
 #include "SDL_libretro.h"
 
 int main(int argc, char* argv[]) {

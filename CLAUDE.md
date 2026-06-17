@@ -12,17 +12,22 @@ All state lives in an opaque `SDL_Libretro*` context, unlike raylib-libretro's g
 
 Since libretro C callbacks have no userdata parameter, a file-static `SDL_Libretro_active` pointer is set when a core loads. **Only one active context per process.**
 
+### Header-only library
+
+Consumers define `SDL_LIBRETRO_IMPLEMENTATION` in **exactly one** translation unit before `#include "SDL_libretro.h"`; everything else includes it normally. All implementation functions are `static`. `include/SDL_libretro.h` is the umbrella: public declarations on top, then an `#ifdef SDL_LIBRETRO_IMPLEMENTATION` region holding the private structs/`#define`s, the `static SDL_Libretro_active` global, internal forward declarations, and `#include`s of each `include/*.h` implementation fragment (lifecycle last). There is no compiled library — the CMake `SDL_libretro` target is `INTERFACE` (include paths + SDL3 link only).
+
 ### File layout
 
-- `include/SDL_libretro.h` — public API header
-- `src/SDL_libretro.c` — lifecycle (create, destroy, load core/game)
-- `src/SDL_libretro_video.c` — texture creation, pixel format conversion, video refresh callback
-- `src/SDL_libretro_audio.c` — ring buffer with atomics, SDL_AudioStream, sample callbacks
-- `src/SDL_libretro_input.c` — gamepad/keyboard/mouse polling, RETROK→SDL_Scancode table
-- `src/SDL_libretro_env.c` — environment callback dispatch (the big switch)
-- `src/SDL_libretro_options.c` — core variables/options (dynamic arrays, not fixed-size)
-- `src/SDL_libretro_serialize.c` — save state, SRAM, cheats
-- `src/SDL_libretro_internal.h` — shared struct definitions and internal function declarations
+- `include/SDL_libretro.h` — umbrella: public API + private types + implementation fan-out
+- `include/SDL_libretro_core.h` — lifecycle (create, destroy, load core/game)
+- `include/SDL_libretro_video.h` — texture creation, pixel format conversion, video refresh callback
+- `include/SDL_libretro_audio.h` — ring buffer with atomics, SDL_AudioStream, sample callbacks
+- `include/SDL_libretro_input.h` — gamepad/keyboard/mouse polling, RETROK→SDL_Scancode table
+- `include/SDL_libretro_env.h` — environment callback dispatch (the big switch)
+- `include/SDL_libretro_options.h` — core variables/options (dynamic arrays, not fixed-size)
+- `include/SDL_libretro_serialize.h` — save state, SRAM, cheats
+
+Each `include/*.h` fragment is guarded by `#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(<FILE>_IMPL_ONCE)` and is meant to be pulled in only by the umbrella header.
 
 ### Core loading
 
@@ -59,4 +64,3 @@ SDL3 is fetched via FetchContent if not system-installed. Only `libretro.h` is n
 
 - **SDL3** (required) — video, audio, input, threads, atomics, file I/O, dynamic loading
 - **libretro.h** (required) — API header from libretro-common submodule
-- **SDL_PhysFS** (optional) — zip support via `SDL_Libretro_SetVFS()`

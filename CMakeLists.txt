@@ -8,29 +8,18 @@ project(SDL_libretro
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(SDL3 REQUIRED)
 
-add_library(SDL_libretro STATIC
-    src/SDL_libretro.c
-    src/SDL_libretro_video.c
-    src/SDL_libretro_audio.c
-    src/SDL_libretro_input.c
-    src/SDL_libretro_env.c
-    src/SDL_libretro_options.c
-    src/SDL_libretro_serialize.c
-)
+# Header-only (INTERFACE) library. Consumers define SDL_LIBRETRO_IMPLEMENTATION
+# in exactly one translation unit before including <SDL_libretro.h>.
+add_library(SDL_libretro INTERFACE)
 
-target_include_directories(SDL_libretro PUBLIC
+target_include_directories(SDL_libretro INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include>
     $<INSTALL_INTERFACE:include>
 )
 
-target_include_directories(SDL_libretro PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include
-)
-
-target_link_libraries(SDL_libretro PUBLIC SDL3::SDL3-static)
-target_link_libraries(SDL_libretro PRIVATE ${CMAKE_DL_LIBS})
-target_compile_features(SDL_libretro PRIVATE c_std_99)
+target_link_libraries(SDL_libretro INTERFACE SDL3::SDL3-static ${CMAKE_DL_LIBS})
+target_compile_features(SDL_libretro INTERFACE c_std_99)
 
 # Example
 option(SDL_LIBRETRO_BUILD_EXAMPLES "Build example applications" ON)
@@ -41,6 +30,11 @@ endif()
 
 # Install (only when this is the top-level project)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    install(TARGETS SDL_libretro)
+    install(TARGETS SDL_libretro EXPORT SDL_libretroTargets)
     install(FILES include/SDL_libretro.h DESTINATION include)
+    # Implementation fragments + the libretro API header are part of the
+    # shipped header set (needed by the TU that defines the macro).
+    install(DIRECTORY src/ DESTINATION include
+        FILES_MATCHING PATTERN "SDL_libretro_*.h")
+    install(FILES vendor/libretro-common/include/libretro.h DESTINATION include)
 endif()
