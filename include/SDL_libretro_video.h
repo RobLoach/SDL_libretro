@@ -64,7 +64,22 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
         SDL_Libretro_InitVideo(lr);
     }
 
-    SDL_UpdateTexture(lr->core.texture, NULL, data, (int)pitch);
+    // Copy straight into the texture's backing memory to avoid the extra staging copy SDL_UpdateTexture() makes.
+    void* pixels = NULL;
+    int lockPitch = 0;
+    if (!SDL_LockTexture(lr->core.texture, NULL, &pixels, &lockPitch)) {
+        return;
+    }
+
+    // The core's `pitch` and the texture's locked pitch can differ, so copy row by row.
+    const Uint8* src = (const Uint8*)data;
+    Uint8* dst = (Uint8*)pixels;
+    size_t rowBytes = pitch < (size_t)lockPitch ? pitch : (size_t)lockPitch;
+    for (size_t y = 0; y < height; y++) {
+        SDL_memcpy(dst + y * lockPitch, src + y * pitch, rowBytes);
+    }
+
+    SDL_UnlockTexture(lr->core.texture);
 }
 
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
