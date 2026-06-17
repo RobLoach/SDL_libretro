@@ -218,8 +218,6 @@ typedef struct SDL_LibretroCoreData {
     /* Video */
     SDL_Texture* texture;
     SDL_Renderer* renderer;
-    void* frameBuffer;
-    size_t frameBufferSize;
     bool textureRebuild;
 
     /* Audio */
@@ -340,9 +338,6 @@ static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
 
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
-
-static void SDL_Libretro_PixelFormatARGB1555ToRGB565(void* output, const void* input,
-    int width, int height, int out_stride, int in_stride);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
