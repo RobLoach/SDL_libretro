@@ -54,7 +54,7 @@ static void SDL_Libretro_PerfRegister(struct retro_perf_counter* counter) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || !counter) return;
 
-    /* Avoid registering the same counter twice. */
+    // Avoid registering the same counter twice.
     for (unsigned i = 0; i < lr->core.perfCounterCount; i++) {
         if (lr->core.perfCounters[i] == counter) {
             counter->registered = true;
@@ -81,12 +81,14 @@ static void SDL_Libretro_PerfStop(struct retro_perf_counter* counter) {
     if (counter) counter->total += (retro_perf_tick_t)SDL_GetPerformanceCounter() - counter->start;
 }
 
+/**
+ * Displays the active performance timers in the log.
+ */
 static void SDL_Libretro_PerfLog(void) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
-    /* SDL_GetPerformanceCounter() is the tick source used by the perf
-     * counters, so its frequency converts accumulated ticks to seconds. */
+    // SDL_GetPerformanceCounter() is the tick source used by the perf counters, so its frequency converts accumulated ticks to seconds. */
     Uint64 freq = SDL_GetPerformanceFrequency();
 
     for (unsigned i = 0; i < lr->core.perfCounterCount; i++) {
