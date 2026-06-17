@@ -332,6 +332,7 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
         lr->core.runloop_frame_time.callback(delta);
     }
     lr->core.symbols.retro_run();
+    SDL_Libretro_UpdateAudioDRC(lr);
 }
 
 void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
@@ -440,6 +441,10 @@ float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     if (!lr) return;
     lr->speed = SDL_max(speed, 0.1f);
+    if (lr->core.audioStream) {
+        lr->core.drcAdjustment = 1.0f;
+        SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->speed);
+    }
 }
 
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {

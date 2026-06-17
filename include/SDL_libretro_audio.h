@@ -102,7 +102,11 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
         return false;
     }
 
+    lr->core.drcAdjustment = 1.0f;
+    lr->core.drcEnabled = true;
+
     SDL_SetAudioStreamGain(lr->core.audioStream, lr->volume);
+    SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, (float)lr->speed);
     SDL_ResumeAudioStreamDevice(lr->core.audioStream);
 
     SDL_Log("SDL_libretro: Audio initialized (%.0f Hz, ring buffer %zu frames)",
@@ -208,6 +212,27 @@ static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
 
     SDL_Libretro_WriteToRingBuffer(lr, convBuf, lr->core.singleSampleCount);
     lr->core.singleSampleCount = 0;
+}
+
+static void SDL_Libretro_UpdateAudioDRC(SDL_Libretro* lr) {
+    if (!lr->core.audioStream || !lr->core.audioRingBuffer) return;
+
+    float ratio = lr->speed;
+
+    if (lr->core.drcEnabled && lr->speed == 1.0f) {
+        int available = SDL_GetAtomicInt(&lr->core.audioRingAvailable);
+        int capacity = (int)lr->core.audioRingBufferSize;
+        float fill = (float)available / (float)capacity;
+        float drift = fill - 0.5f;
+        lr->core.drcAdjustment += drift * 0.0005f;
+        if (lr->core.drcAdjustment < 0.995f) lr->core.drcAdjustment = 0.995f;
+        if (lr->core.drcAdjustment > 1.005f) lr->core.drcAdjustment = 1.005f;
+        ratio = lr->core.drcAdjustment;
+    } else {
+        lr->core.drcAdjustment = 1.0f;
+    }
+
+    SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, ratio);
 }
 
 #endif /* SDL_LIBRETRO_AUDIO_IMPL_ONCE */
