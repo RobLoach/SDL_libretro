@@ -146,7 +146,6 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
 #include "libretro.h"
 
 #define SDL_LIBRETRO_MAX_PATH 4096
-#define SDL_LIBRETRO_AUDIO_RING_BUFFER_SIZE 8192
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 #define SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES 16
 #define SDL_LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN 256
@@ -222,10 +221,7 @@ typedef struct SDL_LibretroCoreData {
 
     /* Audio */
     SDL_AudioStream* audioStream;
-    float* audioRingBuffer;
-    size_t audioRingBufferSize;
-    SDL_AtomicInt audioRingWritePos;
-    SDL_AtomicInt audioRingAvailable;
+    int audioQueueThresholdBytes;
     unsigned minimumAudioLatencyMs;
     int16_t singleSampleBuffer[SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
     size_t singleSampleCount;

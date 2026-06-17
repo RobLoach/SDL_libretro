@@ -43,7 +43,7 @@ Uses `SDL_LoadObject()` / `SDL_LoadFunction()` instead of libretro-common's `dyl
 
 ### Audio
 
-Ring buffer with `SDL_AtomicInt` for thread safety (SDL3 audio callbacks run on a separate thread). SPSC pattern — main thread writes, audio thread reads. int16→float conversion at write time.
+Push model via `SDL_PutAudioStreamData()` — the device stream is opened with a NULL callback so samples are queued directly from the main thread during `retro_run()`. No cross-thread sharing or atomics needed. Back-pressure drops batches when the queued byte count exceeds a threshold derived from `minimumAudioLatencyMs` (default 100 ms). int16→float conversion at queue time.
 
 ## Build
 
