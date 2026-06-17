@@ -58,6 +58,7 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || !data) return;
 
+    // See if the video needs to be reinitialized.
     if (width != lr->core.width || height != lr->core.height) {
         lr->core.width = width;
         lr->core.height = height;
