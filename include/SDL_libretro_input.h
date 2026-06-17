@@ -5,11 +5,16 @@
  * SDL_libretro - input subsystem
  */
 
-
+/**
+ * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
+ * 
+ * @see RETRO_DEVICE_ID_JOYPAD_B
+ * @see SDL_GAMEPAD_BUTTON_SOUTH
+ */
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button) {
     switch (button) {
-        case RETRO_DEVICE_ID_JOYPAD_B:      return SDL_GAMEPAD_BUTTON_SOUTH;
-        case RETRO_DEVICE_ID_JOYPAD_Y:      return SDL_GAMEPAD_BUTTON_WEST;
+        case RETRO_DEVICE_ID_JOYPAD_B:       return SDL_GAMEPAD_BUTTON_SOUTH;
+        case RETRO_DEVICE_ID_JOYPAD_Y:       return SDL_GAMEPAD_BUTTON_WEST;
         case RETRO_DEVICE_ID_JOYPAD_SELECT:  return SDL_GAMEPAD_BUTTON_BACK;
         case RETRO_DEVICE_ID_JOYPAD_START:   return SDL_GAMEPAD_BUTTON_START;
         case RETRO_DEVICE_ID_JOYPAD_UP:      return SDL_GAMEPAD_BUTTON_DPAD_UP;
@@ -26,6 +31,13 @@ static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button
     }
 }
 
+/**
+ * Ports a RETROK_* to a SDL_SCANCODE_*
+ * 
+ * @see RETROK_BACKSPACE
+ * @see SDL_SCANCODE_BACKSPACE
+ * @see SDL_Libretro_ScancodeToRetroKey()
+ */
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
     switch (key) {
         case RETROK_BACKSPACE:    return SDL_SCANCODE_BACKSPACE;
@@ -147,6 +159,138 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
         case RETROK_MENU:         return SDL_SCANCODE_MENU;
         default:                  return SDL_SCANCODE_UNKNOWN;
     }
+}
+
+/**
+ * Ports a SDL physical key to a RETROK_*.
+ * 
+ * @see SDL_SCANCODE_BACKSPACE
+ * @see RETROK_BACKSPACE
+ * @see SDL_Libretro_RetroKeyToScancode()
+ */
+static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode) {
+    switch (scancode) {
+        case SDL_SCANCODE_BACKSPACE:    return RETROK_BACKSPACE;
+        case SDL_SCANCODE_TAB:          return RETROK_TAB;
+        case SDL_SCANCODE_RETURN:       return RETROK_RETURN;
+        case SDL_SCANCODE_ESCAPE:       return RETROK_ESCAPE;
+        case SDL_SCANCODE_SPACE:        return RETROK_SPACE;
+        case SDL_SCANCODE_APOSTROPHE:   return RETROK_QUOTE;
+        case SDL_SCANCODE_COMMA:        return RETROK_COMMA;
+        case SDL_SCANCODE_MINUS:        return RETROK_MINUS;
+        case SDL_SCANCODE_PERIOD:       return RETROK_PERIOD;
+        case SDL_SCANCODE_SLASH:        return RETROK_SLASH;
+        case SDL_SCANCODE_0:            return RETROK_0;
+        case SDL_SCANCODE_1:            return RETROK_1;
+        case SDL_SCANCODE_2:            return RETROK_2;
+        case SDL_SCANCODE_3:            return RETROK_3;
+        case SDL_SCANCODE_4:            return RETROK_4;
+        case SDL_SCANCODE_5:            return RETROK_5;
+        case SDL_SCANCODE_6:            return RETROK_6;
+        case SDL_SCANCODE_7:            return RETROK_7;
+        case SDL_SCANCODE_8:            return RETROK_8;
+        case SDL_SCANCODE_9:            return RETROK_9;
+        case SDL_SCANCODE_SEMICOLON:    return RETROK_SEMICOLON;
+        case SDL_SCANCODE_EQUALS:       return RETROK_EQUALS;
+        case SDL_SCANCODE_LEFTBRACKET:  return RETROK_LEFTBRACKET;
+        case SDL_SCANCODE_BACKSLASH:    return RETROK_BACKSLASH;
+        case SDL_SCANCODE_RIGHTBRACKET: return RETROK_RIGHTBRACKET;
+        case SDL_SCANCODE_GRAVE:        return RETROK_BACKQUOTE;
+        case SDL_SCANCODE_A:            return RETROK_a;
+        case SDL_SCANCODE_B:            return RETROK_b;
+        case SDL_SCANCODE_C:            return RETROK_c;
+        case SDL_SCANCODE_D:            return RETROK_d;
+        case SDL_SCANCODE_E:            return RETROK_e;
+        case SDL_SCANCODE_F:            return RETROK_f;
+        case SDL_SCANCODE_G:            return RETROK_g;
+        case SDL_SCANCODE_H:            return RETROK_h;
+        case SDL_SCANCODE_I:            return RETROK_i;
+        case SDL_SCANCODE_J:            return RETROK_j;
+        case SDL_SCANCODE_K:            return RETROK_k;
+        case SDL_SCANCODE_L:            return RETROK_l;
+        case SDL_SCANCODE_M:            return RETROK_m;
+        case SDL_SCANCODE_N:            return RETROK_n;
+        case SDL_SCANCODE_O:            return RETROK_o;
+        case SDL_SCANCODE_P:            return RETROK_p;
+        case SDL_SCANCODE_Q:            return RETROK_q;
+        case SDL_SCANCODE_R:            return RETROK_r;
+        case SDL_SCANCODE_S:            return RETROK_s;
+        case SDL_SCANCODE_T:            return RETROK_t;
+        case SDL_SCANCODE_U:            return RETROK_u;
+        case SDL_SCANCODE_V:            return RETROK_v;
+        case SDL_SCANCODE_W:            return RETROK_w;
+        case SDL_SCANCODE_X:            return RETROK_x;
+        case SDL_SCANCODE_Y:            return RETROK_y;
+        case SDL_SCANCODE_Z:            return RETROK_z;
+        case SDL_SCANCODE_DELETE:       return RETROK_DELETE;
+        case SDL_SCANCODE_KP_0:         return RETROK_KP0;
+        case SDL_SCANCODE_KP_1:         return RETROK_KP1;
+        case SDL_SCANCODE_KP_2:         return RETROK_KP2;
+        case SDL_SCANCODE_KP_3:         return RETROK_KP3;
+        case SDL_SCANCODE_KP_4:         return RETROK_KP4;
+        case SDL_SCANCODE_KP_5:         return RETROK_KP5;
+        case SDL_SCANCODE_KP_6:         return RETROK_KP6;
+        case SDL_SCANCODE_KP_7:         return RETROK_KP7;
+        case SDL_SCANCODE_KP_8:         return RETROK_KP8;
+        case SDL_SCANCODE_KP_9:         return RETROK_KP9;
+        case SDL_SCANCODE_KP_PERIOD:    return RETROK_KP_PERIOD;
+        case SDL_SCANCODE_KP_DIVIDE:    return RETROK_KP_DIVIDE;
+        case SDL_SCANCODE_KP_MULTIPLY:  return RETROK_KP_MULTIPLY;
+        case SDL_SCANCODE_KP_MINUS:     return RETROK_KP_MINUS;
+        case SDL_SCANCODE_KP_PLUS:      return RETROK_KP_PLUS;
+        case SDL_SCANCODE_KP_ENTER:     return RETROK_KP_ENTER;
+        case SDL_SCANCODE_KP_EQUALS:    return RETROK_KP_EQUALS;
+        case SDL_SCANCODE_UP:           return RETROK_UP;
+        case SDL_SCANCODE_DOWN:         return RETROK_DOWN;
+        case SDL_SCANCODE_RIGHT:        return RETROK_RIGHT;
+        case SDL_SCANCODE_LEFT:         return RETROK_LEFT;
+        case SDL_SCANCODE_INSERT:       return RETROK_INSERT;
+        case SDL_SCANCODE_HOME:         return RETROK_HOME;
+        case SDL_SCANCODE_END:          return RETROK_END;
+        case SDL_SCANCODE_PAGEUP:       return RETROK_PAGEUP;
+        case SDL_SCANCODE_PAGEDOWN:     return RETROK_PAGEDOWN;
+        case SDL_SCANCODE_F1:           return RETROK_F1;
+        case SDL_SCANCODE_F2:           return RETROK_F2;
+        case SDL_SCANCODE_F3:           return RETROK_F3;
+        case SDL_SCANCODE_F4:           return RETROK_F4;
+        case SDL_SCANCODE_F5:           return RETROK_F5;
+        case SDL_SCANCODE_F6:           return RETROK_F6;
+        case SDL_SCANCODE_F7:           return RETROK_F7;
+        case SDL_SCANCODE_F8:           return RETROK_F8;
+        case SDL_SCANCODE_F9:           return RETROK_F9;
+        case SDL_SCANCODE_F10:          return RETROK_F10;
+        case SDL_SCANCODE_F11:          return RETROK_F11;
+        case SDL_SCANCODE_F12:          return RETROK_F12;
+        case SDL_SCANCODE_F13:          return RETROK_F13;
+        case SDL_SCANCODE_F14:          return RETROK_F14;
+        case SDL_SCANCODE_F15:          return RETROK_F15;
+        case SDL_SCANCODE_NUMLOCKCLEAR: return RETROK_NUMLOCK;
+        case SDL_SCANCODE_CAPSLOCK:     return RETROK_CAPSLOCK;
+        case SDL_SCANCODE_SCROLLLOCK:   return RETROK_SCROLLOCK;
+        case SDL_SCANCODE_RSHIFT:       return RETROK_RSHIFT;
+        case SDL_SCANCODE_LSHIFT:       return RETROK_LSHIFT;
+        case SDL_SCANCODE_RCTRL:        return RETROK_RCTRL;
+        case SDL_SCANCODE_LCTRL:        return RETROK_LCTRL;
+        case SDL_SCANCODE_RALT:         return RETROK_RALT;
+        case SDL_SCANCODE_LALT:         return RETROK_LALT;
+        case SDL_SCANCODE_RGUI:         return RETROK_RMETA;
+        case SDL_SCANCODE_LGUI:         return RETROK_LMETA;
+        case SDL_SCANCODE_MENU:         return RETROK_MENU;
+        default:                        return RETROK_UNKNOWN;
+    }
+}
+
+/* Map SDL modifier flags to the RETROKMOD_* bitmask the core expects. */
+static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod) {
+    uint16_t retromod = RETROKMOD_NONE;
+    if (mod & SDL_KMOD_SHIFT)  retromod |= RETROKMOD_SHIFT;
+    if (mod & SDL_KMOD_CTRL)   retromod |= RETROKMOD_CTRL;
+    if (mod & SDL_KMOD_ALT)    retromod |= RETROKMOD_ALT;
+    if (mod & SDL_KMOD_GUI)    retromod |= RETROKMOD_META;
+    if (mod & SDL_KMOD_NUM)    retromod |= RETROKMOD_NUMLOCK;
+    if (mod & SDL_KMOD_CAPS)   retromod |= RETROKMOD_CAPSLOCK;
+    if (mod & SDL_KMOD_SCROLL) retromod |= RETROKMOD_SCROLLOCK;
+    return retromod;
 }
 
 static void SDL_Libretro_InputPoll(void) {
@@ -304,9 +448,17 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
         case SDL_EVENT_KEY_UP: {
             if (lr->core.keyboard_event) {
                 bool down = (event->type == SDL_EVENT_KEY_DOWN);
-                /* We'd need a reverse scancode->RETROK table for full support.
-                   For now, forward common keys. */
-                (void)down;
+                unsigned retrokey = SDL_Libretro_ScancodeToRetroKey(event->key.scancode);
+                uint16_t modmask = SDL_Libretro_KeymodToRetroMod(event->key.mod);
+
+                // Determine the character if one is available for the key event.
+                uint32_t character = 0;
+                if (event->key.key > 0x20 && event->key.key < 0x110000 &&
+                    !(event->key.key & SDLK_SCANCODE_MASK)) {
+                    character = (uint32_t)event->key.key;
+                }
+
+                lr->core.keyboard_event(down, retrokey, character, modmask);
             }
             break;
         }

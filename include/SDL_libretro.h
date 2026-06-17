@@ -346,6 +346,8 @@ static void SDL_Libretro_PixelFormatARGB1555ToRGB565(void* output, const void* i
     int width, int height, int out_stride, int in_stride);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
+static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
+static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
 
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
