@@ -236,6 +236,10 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         return false;
     }
 
+    if (lr->core.audio_callback.set_state) {
+        lr->core.audio_callback.set_state(true);
+    }
+
     SDL_Log("SDL_libretro: Game loaded (%ux%u @ %.2f fps, %.0f Hz)",
         lr->core.width, lr->core.height, lr->core.fps, lr->core.sampleRate);
 
@@ -286,11 +290,19 @@ bool SDL_Libretro_LoadGameFromMemory(SDL_Libretro* lr, const void* data, size_t 
         return false;
     }
 
+    if (lr->core.audio_callback.set_state) {
+        lr->core.audio_callback.set_state(true);
+    }
+
     return true;
 }
 
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
+
+    if (lr->core.audio_callback.set_state) {
+        lr->core.audio_callback.set_state(false);
+    }
 
     SDL_Libretro_CloseAudio(lr);
     SDL_Libretro_CloseVideo(lr);
@@ -332,6 +344,10 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
         lr->core.runloop_frame_time.callback(delta);
     }
     lr->core.symbols.retro_run();
+
+    if (lr->core.audio_callback.callback) {
+        lr->core.audio_callback.callback();
+    }
 }
 
 void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
