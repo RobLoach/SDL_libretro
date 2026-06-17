@@ -362,6 +362,10 @@ bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username) {
 void SDL_Libretro_SetVolume(SDL_Libretro* lr, float volume) {
     if (!lr) return;
     lr->volume = SDL_clamp(volume, 0.0f, 1.0f);
+    /* Apply the volume to the live audio stream as gain (idiomatic SDL3). */
+    if (lr->core.audioStream) {
+        SDL_SetAudioStreamGain(lr->core.audioStream, lr->volume);
+    }
 }
 
 float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
