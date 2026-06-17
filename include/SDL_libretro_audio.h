@@ -2,12 +2,10 @@
 #define SDL_LIBRETRO_AUDIO_IMPL_ONCE
 
 /*
- * SDL_libretro - audio subsystem (push model)
+ * SDL_libretro - audio subsystem
  *
- * Uses SDL3's push model: the device stream is opened with a NULL callback
- * and samples are pushed directly via SDL_PutAudioStreamData(). Since core
- * audio callbacks run synchronously on the main thread inside retro_run(),
- * no cross-thread sharing or atomics are needed.
+ * Uses SDL3's push model. The device stream is opened with a NULL callback
+ * and samples are pushed directly via SDL_PutAudioStreamData().
  */
 
 #define SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS 100
