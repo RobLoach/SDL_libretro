@@ -14,7 +14,7 @@ Since libretro C callbacks have no userdata parameter, a file-static `SDL_Libret
 
 ### Header-only library
 
-Consumers define `SDL_LIBRETRO_IMPLEMENTATION` in **exactly one** translation unit before `#include "SDL_libretro.h"`; everything else includes it normally. All implementation functions are `static`. `include/SDL_libretro.h` is the umbrella: public declarations on top, then an `#ifdef SDL_LIBRETRO_IMPLEMENTATION` region holding the private structs/`#define`s, the `static SDL_Libretro_active` global, internal forward declarations, and `#include`s of each `include/*.h` implementation fragment (lifecycle last). There is no compiled library — the CMake `SDL_libretro` target is `INTERFACE` (include paths + SDL3 link only).
+Consumers define `SDL_LIBRETRO_IMPLEMENTATION` in **exactly one** translation unit before `#include "SDL_libretro.h"`; everything else includes it normally (the example is that one TU). **Linkage split:** the public `SDL_Libretro_*` API has **external** linkage so it's callable from any TU, while internal helpers and cross-file functions are `static`. `include/SDL_libretro.h` is the umbrella: public declarations on top, then an `#ifdef SDL_LIBRETRO_IMPLEMENTATION` region holding the private structs/`#define`s, the `static SDL_Libretro_active` global, internal (`static`) forward declarations, and `#include`s of each `include/*.h` implementation fragment (lifecycle last). There is no compiled library — the CMake `SDL_libretro` target is `INTERFACE` (include paths + SDL3 link only).
 
 ### File layout
 
@@ -28,6 +28,8 @@ Consumers define `SDL_LIBRETRO_IMPLEMENTATION` in **exactly one** translation un
 - `include/SDL_libretro_serialize.h` — save state, SRAM, cheats
 
 Each `include/*.h` fragment is guarded by `#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(<FILE>_IMPL_ONCE)` and is meant to be pulled in only by the umbrella header.
+
+**Adding a function:** a *public* one is declared non-`static` in the umbrella's public section and defined non-`static` in a fragment; an *internal* one is forward-declared `static` in the umbrella's implementation region and defined `static` in a fragment (declaration and definition linkage must match). Fragment-local helpers are plain `static` with no umbrella declaration. A new subsystem fragment must be added to the umbrella's `#include` fan-out (before `SDL_libretro_env.h` if the env switch references it).
 
 ### Core loading
 
