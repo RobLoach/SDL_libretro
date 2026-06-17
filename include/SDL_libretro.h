@@ -10,7 +10,7 @@
  *
  * Every other translation unit includes "SDL_libretro.h" normally.
  *
- * Copyright (c) 2020-2026 Rob Loach (@RobLoach)
+ * Copyright (c) 2026 Rob Loach (@RobLoach)
  *
  * This software is provided "as-is", without any express or implied warranty.
  * In no event will the authors be held liable for any damages arising from
@@ -301,6 +301,7 @@ struct SDL_Libretro {
     float volume;
     float speed;
     double speedAccumulator;
+    Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */
     SDL_Scancode keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
