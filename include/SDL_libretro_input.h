@@ -1,11 +1,12 @@
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_INPUT_IMPL_ONCE)
+#define SDL_LIBRETRO_INPUT_IMPL_ONCE
+
 /*
  * SDL_libretro - input subsystem
  */
 
-#include "SDL_libretro_internal.h"
-#include "../include/SDL_libretro.h"
 
-SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button) {
+static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button) {
     switch (button) {
         case RETRO_DEVICE_ID_JOYPAD_B:      return SDL_GAMEPAD_BUTTON_SOUTH;
         case RETRO_DEVICE_ID_JOYPAD_Y:      return SDL_GAMEPAD_BUTTON_WEST;
@@ -25,7 +26,7 @@ SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button) {
     }
 }
 
-SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
+static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
     switch (key) {
         case RETROK_BACKSPACE:    return SDL_SCANCODE_BACKSPACE;
         case RETROK_TAB:          return SDL_SCANCODE_TAB;
@@ -148,7 +149,7 @@ SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
     }
 }
 
-void SDL_Libretro_InputPoll(void) {
+static void SDL_Libretro_InputPoll(void) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
@@ -163,7 +164,7 @@ static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
     return state[scancode];
 }
 
-int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id) {
+static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return 0;
 
@@ -332,3 +333,5 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
     if (!lr || port >= 16 || button < 0 || button >= 16) return;
     lr->core.virtualJoypadState[button] = pressed;
 }
+
+#endif /* SDL_LIBRETRO_INPUT_IMPL_ONCE */

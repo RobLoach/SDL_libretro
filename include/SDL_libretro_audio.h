@@ -1,9 +1,10 @@
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_AUDIO_IMPL_ONCE)
+#define SDL_LIBRETRO_AUDIO_IMPL_ONCE
+
 /*
  * SDL_libretro - audio subsystem
  */
 
-#include "SDL_libretro_internal.h"
-#include "../include/SDL_libretro.h"
 
 static void SDL_Libretro_AudioCallback(void* userdata, SDL_AudioStream* stream,
                                         int additional_amount, int total_amount) {
@@ -155,7 +156,7 @@ static void SDL_Libretro_WriteToRingBuffer(SDL_Libretro* lr, const float* sample
     SDL_AddAtomicInt(&lr->core.audioRingAvailable, (int)frames);
 }
 
-void SDL_Libretro_AudioSample(int16_t left, int16_t right) {
+static void SDL_Libretro_AudioSample(int16_t left, int16_t right) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
@@ -169,7 +170,7 @@ void SDL_Libretro_AudioSample(int16_t left, int16_t right) {
     }
 }
 
-size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) {
+static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || !lr->core.audioRingBuffer || frames == 0) return frames;
 
@@ -196,7 +197,7 @@ size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) {
     return frames;
 }
 
-void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
+static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
     if (!lr || lr->core.singleSampleCount == 0) return;
 
     float convBuf[SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
@@ -207,3 +208,5 @@ void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
     SDL_Libretro_WriteToRingBuffer(lr, convBuf, lr->core.singleSampleCount);
     lr->core.singleSampleCount = 0;
 }
+
+#endif /* SDL_LIBRETRO_AUDIO_IMPL_ONCE */

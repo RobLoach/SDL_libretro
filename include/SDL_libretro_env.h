@@ -1,9 +1,10 @@
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_ENV_IMPL_ONCE)
+#define SDL_LIBRETRO_ENV_IMPL_ONCE
+
 /*
  * SDL_libretro - environment callback dispatch
  */
 
-#include "SDL_libretro_internal.h"
-#include "../include/SDL_libretro.h"
 
 #include <string.h>
 #include <stdarg.h>
@@ -102,7 +103,7 @@ static const char* SDL_Libretro_GetDirectory(SDL_Libretro* lr, unsigned cmd) {
     }
 }
 
-bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
+static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return false;
 
@@ -505,3 +506,5 @@ bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
     }
 }
+
+#endif /* SDL_LIBRETRO_ENV_IMPL_ONCE */
