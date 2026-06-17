@@ -539,6 +539,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
+            if (!data) return false;
+            struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
+            if (info->required_interface_version > SDL_LIBRETRO_VFS_SUPPORTED_VERSION) return false;
+            info->iface = &SDL_Libretro_vfs_interface;
+            return true;
+        }
+
         /* Unimplemented - return false */
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
         case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
@@ -550,7 +558,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
             return false;
 
         default: {

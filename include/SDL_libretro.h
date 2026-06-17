@@ -361,6 +361,7 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 #include "SDL_libretro_input.h"
 #include "SDL_libretro_options.h"
 #include "SDL_libretro_serialize.h"
+#include "SDL_libretro_vfs.h"
 #include "SDL_libretro_env.h"
 #include "SDL_libretro_core.h"
 
