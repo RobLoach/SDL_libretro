@@ -292,7 +292,8 @@ typedef struct SDL_LibretroCoreData {
     bool drcEnabled;
 
     /* Perf */
-    struct retro_perf_counter* perf_counter_last;
+    struct retro_perf_counter* perfCounters[64];
+    unsigned perfCounterCount;
     retro_perf_tick_t gameTimeNSEC;
 } SDL_LibretroCoreData;
 
