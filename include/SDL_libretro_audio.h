@@ -102,6 +102,7 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
         return false;
     }
 
+    SDL_SetAudioStreamGain(lr->core.audioStream, lr->volume);
     SDL_ResumeAudioStreamDevice(lr->core.audioStream);
 
     SDL_Log("SDL_libretro: Audio initialized (%.0f Hz, ring buffer %zu frames)",
