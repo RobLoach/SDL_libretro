@@ -42,12 +42,6 @@ extern "C" {
 
 typedef struct SDL_Libretro SDL_Libretro;
 
-typedef struct SDL_Libretro_VFSCallbacks {
-    void* (*load_file)(const char* path, size_t* size);
-    int (*stat)(const char* path, Sint64* size);
-    void (*free_file)(void* data);
-} SDL_Libretro_VFSCallbacks;
-
 /* Lifecycle */
 SDL_Libretro* SDL_Libretro_Create(void);
 void SDL_Libretro_Destroy(SDL_Libretro* lr);
@@ -128,7 +122,7 @@ const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 
 /* VFS */
-bool SDL_Libretro_SetVFS(SDL_Libretro* lr, const SDL_Libretro_VFSCallbacks* vfs);
+void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
 
 /* OSD messages */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration);
@@ -314,9 +308,8 @@ struct SDL_Libretro {
     char osdMessage[256];
     Uint64 osdEndTimeMs;
 
-    /* VFS callbacks (optional) */
-    SDL_Libretro_VFSCallbacks vfs;
-    bool vfsActive;
+    // Virtual File System
+    struct retro_vfs_interface vfs_interface;
 
     /* SDL gamepads (opened handles, indexed by port) */
     SDL_Gamepad* gamepads[16];

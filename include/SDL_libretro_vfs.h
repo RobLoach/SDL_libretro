@@ -4,10 +4,8 @@
 /*
  * SDL_libretro - libretro VFS interface backed by SDL_IOStream
  *
- * Provides GET_VFS_INTERFACE v1–v3. Truncate is best-effort (no SDL3 native).
+ * Provides GET_VFS_INTERFACE v1–v4. Truncate is best-effort (no SDL3 native).
  */
-
-#define SDL_LIBRETRO_VFS_SUPPORTED_VERSION 3
 
 struct retro_vfs_file_handle {
     SDL_IOStream* io;
@@ -23,8 +21,6 @@ struct retro_vfs_dir_handle {
     size_t index;
 };
 
-/* ---- file helpers ---- */
-
 static const char* SDL_Libretro_VFS_GetPath(struct retro_vfs_file_handle* stream) {
     return stream ? stream->path : NULL;
 }
@@ -32,6 +28,11 @@ static const char* SDL_Libretro_VFS_GetPath(struct retro_vfs_file_handle* stream
 static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, unsigned mode, unsigned hints) {
     (void)hints;
     if (!path) return NULL;
+
+    /* The VFS contract requires open() to fail on a directory; SDL_IOFromFile
+     * may otherwise succeed in opening one for read on some platforms. */
+    SDL_PathInfo pathInfo;
+    if (SDL_GetPathInfo(path, &pathInfo) && pathInfo.type == SDL_PATHTYPE_DIRECTORY) return NULL;
 
     const char* sdlMode;
     bool update = (mode & RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING) != 0;
@@ -115,27 +116,38 @@ static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
     return (old_path && new_path && SDL_RenamePath(old_path, new_path)) ? 0 : -1;
 }
 
-/* Best-effort truncate: grow via zero-pad, shrink via rewrite. */
+/**
+ * Best-effort truncate.
+ *
+ * Grow via zero-pad, shrink via rewrite.
+ */
 static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, int64_t length) {
     if (!stream || length < 0) return -1;
 
     int64_t cur_size = SDL_GetIOSize(stream->io);
     if (cur_size < 0) return -1;
 
+    /* Preserve the caller's read/write position across the operation. */
+    int64_t orig_pos = SDL_TellIO(stream->io);
+
     if (length >= cur_size) {
-        /* Grow: seek to end and write zeros. */
+        // Grow: seek to end and pad with zeros in chunks.
         if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_END) < 0) return -1;
         int64_t to_pad = length - cur_size;
         if (to_pad > 0) {
-            Uint8 zero = 0;
-            for (int64_t i = 0; i < to_pad; i++) {
-                if (SDL_WriteIO(stream->io, &zero, 1) != 1) return -1;
+            Uint8 zeros[4096];
+            SDL_memset(zeros, 0, sizeof(zeros));
+            while (to_pad > 0) {
+                size_t chunk = (to_pad < (int64_t)sizeof(zeros)) ? (size_t)to_pad : sizeof(zeros);
+                if (SDL_WriteIO(stream->io, zeros, chunk) != chunk) return -1;
+                to_pad -= (int64_t)chunk;
             }
         }
+        if (orig_pos >= 0) SDL_SeekIO(stream->io, orig_pos, SDL_IO_SEEK_SET);
         return 0;
     }
 
-    /* Shrink: read first `length` bytes, rewrite the file. */
+    // Shrink: read first `length` bytes, rewrite the file.
     Uint8* buf = (Uint8*)SDL_malloc((size_t)length);
     if (!buf) return -1;
 
@@ -143,29 +155,46 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
     size_t got = SDL_ReadIO(stream->io, buf, (size_t)length);
     if ((int64_t)got != length) { SDL_free(buf); return -1; }
 
+    /* Reopen with write access matching the original handle so subsequent
+     * reads/writes keep working ("r+b" needs the file to exist, which it does). */
+    bool canWrite = (stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
+
     SDL_CloseIO(stream->io);
     stream->io = SDL_IOFromFile(stream->path, "wb");
-    if (!stream->io) { SDL_free(buf); stream->io = SDL_IOFromFile(stream->path, "rb"); return -1; }
+    if (!stream->io) { SDL_free(buf); stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb"); return -1; }
     SDL_WriteIO(stream->io, buf, (size_t)length);
     SDL_free(buf);
 
     /* Reopen in original mode for continued use. */
     SDL_CloseIO(stream->io);
-    bool rw = (stream->mode & RETRO_VFS_FILE_ACCESS_READ_WRITE) == RETRO_VFS_FILE_ACCESS_READ_WRITE;
-    stream->io = SDL_IOFromFile(stream->path, rw ? "r+b" : "rb");
-    return stream->io ? 0 : -1;
+    stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb");
+    if (!stream->io) return -1;
+
+    /* Restore the position, clamped to the new (smaller) length. */
+    if (orig_pos >= 0) {
+        SDL_SeekIO(stream->io, orig_pos < length ? orig_pos : length, SDL_IO_SEEK_SET);
+    }
+    return 0;
 }
 
-/* ---- stat / mkdir ---- */
-
-static int SDL_Libretro_VFS_Stat(const char* path, int32_t* size) {
+static int SDL_Libretro_VFS_Stat64(const char* path, int64_t* size) {
     if (!path) return 0;
     SDL_PathInfo info;
     if (!SDL_GetPathInfo(path, &info)) return 0;
     int flags = RETRO_VFS_STAT_IS_VALID;
     if (info.type == SDL_PATHTYPE_DIRECTORY) flags |= RETRO_VFS_STAT_IS_DIRECTORY;
-    if (size) *size = (int32_t)info.size;
+    if (size) *size = info.size;
     return flags;
+}
+
+static int SDL_Libretro_VFS_Stat(const char* path, int32_t* size) {
+    if (!path) return 0;
+    int64_t outSize;
+    int out = SDL_Libretro_VFS_Stat64(path, &outSize);
+    if (size != NULL) {
+        *size = (int32_t)outSize;
+    }
+    return out;
 }
 
 static int SDL_Libretro_VFS_Mkdir(const char* dir) {
@@ -174,8 +203,6 @@ static int SDL_Libretro_VFS_Mkdir(const char* dir) {
     if (SDL_GetPathInfo(dir, &info)) return -2; /* already exists */
     return SDL_CreateDirectory(dir) ? 0 : -1;
 }
-
-/* ---- directory enumeration ---- */
 
 typedef struct {
     char** names;
@@ -193,11 +220,14 @@ static SDL_EnumerationResult SDL_Libretro_DirCallback(void* userdata, const char
 
     if (ctx->count >= ctx->capacity) {
         size_t newCap = ctx->capacity ? ctx->capacity * 2 : 32;
+        /* Store each successful realloc back immediately: realloc frees the old
+         * block, so on partial failure the cleanup path must not be left holding
+         * a dangling pointer (use-after-free / double-free). */
         char** newNames = (char**)SDL_realloc(ctx->names, newCap * sizeof(char*));
+        if (newNames) ctx->names = newNames;
         bool* newIsDir  = (bool*)SDL_realloc(ctx->isDir,  newCap * sizeof(bool));
+        if (newIsDir) ctx->isDir = newIsDir;
         if (!newNames || !newIsDir) return SDL_ENUM_FAILURE;
-        ctx->names = newNames;
-        ctx->isDir = newIsDir;
         ctx->capacity = newCap;
     }
 
@@ -272,28 +302,39 @@ static int SDL_Libretro_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
     return 0;
 }
 
-static struct retro_vfs_interface SDL_Libretro_vfs_interface = {
-    SDL_Libretro_VFS_GetPath,
-    SDL_Libretro_VFS_Open,
-    SDL_Libretro_VFS_Close,
-    SDL_Libretro_VFS_Size,
-    SDL_Libretro_VFS_Tell,
-    SDL_Libretro_VFS_Seek,
-    SDL_Libretro_VFS_Read,
-    SDL_Libretro_VFS_Write,
-    SDL_Libretro_VFS_Flush,
-    SDL_Libretro_VFS_Remove,
-    SDL_Libretro_VFS_Rename,
-    /* v2 */
-    SDL_Libretro_VFS_Truncate,
-    /* v3 */
-    SDL_Libretro_VFS_Stat,
-    SDL_Libretro_VFS_Mkdir,
-    SDL_Libretro_VFS_Opendir,
-    SDL_Libretro_VFS_Readdir,
-    SDL_Libretro_VFS_DirentGetName,
-    SDL_Libretro_VFS_DirentIsDir,
-    SDL_Libretro_VFS_Closedir,
-};
+/**
+ * Set the Virtual File System for libretro.
+ *
+ * @param vfs_interface A void* pointing to `struct retro_vfs_interface`. When set to NULL, will set the SDL3's File System.
+ */
+void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
+    if (!lr) return;
+    struct retro_vfs_interface temp = {0};
+    struct retro_vfs_interface* vfs = (struct retro_vfs_interface*)vfs_interface;
+    if (vfs == NULL) {
+        vfs = &temp;
+    }
+
+    lr->vfs_interface.get_path = vfs->get_path != NULL ? vfs->get_path : &SDL_Libretro_VFS_GetPath;
+    lr->vfs_interface.open = vfs->open != NULL ? vfs->open : &SDL_Libretro_VFS_Open;
+    lr->vfs_interface.close = vfs->close != NULL ? vfs->close : &SDL_Libretro_VFS_Close;
+    lr->vfs_interface.size = vfs->size != NULL ? vfs->size : &SDL_Libretro_VFS_Size;
+    lr->vfs_interface.tell = vfs->tell != NULL ? vfs->tell : &SDL_Libretro_VFS_Tell;
+    lr->vfs_interface.seek = vfs->seek != NULL ? vfs->seek : &SDL_Libretro_VFS_Seek;
+    lr->vfs_interface.read = vfs->read != NULL ? vfs->read : &SDL_Libretro_VFS_Read;
+    lr->vfs_interface.write = vfs->write != NULL ? vfs->write : &SDL_Libretro_VFS_Write;
+    lr->vfs_interface.flush = vfs->flush != NULL ? vfs->flush : &SDL_Libretro_VFS_Flush;
+    lr->vfs_interface.remove = vfs->remove != NULL ? vfs->remove : &SDL_Libretro_VFS_Remove;
+    lr->vfs_interface.rename = vfs->rename != NULL ? vfs->rename : &SDL_Libretro_VFS_Rename;
+    lr->vfs_interface.truncate = vfs->truncate != NULL ? vfs->truncate : &SDL_Libretro_VFS_Truncate;
+    lr->vfs_interface.stat = vfs->stat != NULL ? vfs->stat : &SDL_Libretro_VFS_Stat;
+    lr->vfs_interface.mkdir = vfs->mkdir != NULL ? vfs->mkdir : &SDL_Libretro_VFS_Mkdir;
+    lr->vfs_interface.opendir = vfs->opendir != NULL ? vfs->opendir : &SDL_Libretro_VFS_Opendir;
+    lr->vfs_interface.readdir = vfs->readdir != NULL ? vfs->readdir : &SDL_Libretro_VFS_Readdir;
+    lr->vfs_interface.dirent_get_name = vfs->dirent_get_name != NULL ? vfs->dirent_get_name : &SDL_Libretro_VFS_DirentGetName;
+    lr->vfs_interface.dirent_is_dir = vfs->dirent_is_dir != NULL ? vfs->dirent_is_dir : &SDL_Libretro_VFS_DirentIsDir;
+    lr->vfs_interface.closedir = vfs->closedir != NULL ? vfs->closedir : &SDL_Libretro_VFS_Closedir;
+    lr->vfs_interface.stat_64 = vfs->stat_64 != NULL ? vfs->stat_64 : &SDL_Libretro_VFS_Stat64;
+}
 
 #endif /* SDL_LIBRETRO_VFS_IMPL_ONCE */

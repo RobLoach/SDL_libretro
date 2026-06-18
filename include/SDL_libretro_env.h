@@ -542,8 +542,16 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
             if (!data) return false;
             struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
-            if (info->required_interface_version > SDL_LIBRETRO_VFS_SUPPORTED_VERSION) return false;
-            info->iface = &SDL_Libretro_vfs_interface;
+            if (info->required_interface_version > 4) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "SDL_libretro: GET_VFS_INTERFACE: unsupported required_interface_version %u",
+                            info->required_interface_version);
+                return false;
+            }
+
+            // Let the core know which version of the VFS we support.
+            info->required_interface_version = 4;
+            info->iface = &lr->vfs_interface;
             return true;
         }
 
