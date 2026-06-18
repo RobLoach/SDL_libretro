@@ -99,10 +99,15 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
 size_t SDL_Libretro_GetSerializeSize(const SDL_Libretro* lr);
 bool SDL_Libretro_Serialize(SDL_Libretro* lr, void* data, size_t size);
 bool SDL_Libretro_Unserialize(SDL_Libretro* lr, const void* data, size_t size);
+bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* stream);
+bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* stream);
 
 /* SRAM */
 void* SDL_Libretro_GetSRAMData(const SDL_Libretro* lr, size_t* size);
 bool SDL_Libretro_SetSRAMData(SDL_Libretro* lr, const void* data, size_t size);
+bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr);
+bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr);
+void SDL_Libretro_SetSRAMAutoSave(SDL_Libretro* lr, bool enabled);
 
 /* Core options */
 unsigned SDL_Libretro_GetOptionCount(const SDL_Libretro* lr);
@@ -304,6 +309,7 @@ struct SDL_Libretro {
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
     char username[128];
+    bool sramAutoSave;
 
     /* OSD message */
     char osdMessage[256];

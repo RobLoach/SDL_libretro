@@ -28,6 +28,7 @@ SDL_Libretro* SDL_Libretro_Create(void) {
 
     lr->volume = 1.0f;
     lr->speed = 1.0f;
+    lr->sramAutoSave = true;
     SDL_strlcpy(lr->username, "SDL_libretro", sizeof(lr->username));
 
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]      = SDL_SCANCODE_Z;
@@ -193,6 +194,14 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     if (gamePath) {
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
+
+        const char* base = SDL_strrchr(gamePath, '/');
+        if (!base) base = SDL_strrchr(gamePath, '\\');
+        base = base ? base + 1 : gamePath;
+        SDL_strlcpy(lr->core.contentName, base, sizeof(lr->core.contentName));
+        char* dot = SDL_strrchr(lr->core.contentName, '.');
+        if (dot) *dot = '\0';
+
         gameInfo.path = gamePath;
 
         if (!lr->core.needFullpath) {
@@ -242,6 +251,10 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "SDL_libretro: Audio unavailable: %s", SDL_GetError());
     }
 
+    if (lr->sramAutoSave) {
+        SDL_Libretro_LoadSRAM(lr);
+    }
+
     SDL_Log("SDL_libretro: Game loaded (%ux%u @ %.2f fps, %.0f Hz)",
         lr->core.width, lr->core.height, lr->core.fps, lr->core.sampleRate);
 
@@ -251,10 +264,15 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
+    if (lr->sramAutoSave && lr->core.contentPath[0] != '\0') {
+        SDL_Libretro_SaveSRAM(lr);
+    }
+
     // Call retro_unload_game() prior to closing the audio and video.
     if (lr->core.contentPath[0] != '\0') {
         lr->core.symbols.retro_unload_game();
         lr->core.contentPath[0] = '\0';
+        lr->core.contentName[0] = '\0';
     }
 
     SDL_Libretro_CloseAudio(lr);
