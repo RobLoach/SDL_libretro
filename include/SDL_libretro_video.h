@@ -86,7 +86,12 @@ SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
     return (lr && lr->core.texture) ? lr->core.texture : NULL;
 }
 
-SDL_Surface* SDL_Libretro_GetSurface(const SDL_Libretro* lr) {
+/**
+ * Creates a new surface from the current libretro context.
+ *
+ * The Surface must be destroyed after use with SDL_DestroySurface().
+ */
+SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
     if (!lr || !lr->core.texture) return NULL;
 
     void* pixels = NULL;
