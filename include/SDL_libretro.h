@@ -71,6 +71,7 @@ bool SDL_Libretro_ShouldClose(const SDL_Libretro* lr);
 
 /* Video */
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr);
+SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr);
 bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect);
 void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h);
 float SDL_Libretro_GetAspectRatio(const SDL_Libretro* lr);

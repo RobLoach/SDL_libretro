@@ -5,9 +5,7 @@
  * SDL_libretro - core lifecycle implementation
  */
 
-
 #include <string.h>
-
 
 #define LOAD_SYM(sym) do { \
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
