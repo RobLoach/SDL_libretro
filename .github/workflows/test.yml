@@ -1,0 +1,30 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Cache SDL3
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: sdl3-release-3.4.4-${{ runner.os }}
+
+      - name: Configure
+        run: cmake -B build -DSDL_LIBRETRO_BUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
