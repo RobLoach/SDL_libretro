@@ -432,6 +432,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 51:
+        case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: {
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
             const struct retro_controller_info* info = (const struct retro_controller_info*)data;
             if (!info) return false;
