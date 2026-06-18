@@ -432,6 +432,23 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 50:
+        case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
+            if (!data) return false;
+            float rate = 60.0f;
+            if (lr->core.window) {
+                SDL_DisplayID display = SDL_GetDisplayForWindow(lr->core.window);
+                if (display) {
+                    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
+                    if (mode && mode->refresh_rate > 0.0f) {
+                        rate = mode->refresh_rate;
+                    }
+                }
+            }
+            *(float*)data = rate;
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
             const struct retro_controller_info* info = (const struct retro_controller_info*)data;
             if (!info) return false;
