@@ -196,14 +196,14 @@ static void SDL_Libretro_AudioSample(int16_t left, int16_t right) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
+    if (lr->core.singleSampleCount >= SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
+        SDL_Libretro_FlushSingleSamples(lr);
+    }
+
     size_t idx = lr->core.singleSampleCount * 2;
     lr->core.singleSampleBuffer[idx] = left;
     lr->core.singleSampleBuffer[idx + 1] = right;
     lr->core.singleSampleCount++;
-
-    if (lr->core.singleSampleCount >= SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
-        SDL_Libretro_FlushSingleSamples(lr);
-    }
 }
 
 static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) {
