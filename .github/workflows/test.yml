@@ -1,0 +1,38 @@
+name: Test
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Setup SDL
+        id: sdl
+        uses: libsdl-org/setup-sdl@a966470e7d9b6a5c93eec3f08d5dac370325c860
+        with:
+          version: 3.4.4
+          sdl-test: true
+          build-type: Release
+          install-linux-dependencies: true
+          cmake-arguments: -DSDL_STATIC=ON -DSDL_SHARED=OFF
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DSDL_LIBRETRO_BUILD_EXAMPLES=OFF
+          -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
+          -DCMAKE_PREFIX_PATH=${{ steps.sdl.outputs.prefix }}
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure

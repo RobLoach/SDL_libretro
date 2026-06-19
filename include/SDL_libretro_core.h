@@ -5,10 +5,6 @@
  * SDL_libretro - core lifecycle implementation
  */
 
-
-#include <string.h>
-
-
 #define LOAD_SYM(sym) do { \
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
     SDL_memcpy(&lr->core.symbols.sym, &fp, sizeof(fp)); \
@@ -24,6 +20,9 @@ SDL_Libretro* SDL_Libretro_Create(void) {
         SDL_SetError("SDL_libretro: Failed to allocate context");
         return NULL;
     }
+
+    // Set the initial SDL3 VFS callbacks.
+    SDL_Libretro_SetVFS(lr, NULL);
 
     lr->volume = 1.0f;
     lr->speed = 1.0f;
@@ -483,19 +482,6 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
     }
 
     return lr->osdMessage;
-}
-
-/* VFS */
-bool SDL_Libretro_SetVFS(SDL_Libretro* lr, const SDL_Libretro_VFSCallbacks* vfs) {
-    if (!lr) return false;
-    if (vfs) {
-        lr->vfs = *vfs;
-        lr->vfsActive = true;
-    } else {
-        SDL_memset(&lr->vfs, 0, sizeof(lr->vfs));
-        lr->vfsActive = false;
-    }
-    return true;
 }
 
 #undef LOAD_SYM

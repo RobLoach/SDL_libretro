@@ -21,16 +21,17 @@ int main(int argc, char* argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD);
 
-    SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600,
-        SDL_WINDOW_RESIZABLE);
+    SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_SetRenderVSync(renderer, 1);
 
+    // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");
 
+    // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
         SDL_Libretro_Destroy(lr);
@@ -40,6 +41,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Load the game.
     if (!SDL_Libretro_LoadGame(lr, gamePath, renderer)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
         SDL_Libretro_Destroy(lr);
@@ -51,6 +53,7 @@ int main(int argc, char* argv[]) {
 
     bool running = true;
     while (running && !SDL_Libretro_ShouldClose(lr)) {
+        // Check any events.
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
@@ -87,12 +90,21 @@ int main(int argc, char* argv[]) {
                 SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
             }
 
+            // Screenshot
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F12) {
+                SDL_Surface* screenshot = SDL_Libretro_CreateSurface(lr);
+                SDL_SavePNG(screenshot, "screenshot.png");
+                SDL_DestroySurface(screenshot);
+            }
+
             // Pass all events to SDL_Libretro.
             SDL_Libretro_HandleEvent(lr, &event);
         }
 
+        // Update
         SDL_Libretro_RunFrame(lr);
 
+        // Draw
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
         SDL_Libretro_Render(lr, NULL);

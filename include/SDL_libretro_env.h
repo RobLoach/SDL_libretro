@@ -5,10 +5,7 @@
  * SDL_libretro - environment callback dispatch
  */
 
-
-#include <string.h>
 #include <stdarg.h>
-#include <stdio.h>
 
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
     va_list args;
@@ -431,6 +428,28 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             *(int*)data = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
             return true;
         }
+      
+        case 50:
+        case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
+            if (!data) return false;
+            float rate = 60.0f;
+            if (lr->core.window) {
+                SDL_DisplayID display = SDL_GetDisplayForWindow(lr->core.window);
+                if (display) {
+                    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
+                    if (mode && mode->refresh_rate > 0.0f) {
+                        rate = mode->refresh_rate;
+                    }
+                }
+            }
+            *(float*)data = rate;
+            return true;
+        }
+
+        case 51:
+        case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: {
+            return true;
+        }
 
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
             const struct retro_controller_info* info = (const struct retro_controller_info*)data;
@@ -589,6 +608,22 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
+            if (!data) return false;
+            struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
+            if (info->required_interface_version > 4) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "SDL_libretro: GET_VFS_INTERFACE: unsupported required_interface_version %u",
+                            info->required_interface_version);
+                return false;
+            }
+
+            // Let the core know which version of the VFS we support.
+            info->required_interface_version = 4;
+            info->iface = &lr->vfs_interface;
+            return true;
+        }
+
         /* Unimplemented - return false */
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
         case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
@@ -600,7 +635,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_VFS_INTERFACE:
             return false;
 
         default: {
