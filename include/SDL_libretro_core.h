@@ -191,7 +191,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     if (gamePath) {
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
-
+       // Get the Content Name
         const char* base = SDL_strrchr(gamePath, '/');
         if (!base) base = SDL_strrchr(gamePath, '\\');
         base = base ? base + 1 : gamePath;
