@@ -28,6 +28,15 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
 endif()
 
+# Tests
+option(SDL_LIBRETRO_BUILD_TESTS "Build unit tests" ON)
+if(SDL_LIBRETRO_BUILD_TESTS)
+    enable_testing()
+    add_executable(sdl_libretro_test test/sdl_libretro_test.c)
+    target_link_libraries(sdl_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
+    add_test(NAME sdl_libretro_test COMMAND sdl_libretro_test)
+endif()
+
 # Install (only when this is the top-level project)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     install(TARGETS SDL_libretro EXPORT SDL_libretroTargets)

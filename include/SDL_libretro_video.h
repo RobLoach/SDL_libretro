@@ -6,8 +6,6 @@
  */
 
 
-#include <string.h>
-
 static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt) {
     switch (fmt) {
         case RETRO_PIXEL_FORMAT_XRGB8888: return SDL_PIXELFORMAT_XRGB8888;
@@ -131,7 +129,7 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         srcAspect = (float)lr->core.width / (float)lr->core.height;
     }
 
-    /* Fit within destination maintaining aspect ratio */
+    // Fit within destination maintaining aspect ratio
     if (srcAspect > 0.0f) {
         float dstAspect = dst.w / dst.h;
         if (srcAspect > dstAspect) {
