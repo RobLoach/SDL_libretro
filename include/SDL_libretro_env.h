@@ -428,7 +428,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             *(int*)data = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
             return true;
         }
-
+      
         case 50:
         case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
             if (!data) return false;
@@ -443,6 +443,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 }
             }
             *(float*)data = rate;
+            return true;
+        }
+
+        case 51:
+        case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: {
             return true;
         }
 
