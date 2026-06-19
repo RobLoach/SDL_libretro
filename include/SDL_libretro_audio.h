@@ -107,6 +107,53 @@ static unsigned SDL_Libretro_UpdateAudioThreshold(SDL_Libretro* lr) {
     return latencyMs;
 }
 
+/**
+ * Reports the audio buffer's occupancy to the core via the callback it
+ * registered with RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK.
+ *
+ * Per the libretro spec this is invoked right before each retro_run(). A core
+ * uses it to attempt frame-skipping when an underrun (audible "crackle") looms.
+ *
+ * @see RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK
+ */
+static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr) {
+    if (!lr || !lr->core.audio_buffer_status.callback) return;
+
+    /**
+     * Whether the frontend's audio buffer is in use (a stream is open).
+     */
+    bool active = (lr->core.audioStream != NULL);
+
+    /**
+     * Queued bytes as a percentage (0-100) of the drop threshold.
+     *
+     * It's the frontend's effective buffer cap.
+     *
+     * @see SDL_Libretro_UpdateAudioThreshold
+     */
+    unsigned occupancy = 0;
+
+    /**
+     * Set when fewer than one frame's worth of samples remain queued, so the device is at risk of starving on the next frame.
+     */
+    bool underrunLikely = false;
+
+    if (active && lr->core.audioQueueThresholdBytes > 0) {
+        int queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
+        if (queued < 0) queued = 0;
+
+        double pct = (double)queued * 100.0 / (double)lr->core.audioQueueThresholdBytes;
+        occupancy = (unsigned)(pct > 100.0 ? 100.0 : pct);
+
+        // One frame drains sampleRate/fps stereo float samples; if fewer than that are queued, the next frame risks starving the device.
+        double fps = lr->core.fps > 0.0 ? lr->core.fps : 60.0;
+        int frameBytes = (int)(SDL_Libretro_GetSampleRate(lr) / fps * (double)(sizeof(float) * 2));
+        underrunLikely = (queued < frameBytes);
+    }
+
+    lr->core.audio_buffer_status.callback(active, occupancy, underrunLikely);
+}
+
 bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) {
         SDL_SetError("SDL_libretro: No core loaded");
@@ -196,14 +243,14 @@ static void SDL_Libretro_AudioSample(int16_t left, int16_t right) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
+    if (lr->core.singleSampleCount >= SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
+        SDL_Libretro_FlushSingleSamples(lr);
+    }
+
     size_t idx = lr->core.singleSampleCount * 2;
     lr->core.singleSampleBuffer[idx] = left;
     lr->core.singleSampleBuffer[idx + 1] = right;
     lr->core.singleSampleCount++;
-
-    if (lr->core.singleSampleCount >= SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
-        SDL_Libretro_FlushSingleSamples(lr);
-    }
 }
 
 static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) {

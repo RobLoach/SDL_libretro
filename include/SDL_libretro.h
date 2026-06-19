@@ -216,12 +216,12 @@ typedef struct SDL_LibretroCoreData {
     uint64_t serializationQuirks;
     int rotation;
 
-    /* Video */
+    // Video
     SDL_Texture* texture;
     SDL_Renderer* renderer;
     bool videoReinitPending;
 
-    /* Audio */
+    // Audio
     SDL_AudioStream* audioStream;
     int audioQueueThresholdBytes;
     unsigned minimumAudioLatencyMs;
@@ -229,34 +229,35 @@ typedef struct SDL_LibretroCoreData {
     size_t singleSampleCount;
     int audioDropWarnCount;
     bool audioReinitPending;
+    struct retro_audio_callback audio_callback;
+    struct retro_audio_buffer_status_callback audio_buffer_status; /** @see SDL_Libretro_ReportAudioBufferStatus() */
 
-    /* Input */
+    // Input
     SDL_Window* window;
     float inputLastMouseX, inputLastMouseY;
     float inputMouseX, inputMouseY;
     unsigned portDeviceMap[16];
     bool virtualJoypadState[16];
-
-    /* Callbacks from core */
     retro_keyboard_event_t keyboard_event;
+
+    // Timing
     struct retro_frame_time_callback runloop_frame_time;
     retro_usec_t runloop_frame_time_last;
-    struct retro_audio_callback audio_callback;
 
-    /* Core options (dynamic) */
+    // Core Options
     SDL_LibretroCoreOption* options;
     unsigned optionCount;
     unsigned optionCapacity;
     bool optionsDirty;
     bool optionsVisibilityDirty;
 
-    /* Input descriptors */
+    // Input Descriptors
     struct retro_input_descriptor* inputDescriptors;
     unsigned inputDescriptorCount;
     struct retro_controller_info* controllerInfo;
     unsigned controllerPortCount;
 
-    /* Content */
+    // Game Content
     char contentPath[SDL_LIBRETRO_MAX_PATH];
     char contentDir[SDL_LIBRETRO_MAX_PATH];
     char contentName[SDL_LIBRETRO_MAX_PATH];
@@ -266,13 +267,13 @@ typedef struct SDL_LibretroCoreData {
     unsigned char* persistentGameData;
     size_t persistentGameDataSize;
 
-    /* Content info overrides */
+    // Content Info Overrides
     char contentInfoOverrideExts[SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES][SDL_LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN];
     bool contentInfoOverrideNeedFullpath[SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES];
     bool contentInfoOverridePersistent[SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES];
     unsigned contentInfoOverrideCount;
 
-    /* Rumble */
+    // Rumble
     float rumbleStrong[SDL_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_RUMBLE_PORTS];
 
@@ -280,7 +281,7 @@ typedef struct SDL_LibretroCoreData {
     struct retro_disk_control_ext_callback disk_control;
     bool diskControlActive;
 
-    /* Memory maps */
+    // Memory Maps
     struct retro_memory_descriptor* memoryMapDescriptors;
     unsigned memoryMapDescriptorCount;
 
@@ -311,9 +312,9 @@ struct SDL_Libretro {
     char username[128];
     bool sramAutoSave;
 
-    /* OSD message */
-    char osdMessage[256];
-    Uint64 osdEndTimeMs;
+    // On-Screen Display Message
+    char osdMessage[256]; /** The current On-Screen Display message. */
+    Uint64 osdEndTimeMs; /** The time at which the OSD should finish. */
 
     // Virtual File System
     struct retro_vfs_interface vfs_interface;
@@ -326,10 +327,11 @@ struct SDL_Libretro {
     SDL_LibretroCoreData core;
 };
 
-/* File-static active context for libretro C callbacks (one per process) */
+/**
+ * Active context for libretro C callbacks (one per process)
+ */
 static SDL_Libretro* SDL_Libretro_active = NULL;
 
-/* Internal subsystem functions (defined across the implementation fragments) */
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr);
 static void SDL_Libretro_CloseVideo(SDL_Libretro* lr);
 static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch);
@@ -339,6 +341,7 @@ static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames);
 static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr);
 static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed);
 static unsigned SDL_Libretro_UpdateAudioThreshold(SDL_Libretro* lr);
+static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr);
 
 static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
@@ -355,7 +358,6 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     const char* tooltip, const char* categoryKey);
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 
-/* Subsystem implementation fragments (lifecycle last; it references the rest) */
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"
 #include "SDL_libretro_input.h"

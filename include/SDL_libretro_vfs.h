@@ -4,7 +4,7 @@
 /*
  * SDL_libretro - libretro VFS interface backed by SDL_IOStream
  *
- * Provides GET_VFS_INTERFACE v1–v4. Truncate is best-effort (no SDL3 native).
+ * Provides GET_VFS_INTERFACE v1–v4.
  */
 
 struct retro_vfs_file_handle {
@@ -117,9 +117,12 @@ static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
 }
 
 /**
- * Best-effort truncate.
+ * Truncate a file to a specified size.
  *
- * Grow via zero-pad, shrink via rewrite.
+ * @param path A null-terminated string specifying the path of the file to be truncated. Must refer to a file that the caller is permitted to modify.
+ * @param length The target size of the file in bytes. Must be non-negative.
+ *
+ * @return 0 on success. On error, -1 is returned.
  */
 static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, int64_t length) {
     if (!stream || length < 0) return -1;
@@ -127,7 +130,7 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
     int64_t cur_size = SDL_GetIOSize(stream->io);
     if (cur_size < 0) return -1;
 
-    /* Preserve the caller's read/write position across the operation. */
+    // Preserve the caller's read/write position across the operation.
     int64_t orig_pos = SDL_TellIO(stream->io);
 
     if (length >= cur_size) {
@@ -155,8 +158,7 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
     size_t got = SDL_ReadIO(stream->io, buf, (size_t)length);
     if ((int64_t)got != length) { SDL_free(buf); return -1; }
 
-    /* Reopen with write access matching the original handle so subsequent
-     * reads/writes keep working ("r+b" needs the file to exist, which it does). */
+    // Reopen with write access matching the original handle so subsequent reads/writes keep working.
     bool canWrite = (stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
 
     SDL_CloseIO(stream->io);
@@ -165,12 +167,12 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
     SDL_WriteIO(stream->io, buf, (size_t)length);
     SDL_free(buf);
 
-    /* Reopen in original mode for continued use. */
+    // Reopen in original mode for continued use.
     SDL_CloseIO(stream->io);
     stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb");
     if (!stream->io) return -1;
 
-    /* Restore the position, clamped to the new (smaller) length. */
+    // Restore the position, clamped to the new (smaller) length.
     if (orig_pos >= 0) {
         SDL_SeekIO(stream->io, orig_pos < length ? orig_pos : length, SDL_IO_SEEK_SET);
     }
@@ -220,9 +222,7 @@ static SDL_EnumerationResult SDL_Libretro_DirCallback(void* userdata, const char
 
     if (ctx->count >= ctx->capacity) {
         size_t newCap = ctx->capacity ? ctx->capacity * 2 : 32;
-        /* Store each successful realloc back immediately: realloc frees the old
-         * block, so on partial failure the cleanup path must not be left holding
-         * a dangling pointer (use-after-free / double-free). */
+        // Store each successful realloc back immediately: realloc frees the old block, so on partial failure the cleanup path must not be left holding a dangling pointer (use-after-free / double-free).
         char** newNames = (char**)SDL_realloc(ctx->names, newCap * sizeof(char*));
         if (newNames) ctx->names = newNames;
         bool* newIsDir  = (bool*)SDL_realloc(ctx->isDir,  newCap * sizeof(bool));
@@ -252,7 +252,7 @@ static struct retro_vfs_dir_handle* SDL_Libretro_VFS_Opendir(const char* dir, bo
     ctx.includeHidden = include_hidden;
 
     if (!SDL_EnumerateDirectory(dir, SDL_Libretro_DirCallback, &ctx)) {
-        /* Free partial results on failure. */
+        // Free partial results on failure.
         for (size_t i = 0; i < ctx.count; i++) SDL_free(ctx.names[i]);
         SDL_free(ctx.names);
         SDL_free(ctx.isDir);
@@ -270,7 +270,7 @@ static struct retro_vfs_dir_handle* SDL_Libretro_VFS_Opendir(const char* dir, bo
     h->names = ctx.names;
     h->isDir = ctx.isDir;
     h->count = ctx.count;
-    h->index = (size_t)-1; /* readdir advances before returning */
+    h->index = (size_t)-1; // readdir advances before returning
     return h;
 }
 

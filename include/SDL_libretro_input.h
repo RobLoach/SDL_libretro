@@ -316,6 +316,16 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
 
     switch (baseDevice) {
         case RETRO_DEVICE_JOYPAD: {
+            if (id == RETRO_DEVICE_ID_JOYPAD_MASK) {
+                int16_t mask = 0;
+                for (unsigned b = 0; b <= RETRO_DEVICE_ID_JOYPAD_R3; b++) {
+                    if (SDL_Libretro_InputState(port, device, index, b)) {
+                        mask |= (1 << b);
+                    }
+                }
+                return mask;
+            }
+
             /* Virtual joypad (port 0 only) */
             if (port == 0 && id < 16 && lr->core.virtualJoypadState[id]) {
                 return 1;
