@@ -5,10 +5,7 @@
  * SDL_libretro - environment callback dispatch
  */
 
-
-#include <string.h>
 #include <stdarg.h>
-#include <stdio.h>
 
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
     va_list args;
@@ -429,6 +426,23 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
             if (!data) return false;
             *(int*)data = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
+            return true;
+        }
+      
+        case 50:
+        case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
+            if (!data) return false;
+            float rate = 60.0f;
+            if (lr->core.window) {
+                SDL_DisplayID display = SDL_GetDisplayForWindow(lr->core.window);
+                if (display) {
+                    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
+                    if (mode && mode->refresh_rate > 0.0f) {
+                        rate = mode->refresh_rate;
+                    }
+                }
+            }
+            *(float*)data = rate;
             return true;
         }
 

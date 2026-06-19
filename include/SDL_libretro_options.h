@@ -6,8 +6,6 @@
  */
 
 
-#include <string.h>
-
 static char* SDL_Libretro_Strdup(const char* s) {
     if (!s) return SDL_strdup("");
     return SDL_strdup(s);
