@@ -21,8 +21,7 @@ int main(int argc, char* argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD);
 
-    SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600,
-        SDL_WINDOW_RESIZABLE);
+    SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_SetRenderVSync(renderer, 1);

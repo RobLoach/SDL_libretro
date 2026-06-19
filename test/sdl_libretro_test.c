@@ -8,10 +8,12 @@ static int SDLCALL test_CreateDestroy(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDLTest_AssertCheck(lr != NULL, "SDL_Libretro_Create returned non-NULL");
 
+    // Defaults
     SDLTest_AssertCheck(lr->volume == 1.0f, "Default volume is 1.0");
     SDLTest_AssertCheck(lr->speed == 1.0f, "Default speed is 1.0");
     SDLTest_AssertCheck(SDL_strcmp(lr->username, "SDL_libretro") == 0, "Default username is SDL_libretro");
 
+    // Default Keyboard Mappings
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_Z, "B mapped to Z");
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X, "A mapped to X");
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START] == SDL_SCANCODE_RETURN, "Start mapped to Return");
@@ -168,45 +170,27 @@ static int SDLCALL test_Options(void *arg) {
     return TEST_COMPLETED;
 }
 
-/* Test case references */
-static const SDLTest_TestCaseReference createDestroyTest = {
-    test_CreateDestroy, "test_CreateDestroy", "Create context, verify defaults, destroy", TEST_ENABLED
-};
-static const SDLTest_TestCaseReference stateQueriesTest = {
-    test_StateQueries, "test_StateQueries", "Query getters on fresh context", TEST_ENABLED
-};
-static const SDLTest_TestCaseReference nullSafetyTest = {
-    test_NullSafety, "test_NullSafety", "All getters handle NULL without crashing", TEST_ENABLED
-};
-static const SDLTest_TestCaseReference directorySettersTest = {
-    test_DirectorySetters, "test_DirectorySetters", "Directory and username setters", TEST_ENABLED
-};
-static const SDLTest_TestCaseReference volumeSpeedTest = {
-    test_VolumeSpeed, "test_VolumeSpeed", "Volume and speed with clamping", TEST_ENABLED
-};
-static const SDLTest_TestCaseReference inputTest = {
-    test_Input, "test_Input", "Keyboard mapping, virtual buttons, port device", TEST_ENABLED
-};
-static const SDLTest_TestCaseReference optionsTest = {
-    test_Options, "test_Options", "Core options on empty list", TEST_ENABLED
-};
+/* Test case references. The function name doubles as the test name via #fn,
+   and file-scope compound literals let us list the cases inline. */
+#define LIBRETRO_TEST_CASE(fn, desc) \
+    &(const SDLTest_TestCaseReference){ fn, #fn, desc, TEST_ENABLED }
 
 static const SDLTest_TestCaseReference *testCases[] = {
-    &createDestroyTest,
-    &stateQueriesTest,
-    &nullSafetyTest,
-    &directorySettersTest,
-    &volumeSpeedTest,
-    &inputTest,
-    &optionsTest,
+    LIBRETRO_TEST_CASE(test_CreateDestroy,    "Create context, verify defaults, destroy"),
+    LIBRETRO_TEST_CASE(test_StateQueries,     "Query getters on fresh context"),
+    LIBRETRO_TEST_CASE(test_NullSafety,       "All getters handle NULL without crashing"),
+    LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
+    LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
+    LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
+    LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
     NULL
 };
 
 static const SDLTest_TestSuiteReference testSuite = {
     "SDL_libretro",
-    NULL,
+    NULL, // Setup
     testCases,
-    NULL
+    NULL // Teardown
 };
 
 int main(int argc, char *argv[]) {

@@ -5,10 +5,7 @@
  * SDL_libretro - environment callback dispatch
  */
 
-
-#include <string.h>
 #include <stdarg.h>
-#include <stdio.h>
 
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
     va_list args;

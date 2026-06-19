@@ -5,9 +5,6 @@
  * SDL_libretro - save state and SRAM
  */
 
-
-#include <string.h>
-
 size_t SDL_Libretro_GetSerializeSize(const SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return 0;
     return lr->core.symbols.retro_serialize_size();
