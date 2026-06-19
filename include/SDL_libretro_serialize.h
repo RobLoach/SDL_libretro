@@ -15,12 +15,22 @@ bool SDL_Libretro_Serialize(SDL_Libretro* lr, void* data, size_t size) {
         SDL_SetError("SDL_libretro: Invalid serialize arguments");
         return false;
     }
+    size_t needed = lr->core.symbols.retro_serialize_size();
+    if (size < needed) {
+        SDL_SetError("SDL_libretro: Serialize buffer too small (%zu < %zu)", size, needed);
+        return false;
+    }
     return lr->core.symbols.retro_serialize(data, size);
 }
 
 bool SDL_Libretro_Unserialize(SDL_Libretro* lr, const void* data, size_t size) {
     if (!lr || !lr->core.loaded || !data || size == 0) {
         SDL_SetError("SDL_libretro: Invalid unserialize arguments");
+        return false;
+    }
+    size_t needed = lr->core.symbols.retro_serialize_size();
+    if (size < needed) {
+        SDL_SetError("SDL_libretro: Unserialize buffer too small (%zu < %zu)", size, needed);
         return false;
     }
     return lr->core.symbols.retro_unserialize(data, size);
