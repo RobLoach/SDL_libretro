@@ -297,6 +297,10 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
         lr->core.runloop_frame_time.callback(delta);
     }
 
+    // Report audio buffer occupancy so the core can frame-skip if an underrun
+    // looms. Per the libretro spec this fires right before retro_run().
+    SDL_Libretro_ReportAudioBufferStatus(lr);
+
     // Run the frame.
     lr->core.symbols.retro_run();
 

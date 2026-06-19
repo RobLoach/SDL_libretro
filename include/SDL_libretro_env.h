@@ -138,6 +138,24 @@ static const char* SDL_Libretro_GetDirectory(SDL_Libretro* lr, unsigned cmd) {
     }
 }
 
+/**
+ * The refresh rate the frontend is presenting at, in Hz. Taken from the
+ * current display mode of the core's window, defaulting to 60 when unknown.
+ */
+static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
+    float rate = 60.0f;
+    if (lr->core.window) {
+        SDL_DisplayID display = SDL_GetDisplayForWindow(lr->core.window);
+        if (display) {
+            const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
+            if (mode && mode->refresh_rate > 0.0f) {
+                rate = mode->refresh_rate;
+            }
+        }
+    }
+    return rate;
+}
+
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return false;
@@ -428,26 +446,54 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             *(int*)data = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
             return true;
         }
-      
+
         case 50:
         case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
             if (!data) return false;
-            float rate = 60.0f;
-            if (lr->core.window) {
-                SDL_DisplayID display = SDL_GetDisplayForWindow(lr->core.window);
-                if (display) {
-                    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
-                    if (mode && mode->refresh_rate > 0.0f) {
-                        rate = mode->refresh_rate;
-                    }
-                }
-            }
-            *(float*)data = rate;
+            *(float*)data = SDL_Libretro_GetTargetRefreshRate(lr);
             return true;
         }
 
         case 51:
         case RETRO_ENVIRONMENT_GET_INPUT_BITMASKS: {
+            return true;
+        }
+
+        case 71:
+        case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: {
+            if (!data) return false;
+            struct retro_throttle_state* throttle = (struct retro_throttle_state*)data;
+
+            double fps = lr->core.fps > 0.0 ? lr->core.fps : 60.0;
+            float speed = lr->speed;
+            if (speed > 1.0f) {
+                throttle->mode = RETRO_THROTTLE_FAST_FORWARD;
+                throttle->rate = (float)(fps * speed);
+            }
+            else if (speed > 0.0f && speed < 1.0f) {
+                throttle->mode = RETRO_THROTTLE_SLOW_MOTION;
+                throttle->rate = (float)(fps * speed);
+            }
+            else if (speed < 0.0f) {
+                throttle->mode = RETRO_THROTTLE_REWINDING;
+                throttle->rate = (float)(fps * speed);
+            }
+            else {
+                throttle->mode = RETRO_THROTTLE_NONE;
+                throttle->rate = (float)fps;
+
+                // VSYNC
+                int vsync = SDL_RENDERER_VSYNC_DISABLED;
+                if (lr->core.renderer && SDL_GetRenderVSync(lr->core.renderer, &vsync) && vsync != SDL_RENDERER_VSYNC_DISABLED) {
+                    float interval = (vsync == SDL_RENDERER_VSYNC_ADAPTIVE) ? 1.0f : (float)vsync;
+                    float vsyncRate = SDL_Libretro_GetTargetRefreshRate(lr) / interval;
+                    if (vsyncRate < fps) {
+                        throttle->mode = RETRO_THROTTLE_VSYNC;
+                        throttle->rate = vsyncRate;
+                    }
+                }
+            }
+
             return true;
         }
 
@@ -483,6 +529,15 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     lr->core.memoryMapDescriptorCount = map->num_descriptors;
                 }
             }
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
+            // NULL data unregisters the callback.
+            // @see SDL_Libretro_ReportAudioBufferStatus
+            const struct retro_audio_buffer_status_callback* cb =
+                (const struct retro_audio_buffer_status_callback*)data;
+            lr->core.audio_buffer_status.callback = cb ? cb->callback : NULL;
             return true;
         }
 

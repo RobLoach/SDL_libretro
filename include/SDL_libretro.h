@@ -224,6 +224,8 @@ typedef struct SDL_LibretroCoreData {
     size_t singleSampleCount;
     int audioDropWarnCount;
     bool audioReinitPending;
+    struct retro_audio_callback audio_callback;
+    struct retro_audio_buffer_status_callback audio_buffer_status; /** @see SDL_Libretro_ReportAudioBufferStatus() */
 
     // Input
     SDL_Window* window;
@@ -231,12 +233,11 @@ typedef struct SDL_LibretroCoreData {
     float inputMouseX, inputMouseY;
     unsigned portDeviceMap[16];
     bool virtualJoypadState[16];
-
-    // Input Callbacks
     retro_keyboard_event_t keyboard_event;
+
+    // Timing
     struct retro_frame_time_callback runloop_frame_time;
     retro_usec_t runloop_frame_time_last;
-    struct retro_audio_callback audio_callback;
 
     // Core Options
     SDL_LibretroCoreOption* options;
@@ -334,6 +335,7 @@ static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames);
 static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr);
 static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed);
 static unsigned SDL_Libretro_UpdateAudioThreshold(SDL_Libretro* lr);
+static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr);
 
 static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
