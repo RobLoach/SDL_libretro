@@ -43,7 +43,7 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     install(FILES include/SDL_libretro.h DESTINATION include)
     # Implementation fragments + the libretro API header are part of the
     # shipped header set (needed by the TU that defines the macro).
-    install(DIRECTORY src/ DESTINATION include
+    install(DIRECTORY include/ DESTINATION include
         FILES_MATCHING PATTERN "SDL_libretro_*.h")
     install(FILES vendor/libretro-common/include/libretro.h DESTINATION include)
 endif()
