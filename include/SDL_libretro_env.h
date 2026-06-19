@@ -428,7 +428,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             *(int*)data = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
             return true;
         }
-      
+
         case 50:
         case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
             if (!data) return false;
@@ -585,6 +585,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 }
             }
             return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
+            if (!data) return false;
+            const struct retro_core_options_v2_intl* intl = (const struct retro_core_options_v2_intl*)data;
+            /* Frontend language is English, so the US definitions are used directly. The `us` member is already a retro_core_options_v2, so forward it as-is. */
+            if (!intl->us) return false;
+            return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, intl->us);
         }
 
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
