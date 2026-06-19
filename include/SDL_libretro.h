@@ -95,19 +95,18 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 
-/* Save states */
-size_t SDL_Libretro_GetSerializeSize(const SDL_Libretro* lr);
-bool SDL_Libretro_Serialize(SDL_Libretro* lr, void* data, size_t size);
-bool SDL_Libretro_Unserialize(SDL_Libretro* lr, const void* data, size_t size);
-bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* stream);
-bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* stream);
+/* Save States */
+size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr);
+bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio);
+bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
 
 /* SRAM */
-void* SDL_Libretro_GetSRAMData(const SDL_Libretro* lr, size_t* size);
-bool SDL_Libretro_SetSRAMData(SDL_Libretro* lr, const void* data, size_t size);
-bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr);
-bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr);
-void SDL_Libretro_SetSRAMAutoSave(SDL_Libretro* lr, bool enabled);
+bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio);
+bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
 
 /* Core options */
 unsigned SDL_Libretro_GetOptionCount(const SDL_Libretro* lr);
@@ -310,7 +309,6 @@ struct SDL_Libretro {
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
     char username[128];
-    bool sramAutoSave;
 
     // On-Screen Display Message
     char osdMessage[256]; /** The current On-Screen Display message. */

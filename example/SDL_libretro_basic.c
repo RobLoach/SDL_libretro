@@ -97,6 +97,16 @@ int main(int argc, char* argv[]) {
                 SDL_DestroySurface(screenshot);
             }
 
+            // Save State
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F2) {
+                SDL_Libretro_SaveState(lr, "save.sav");
+            }
+
+            // Load State
+            else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F4) {
+                SDL_Libretro_LoadState(lr, "save.sav");
+            }
+
             // Pass all events to SDL_Libretro.
             SDL_Libretro_HandleEvent(lr, &event);
         }
