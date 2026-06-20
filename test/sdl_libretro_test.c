@@ -176,6 +176,25 @@ static int SDLCALL test_Options(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_LogLevel(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_DEBUG, "Default log level is DEBUG");
+    SDL_Libretro_SetLogLevel(lr, RETRO_LOG_WARN);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_WARN, "Log level set to WARN");
+    SDL_Libretro_SetLogLevel(lr, RETRO_LOG_ERROR);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_ERROR, "Log level set to ERROR");
+    SDL_Libretro_SetLogLevel(lr, -1);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_DEBUG, "Negative level clamped to DEBUG");
+    SDL_Libretro_SetLogLevel(lr, 99);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_ERROR, "Overflow level clamped to ERROR");
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(NULL) == RETRO_LOG_DEBUG, "GetLogLevel(NULL) returns DEBUG");
+    SDL_Libretro_SetLogLevel(NULL, RETRO_LOG_WARN);
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -189,6 +208,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
+    LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     NULL
 };
 

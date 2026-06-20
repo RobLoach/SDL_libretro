@@ -151,6 +151,10 @@ size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, boo
 /* VFS */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
 
+/* Logging */
+void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level);
+int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr);
+
 /* OSD messages */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration);
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
@@ -329,6 +333,9 @@ struct SDL_Libretro {
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
     char username[128];
+
+    // Logging
+    int logLevel;
 
     // On-Screen Display Message
     char osdMessage[256]; /** The current On-Screen Display message. */
