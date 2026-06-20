@@ -95,6 +95,11 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 
+/* Input descriptors */
+unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr);
+bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index,
+    unsigned* port, unsigned* device, unsigned* id, const char** description);
+
 /* Save States */
 size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr);
 bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file);
