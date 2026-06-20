@@ -155,4 +155,88 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
     return ok;
 }
 
+/* Rewind */
+
+bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
+    if (!lr) return false;
+
+    SDL_Libretro_RewindFree(lr);
+
+    if (!enabled || bufferFrames == 0 || captureInterval == 0) {
+        lr->rewindEnabled = false;
+        return true;
+    }
+
+    if (!lr->core.loaded) {
+        lr->rewindEnabled = true;
+        lr->rewindCapacity = bufferFrames;
+        lr->rewindCaptureInterval = captureInterval;
+        return true;
+    }
+
+    size_t slotSize = lr->core.symbols.retro_serialize_size();
+    if (slotSize == 0) {
+        SDL_SetError("SDL_libretro: Core does not support serialization");
+        return false;
+    }
+
+    unsigned char* buf = (unsigned char*)SDL_malloc(slotSize * bufferFrames);
+    if (!buf) {
+        SDL_SetError("SDL_libretro: Failed to allocate rewind buffer");
+        return false;
+    }
+
+    lr->rewindBuffer = buf;
+    lr->rewindSlotSize = slotSize;
+    lr->rewindCapacity = bufferFrames;
+    lr->rewindCaptureInterval = captureInterval;
+    lr->rewindHead = 0;
+    lr->rewindCount = 0;
+    lr->rewindFrameCounter = 0;
+    lr->rewindEnabled = true;
+    return true;
+}
+
+bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr) {
+    return lr && lr->rewindEnabled && lr->speed < 0.0f;
+}
+
+static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
+    if (!lr->rewindEnabled || !lr->rewindBuffer) return;
+
+    lr->rewindFrameCounter++;
+    if (lr->rewindFrameCounter < lr->rewindCaptureInterval) return;
+    lr->rewindFrameCounter = 0;
+
+    unsigned char* slot = lr->rewindBuffer + (lr->rewindHead * lr->rewindSlotSize);
+    if (!lr->core.symbols.retro_serialize(slot, lr->rewindSlotSize)) return;
+
+    lr->rewindHead = (lr->rewindHead + 1) % lr->rewindCapacity;
+    if (lr->rewindCount < lr->rewindCapacity) {
+        lr->rewindCount++;
+    }
+}
+
+static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
+    if (!lr->rewindEnabled || !lr->rewindBuffer || lr->rewindCount == 0) return false;
+
+    lr->rewindHead = (lr->rewindHead == 0) ? (lr->rewindCapacity - 1) : (lr->rewindHead - 1);
+    lr->rewindCount--;
+
+    unsigned char* slot = lr->rewindBuffer + (lr->rewindHead * lr->rewindSlotSize);
+    return lr->core.symbols.retro_unserialize(slot, lr->rewindSlotSize);
+}
+
+static void SDL_Libretro_RewindFree(SDL_Libretro* lr) {
+    if (lr->rewindBuffer) {
+        SDL_free(lr->rewindBuffer);
+        lr->rewindBuffer = NULL;
+    }
+    lr->rewindSlotSize = 0;
+    lr->rewindCapacity = 0;
+    lr->rewindHead = 0;
+    lr->rewindCount = 0;
+    lr->rewindFrameCounter = 0;
+}
+
 #endif /* SDL_LIBRETRO_SERIALIZE_IMPL_ONCE */

@@ -170,6 +170,33 @@ static int SDLCALL test_Options(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_Rewind(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(lr) == false, "Not rewinding on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, true, 600, 2) == true, "Enable rewind before core load");
+    SDLTest_AssertCheck(lr->rewindEnabled == true, "Rewind enabled flag set");
+    SDLTest_AssertCheck(lr->rewindCapacity == 600, "Rewind capacity stored");
+    SDLTest_AssertCheck(lr->rewindCaptureInterval == 2, "Rewind capture interval stored");
+    SDLTest_AssertCheck(lr->rewindBuffer == NULL, "Buffer not allocated without core");
+
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, false, 0, 0) == true, "Disable rewind");
+    SDLTest_AssertCheck(lr->rewindEnabled == false, "Rewind disabled");
+
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(NULL, true, 100, 1) == false, "SetRewindEnabled(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(NULL) == false, "IsRewinding(NULL) false");
+
+    // Negative speed only accepted when rewind is enabled.
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(lr->speed == 0.1f, "Negative speed clamped without rewind");
+    SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(lr->speed == -1.0f, "Negative speed accepted with rewind");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -183,6 +210,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
+    LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     NULL
 };
 

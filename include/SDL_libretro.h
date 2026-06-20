@@ -143,6 +143,10 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
  */
 size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension);
 
+/* Rewind */
+bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval);
+bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr);
+
 /* VFS */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
 
@@ -332,6 +336,16 @@ struct SDL_Libretro {
     // Virtual File System
     struct retro_vfs_interface vfs_interface;
 
+    // Rewind
+    unsigned char* rewindBuffer;
+    size_t rewindSlotSize;
+    unsigned rewindCapacity;
+    unsigned rewindHead;
+    unsigned rewindCount;
+    unsigned rewindCaptureInterval;
+    unsigned rewindFrameCounter;
+    bool rewindEnabled;
+
     /* SDL gamepads (opened handles, indexed by port) */
     SDL_Gamepad* gamepads[16];
     unsigned gamepadCount;
@@ -365,6 +379,10 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
+
+static void SDL_Libretro_RewindCapture(SDL_Libretro* lr);
+static bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
+static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
 
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
     const char* label, const char* valuesList, const char* displayList,
