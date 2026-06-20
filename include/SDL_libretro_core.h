@@ -177,6 +177,26 @@ bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
     return lr && lr->core.loaded;
 }
 
+size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension) {
+    if (!dst || dstSize == 0) return 0;
+    dst[0] = '\0';
+    if (!path) return 0;
+
+    // Skip past the last path separator to the base name.
+    const char* base = SDL_strrchr(path, '/');
+    if (!base) base = SDL_strrchr(path, '\\');
+    base = base ? base + 1 : path;
+
+    SDL_strlcpy(dst, base, dstSize);
+
+    if (!withExtension) {
+        char* dot = SDL_strrchr(dst, '.');
+        if (dot) *dot = '\0';
+    }
+
+    return SDL_strlen(dst);
+}
+
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
     if (!lr || !lr->core.loaded || !renderer) {
         SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
@@ -191,13 +211,9 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     if (gamePath) {
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
-       // Get the Content Name
-        const char* base = SDL_strrchr(gamePath, '/');
-        if (!base) base = SDL_strrchr(gamePath, '\\');
-        base = base ? base + 1 : gamePath;
-        SDL_strlcpy(lr->core.contentName, base, sizeof(lr->core.contentName));
-        char* dot = SDL_strrchr(lr->core.contentName, '.');
-        if (dot) *dot = '\0';
+
+        // Get the Content Name (base name without extension).
+        SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), gamePath, false);
 
         gameInfo.path = gamePath;
 

@@ -126,6 +126,23 @@ const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 
+/* Utilities */
+
+/**
+ * Copy the file name portion of a path into a caller-provided buffer.
+ *
+ * The leading directory components and (optionally) the trailing extension
+ * are stripped. Useful for deriving save/state file names from a content path.
+ *
+ * \param dst the destination buffer to fill (always null-terminated).
+ * \param dstSize the size of `dst` in bytes.
+ * \param path the source path, may be NULL.
+ * \param withExtension if true, keep the file extension; if false, strip it.
+ * \returns the length of the resulting string in `dst`, excluding the null
+ *          terminator (0 on invalid arguments).
+ */
+size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension);
+
 /* VFS */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
 
@@ -258,9 +275,7 @@ typedef struct SDL_LibretroCoreData {
 
     // Game Content
     char contentPath[SDL_LIBRETRO_MAX_PATH];
-    char contentDir[SDL_LIBRETRO_MAX_PATH];
     char contentName[SDL_LIBRETRO_MAX_PATH];
-    char contentExt[16];
     struct retro_game_info_ext gameInfoExt;
     bool gameInfoExtValid;
     unsigned char* persistentGameData;
