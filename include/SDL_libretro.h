@@ -95,6 +95,11 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 
+/* Input descriptors */
+unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr);
+bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index,
+    unsigned* port, unsigned* device, unsigned* id, const char** description);
+
 /* Save States */
 size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr);
 bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file);
@@ -149,6 +154,10 @@ bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr);
 
 /* VFS */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
+
+/* Logging */
+void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level);
+int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr);
 
 /* OSD messages */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration);
@@ -328,6 +337,9 @@ struct SDL_Libretro {
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
     char username[128];
+
+    // Logging
+    int logLevel;
 
     // On-Screen Display Message
     char osdMessage[256]; /** The current On-Screen Display message. */

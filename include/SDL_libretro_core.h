@@ -496,6 +496,16 @@ float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
     return lr ? lr->speed : 1.0f;
 }
 
+/* Log level */
+void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level) {
+    if (!lr) return;
+    lr->logLevel = SDL_clamp(level, RETRO_LOG_DEBUG, RETRO_LOG_ERROR);
+}
+
+int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
+    return lr ? lr->logLevel : RETRO_LOG_DEBUG;
+}
+
 /* Metadata */
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.libraryName : "";

@@ -151,6 +151,12 @@ static int SDLCALL test_Input(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 16, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice port 16 false");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(NULL, 0, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice(NULL) false");
 
+    // Input descriptors (empty without a loaded core)
+    SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptorCount(lr) == 0, "Descriptor count 0 without core");
+    SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptor(lr, 0, NULL, NULL, NULL, NULL) == false, "GetInputDescriptor false without core");
+    SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptorCount(NULL) == 0, "GetInputDescriptorCount(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptor(NULL, 0, NULL, NULL, NULL, NULL) == false, "GetInputDescriptor(NULL) false");
+
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }
@@ -192,6 +198,25 @@ static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
     SDL_Libretro_SetSpeed(lr, -1.0f);
     SDLTest_AssertCheck(lr->speed == -1.0f, "Negative speed accepted with rewind");
+  
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL test_LogLevel(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_DEBUG, "Default log level is DEBUG");
+    SDL_Libretro_SetLogLevel(lr, RETRO_LOG_WARN);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_WARN, "Log level set to WARN");
+    SDL_Libretro_SetLogLevel(lr, RETRO_LOG_ERROR);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_ERROR, "Log level set to ERROR");
+    SDL_Libretro_SetLogLevel(lr, -1);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_DEBUG, "Negative level clamped to DEBUG");
+    SDL_Libretro_SetLogLevel(lr, 99);
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_ERROR, "Overflow level clamped to ERROR");
+    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(NULL) == RETRO_LOG_DEBUG, "GetLogLevel(NULL) returns DEBUG");
+    SDL_Libretro_SetLogLevel(NULL, RETRO_LOG_WARN);
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -211,6 +236,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
+    LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     NULL
 };
 
