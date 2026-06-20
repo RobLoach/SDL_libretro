@@ -95,14 +95,18 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 
-/* Save states */
-size_t SDL_Libretro_GetSerializeSize(const SDL_Libretro* lr);
-bool SDL_Libretro_Serialize(SDL_Libretro* lr, void* data, size_t size);
-bool SDL_Libretro_Unserialize(SDL_Libretro* lr, const void* data, size_t size);
+/* Save States */
+size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr);
+bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio);
+bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
 
 /* SRAM */
-void* SDL_Libretro_GetSRAMData(const SDL_Libretro* lr, size_t* size);
-bool SDL_Libretro_SetSRAMData(SDL_Libretro* lr, const void* data, size_t size);
+bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio);
+bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
 
 /* Core options */
 unsigned SDL_Libretro_GetOptionCount(const SDL_Libretro* lr);
@@ -121,6 +125,23 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
+
+/* Utilities */
+
+/**
+ * Copy the file name portion of a path into a caller-provided buffer.
+ *
+ * The leading directory components and (optionally) the trailing extension
+ * are stripped. Useful for deriving save/state file names from a content path.
+ *
+ * \param dst the destination buffer to fill (always null-terminated).
+ * \param dstSize the size of `dst` in bytes.
+ * \param path the source path, may be NULL.
+ * \param withExtension if true, keep the file extension; if false, strip it.
+ * \returns the length of the resulting string in `dst`, excluding the null
+ *          terminator (0 on invalid arguments).
+ */
+size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension);
 
 /* VFS */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
@@ -254,9 +275,7 @@ typedef struct SDL_LibretroCoreData {
 
     // Game Content
     char contentPath[SDL_LIBRETRO_MAX_PATH];
-    char contentDir[SDL_LIBRETRO_MAX_PATH];
     char contentName[SDL_LIBRETRO_MAX_PATH];
-    char contentExt[16];
     struct retro_game_info_ext gameInfoExt;
     bool gameInfoExtValid;
     unsigned char* persistentGameData;

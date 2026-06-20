@@ -41,7 +41,7 @@ static int SDLCALL test_StateQueries(void *arg) {
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreName(lr), "") == 0, "GetCoreName empty on fresh context");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreVersion(lr), "") == 0, "GetCoreVersion empty on fresh context");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "") == 0, "GetValidExtensions empty on fresh context");
-    SDLTest_AssertCheck(SDL_Libretro_GetSerializeSize(lr) == 0, "GetSerializeSize 0 on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 0, "GetStateSize 0 on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 0, "GetOptionCount 0 on fresh context");
 
     SDL_Libretro_Destroy(lr);
@@ -63,7 +63,7 @@ static int SDLCALL test_NullSafety(void *arg) {
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreName(NULL), "") == 0, "GetCoreName(NULL) empty");
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(NULL) == 0.0f, "GetVolume(NULL) 0.0");
     SDLTest_AssertCheck(SDL_Libretro_GetSpeed(NULL) == 1.0f, "GetSpeed(NULL) 1.0");
-    SDLTest_AssertCheck(SDL_Libretro_GetSerializeSize(NULL) == 0, "GetSerializeSize(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetStateSize(NULL) == 0, "GetStateSize(NULL) 0");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(NULL) == 0, "GetOptionCount(NULL) 0");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionKey(NULL, 0) == NULL, "GetOptionKey(NULL) NULL");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionValue(NULL, "foo") == NULL, "GetOptionValue(NULL) NULL");
