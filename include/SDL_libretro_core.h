@@ -375,6 +375,7 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         while (lr->speedAccumulator >= framePeriod) {
             lr->speedAccumulator -= framePeriod;
             if (!SDL_Libretro_RewindStep(lr)) break;
+            lr->core.symbols.retro_run();
         }
         return;
     }
