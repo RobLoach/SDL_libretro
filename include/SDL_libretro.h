@@ -348,6 +348,11 @@ typedef struct SDL_LibretroCoreData {
     retro_perf_tick_t gameTimeNSEC;
 } SDL_LibretroCoreData;
 
+typedef struct SDL_LibretroRewindDelta {
+    unsigned char* data;
+    size_t length;
+} SDL_LibretroRewindDelta;
+
 struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /** The audio volume. */
@@ -373,8 +378,10 @@ struct SDL_Libretro {
     // Virtual File System
     struct retro_vfs_interface vfs_interface;
 
-    // Rewind
-    unsigned char* rewindBuffer;
+    // Rewind (delta-compressed circular buffer)
+    unsigned char* rewindReference;
+    unsigned char* rewindScratch;
+    SDL_LibretroRewindDelta* rewindEntries;
     size_t rewindSlotSize;
     unsigned rewindCapacity;
     unsigned rewindHead;
@@ -382,6 +389,7 @@ struct SDL_Libretro {
     unsigned rewindCaptureInterval;
     unsigned rewindFrameCounter;
     bool rewindEnabled;
+    bool rewindHasReference;
 
     /* SDL gamepads (opened handles, indexed by port) */
     SDL_Gamepad* gamepads[16];
@@ -417,6 +425,8 @@ static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
 
+static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap);
+static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen);
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr);
 static bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr);

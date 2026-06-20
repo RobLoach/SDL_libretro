@@ -265,7 +265,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     }
 
     // Allocate rewind buffer now that serialize size is known.
-    if (lr->rewindEnabled && !lr->rewindBuffer && lr->rewindCapacity > 0) {
+    if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
         SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
     }
 

@@ -155,7 +155,86 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
     return ok;
 }
 
-/* Rewind */
+/* Rewind — delta-compressed circular buffer
+ *
+ * Instead of storing full serialized states, each entry holds an RLE-compressed
+ * XOR delta between consecutive captures.  A single full "reference" state is
+ * kept; on rewind the delta is XOR'd back to reconstruct the previous state.
+ *
+ * Encoding format (operates on the XOR of two serialized states):
+ *   0x00 LL HH — skip (LL | HH<<8) unchanged bytes  (extended, 1-65535)
+ *   0x01-0x7F  — skip 1-127 unchanged bytes           (short)
+ *   0x80-0xFF  — (tag & 0x7F)+1 literal XOR bytes follow (1-128)
+ */
+
+static size_t SDL_Libretro_RewindEncodeDelta(
+    const unsigned char* cur, const unsigned char* ref,
+    size_t len, unsigned char* out, size_t outCap)
+{
+    size_t op = 0, i = 0;
+    while (i < len) {
+        if (cur[i] == ref[i]) {
+            size_t start = i;
+            while (i < len && cur[i] == ref[i]) i++;
+            size_t run = i - start;
+            while (run > 0) {
+                if (run <= 127) {
+                    if (out) { if (op >= outCap) return 0; out[op] = (unsigned char)run; }
+                    op++;
+                    run = 0;
+                } else {
+                    size_t chunk = run > 65535 ? 65535 : run;
+                    if (out) {
+                        if (op + 3 > outCap) return 0;
+                        out[op]     = 0x00;
+                        out[op + 1] = (unsigned char)(chunk & 0xFF);
+                        out[op + 2] = (unsigned char)(chunk >> 8);
+                    }
+                    op += 3;
+                    run -= chunk;
+                }
+            }
+        } else {
+            size_t start = i;
+            while (i < len && cur[i] != ref[i] && (i - start) < 128) i++;
+            size_t run = i - start;
+            if (out) {
+                if (op + 1 + run > outCap) return 0;
+                out[op] = (unsigned char)(0x80 | (run - 1));
+            }
+            op++;
+            for (size_t j = start; j < start + run; j++) {
+                if (out) out[op] = cur[j] ^ ref[j];
+                op++;
+            }
+        }
+    }
+    return op;
+}
+
+static bool SDL_Libretro_RewindDecodeDelta(
+    const unsigned char* delta, size_t deltaLen,
+    unsigned char* state, size_t stateLen)
+{
+    size_t dp = 0, sp = 0;
+    while (dp < deltaLen && sp < stateLen) {
+        unsigned char tag = delta[dp++];
+        if (tag == 0x00) {
+            if (dp + 2 > deltaLen) return false;
+            size_t skip = delta[dp] | ((size_t)delta[dp + 1] << 8);
+            dp += 2;
+            sp += skip;
+        } else if (tag <= 0x7F) {
+            sp += tag;
+        } else {
+            size_t count = (tag & 0x7F) + 1;
+            if (dp + count > deltaLen || sp + count > stateLen) return false;
+            for (size_t j = 0; j < count; j++)
+                state[sp++] ^= delta[dp++];
+        }
+    }
+    return (sp <= stateLen);
+}
 
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
     if (!lr) return false;
@@ -183,13 +262,20 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
         return false;
     }
 
-    unsigned char* buf = (unsigned char*)SDL_malloc(slotSize * bufferFrames);
-    if (!buf) {
-        SDL_SetError("SDL_libretro: Failed to allocate rewind buffer");
+    unsigned char* ref = (unsigned char*)SDL_calloc(1, slotSize);
+    unsigned char* scratch = (unsigned char*)SDL_malloc(slotSize);
+    SDL_LibretroRewindDelta* entries = (SDL_LibretroRewindDelta*)SDL_calloc(bufferFrames, sizeof(*entries));
+    if (!ref || !scratch || !entries) {
+        SDL_free(ref);
+        SDL_free(scratch);
+        SDL_free(entries);
+        SDL_SetError("SDL_libretro: Failed to allocate rewind buffers");
         return false;
     }
 
-    lr->rewindBuffer = buf;
+    lr->rewindReference = ref;
+    lr->rewindScratch = scratch;
+    lr->rewindEntries = entries;
     lr->rewindSlotSize = slotSize;
     lr->rewindCapacity = bufferFrames;
     lr->rewindCaptureInterval = captureInterval;
@@ -197,6 +283,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     lr->rewindCount = 0;
     lr->rewindFrameCounter = 0;
     lr->rewindEnabled = true;
+    lr->rewindHasReference = false;
     return true;
 }
 
@@ -205,40 +292,79 @@ bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr) {
 }
 
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
-    if (!lr->rewindEnabled || !lr->rewindBuffer) return;
+    if (!lr->rewindEnabled || !lr->rewindReference) return;
 
     lr->rewindFrameCounter++;
     if (lr->rewindFrameCounter < lr->rewindCaptureInterval) return;
     lr->rewindFrameCounter = 0;
 
-    unsigned char* slot = lr->rewindBuffer + (lr->rewindHead * lr->rewindSlotSize);
-    if (!lr->core.symbols.retro_serialize(slot, lr->rewindSlotSize)) return;
+    if (!lr->core.symbols.retro_serialize(lr->rewindScratch, lr->rewindSlotSize)) return;
+
+    if (!lr->rewindHasReference) {
+        SDL_memcpy(lr->rewindReference, lr->rewindScratch, lr->rewindSlotSize);
+        lr->rewindHasReference = true;
+        return;
+    }
+
+    size_t encSize = SDL_Libretro_RewindEncodeDelta(
+        lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize, NULL, 0);
+    if (encSize == 0) return;
+
+    unsigned char* data = (unsigned char*)SDL_malloc(encSize);
+    if (!data) return;
+    SDL_Libretro_RewindEncodeDelta(
+        lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize, data, encSize);
+
+    SDL_free(lr->rewindEntries[lr->rewindHead].data);
+    lr->rewindEntries[lr->rewindHead].data = data;
+    lr->rewindEntries[lr->rewindHead].length = encSize;
 
     lr->rewindHead = (lr->rewindHead + 1) % lr->rewindCapacity;
     if (lr->rewindCount < lr->rewindCapacity) {
         lr->rewindCount++;
     }
+
+    SDL_memcpy(lr->rewindReference, lr->rewindScratch, lr->rewindSlotSize);
 }
 
 static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
-    if (!lr->rewindEnabled || !lr->rewindBuffer || lr->rewindCount == 0) return false;
+    if (!lr->rewindEnabled || !lr->rewindReference || lr->rewindCount == 0) return false;
 
     lr->rewindHead = (lr->rewindHead == 0) ? (lr->rewindCapacity - 1) : (lr->rewindHead - 1);
     lr->rewindCount--;
 
-    unsigned char* slot = lr->rewindBuffer + (lr->rewindHead * lr->rewindSlotSize);
-    return lr->core.symbols.retro_unserialize(slot, lr->rewindSlotSize);
+    SDL_LibretroRewindDelta* entry = &lr->rewindEntries[lr->rewindHead];
+    if (!entry->data || entry->length == 0) return false;
+
+    if (!SDL_Libretro_RewindDecodeDelta(entry->data, entry->length,
+            lr->rewindReference, lr->rewindSlotSize)) {
+        return false;
+    }
+
+    SDL_free(entry->data);
+    entry->data = NULL;
+    entry->length = 0;
+
+    return lr->core.symbols.retro_unserialize(lr->rewindReference, lr->rewindSlotSize);
 }
 
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr) {
-    if (lr->rewindBuffer) {
-        SDL_free(lr->rewindBuffer);
-        lr->rewindBuffer = NULL;
+    if (lr->rewindEntries) {
+        for (unsigned i = 0; i < lr->rewindCapacity; i++) {
+            SDL_free(lr->rewindEntries[i].data);
+        }
+        SDL_free(lr->rewindEntries);
+        lr->rewindEntries = NULL;
     }
+    SDL_free(lr->rewindReference);
+    lr->rewindReference = NULL;
+    SDL_free(lr->rewindScratch);
+    lr->rewindScratch = NULL;
     lr->rewindSlotSize = 0;
     lr->rewindHead = 0;
     lr->rewindCount = 0;
     lr->rewindFrameCounter = 0;
+    lr->rewindHasReference = false;
 }
 
 #endif /* SDL_LIBRETRO_SERIALIZE_IMPL_ONCE */

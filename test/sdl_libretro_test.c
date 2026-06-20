@@ -184,7 +184,7 @@ static int SDLCALL test_Rewind(void *arg) {
     SDLTest_AssertCheck(lr->rewindEnabled == true, "Rewind enabled flag set");
     SDLTest_AssertCheck(lr->rewindCapacity == 600, "Rewind capacity stored");
     SDLTest_AssertCheck(lr->rewindCaptureInterval == 2, "Rewind capture interval stored");
-    SDLTest_AssertCheck(lr->rewindBuffer == NULL, "Buffer not allocated without core");
+    SDLTest_AssertCheck(lr->rewindReference == NULL, "Buffer not allocated without core");
 
     SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, false, 0, 0) == true, "Disable rewind");
     SDLTest_AssertCheck(lr->rewindEnabled == false, "Rewind disabled");
