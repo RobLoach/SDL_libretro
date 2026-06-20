@@ -8,6 +8,10 @@
 #include <stdarg.h>
 
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
+    if (SDL_Libretro_active && (int)level < SDL_Libretro_active->logLevel) {
+        return;
+    }
+
     va_list args;
     va_start(args, fmt);
     char buf[2048];
