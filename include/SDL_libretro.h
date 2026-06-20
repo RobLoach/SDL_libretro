@@ -149,7 +149,32 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension);
 
 /* Rewind */
+
+/**
+ * Enable or disable the rewind system.
+ *
+ * When enabled, a circular buffer of serialized core states is maintained so
+ * that setting a negative speed (via SDL_Libretro_SetSpeed()) rewinds
+ * gameplay. The buffer is allocated lazily once a game is loaded and the
+ * core's serialize size is known.
+ *
+ * \param lr the libretro context.
+ * \param enabled true to enable, false to disable.
+ * \param bufferFrames maximum number of state snapshots to keep (0 for a
+ *                     sensible default of 300, roughly 5 seconds at 60 fps).
+ * \param captureInterval capture a snapshot every N frames (0 for the default
+ *                        of 1, i.e. every frame).
+ * \returns true on success, false on allocation failure or if the core does
+ *          not support serialization.
+ */
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval);
+
+/**
+ * Check whether the core is currently rewinding.
+ *
+ * \param lr the libretro context.
+ * \returns true if rewind is enabled and the speed is negative.
+ */
 bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr);
 
 /* VFS */

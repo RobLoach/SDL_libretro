@@ -359,6 +359,9 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         SDL_Libretro_InitAudio(lr);
     }
 
+    // Paused: do nothing when speed is zero.
+    if (lr->speed == 0.0f) return;
+
     // Rewind mode: step backwards when speed is negative.
     if (lr->speed < 0.0f && lr->rewindEnabled) {
         Uint64 nowNS = SDL_GetTicksNS();
@@ -480,11 +483,15 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
 
     if (speed < 0.0f && lr->rewindEnabled) {
         lr->speed = speed;
+        if (lr->core.audioStream) {
+            lr->core.drcAdjustment = 1.0f;
+            lr->core.drcDriftAvg = 0.0;
+            SDL_ClearAudioStream(lr->core.audioStream);
+        }
     } else {
-        lr->speed = SDL_max(speed, 0.1f);
+        lr->speed = SDL_max(speed, 0.0f);
     }
 
-    // Reset DRC so the next steady state re-settles from a neutral ratio, and apply the new rate immediately for instant pitch response.
     if (lr->core.audioStream && lr->speed > 0.0f) {
         lr->core.drcAdjustment = 1.0f;
         lr->core.drcDriftAvg = 0.0;

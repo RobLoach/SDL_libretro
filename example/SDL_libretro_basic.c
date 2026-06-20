@@ -30,6 +30,7 @@ int main(int argc, char* argv[]) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");
+    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
@@ -76,10 +77,12 @@ int main(int argc, char* argv[]) {
                 SDL_Libretro_SetSpeed(lr, 1.0f);
             }
 
-            // Reset
+            // Rewind
+            else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_R && !event.key.repeat) {
+                SDL_Libretro_SetSpeed(lr, -1.0f);
+            }
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_R) {
-                SDL_Libretro_Reset(lr);
-                SDL_Libretro_SetMessage(lr, "Reset", 2.0f);
+                SDL_Libretro_SetSpeed(lr, 1.0f);
             }
 
             // Volume

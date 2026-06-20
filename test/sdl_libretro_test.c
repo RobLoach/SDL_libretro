@@ -116,9 +116,9 @@ static int SDLCALL test_VolumeSpeed(void *arg) {
     SDL_Libretro_SetSpeed(lr, 2.0f);
     SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 2.0f, "Speed set to 2.0");
     SDL_Libretro_SetSpeed(lr, 0.0f);
-    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.1f, "Speed clamped to 0.1 from 0.0");
+    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.0f, "Speed 0.0 accepted (paused)");
     SDL_Libretro_SetSpeed(lr, -5.0f);
-    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.1f, "Speed clamped to 0.1 from -5.0");
+    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.0f, "Speed clamped to 0.0 from -5.0");
     SDL_Libretro_SetSpeed(lr, 10.0f);
     SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 10.0f, "Speed set to 10.0 (no upper clamp)");
     SDL_Libretro_SetSpeed(NULL, 2.0f);
@@ -194,7 +194,7 @@ static int SDLCALL test_Rewind(void *arg) {
 
     // Negative speed only accepted when rewind is enabled.
     SDL_Libretro_SetSpeed(lr, -1.0f);
-    SDLTest_AssertCheck(lr->speed == 0.1f, "Negative speed clamped without rewind");
+    SDLTest_AssertCheck(lr->speed == 0.0f, "Negative speed clamped without rewind");
     SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
     SDL_Libretro_SetSpeed(lr, -1.0f);
     SDLTest_AssertCheck(lr->speed == -1.0f, "Negative speed accepted with rewind");

@@ -162,10 +162,13 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
 
     SDL_Libretro_RewindFree(lr);
 
-    if (!enabled || bufferFrames == 0 || captureInterval == 0) {
+    if (!enabled) {
         lr->rewindEnabled = false;
         return true;
     }
+
+    if (bufferFrames == 0) bufferFrames = 300;
+    if (captureInterval == 0) captureInterval = 1;
 
     if (!lr->core.loaded) {
         lr->rewindEnabled = true;
@@ -233,7 +236,6 @@ static void SDL_Libretro_RewindFree(SDL_Libretro* lr) {
         lr->rewindBuffer = NULL;
     }
     lr->rewindSlotSize = 0;
-    lr->rewindCapacity = 0;
     lr->rewindHead = 0;
     lr->rewindCount = 0;
     lr->rewindFrameCounter = 0;
