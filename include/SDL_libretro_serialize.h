@@ -5,10 +5,7 @@
  * SDL_libretro - save state and SRAM
  */
 
-size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return 0;
-    return lr->core.symbols.retro_serialize_size();
-}
+// Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
     if (!lr || !lr->core.loaded) return false;
@@ -21,7 +18,15 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
     lr->core.symbols.retro_cheat_reset();
 }
 
-/* Save state */
+// Save States
+
+/**
+ * Retrieves the size of serialized states.
+ */
+size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
+    if (!lr || !lr->core.loaded) return 0;
+    return lr->core.symbols.retro_serialize_size();
+}
 
 bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
@@ -79,6 +84,8 @@ bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
     if (!io) return false;
     return SDL_Libretro_LoadState_IO(lr, io, true);
 }
+
+// SRAM
 
 bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
@@ -155,6 +162,8 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
     return ok;
 }
 
+// Rewind
+
 /**
  * Rewind: delta-compressed circular buffer.
  *
@@ -165,23 +174,29 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
  *   0x01-0x7F - skip 1-127 unchanged bytes (short)
  *   0x80-0xFF - (tag & 0x7F)+1 literal XOR bytes follow (1-128)
  *
+ * A matching run between two changed regions shorter than kMinSkip is folded into the surrounding literal run (emitted as zero XOR bytes) instead of as a skip: breaking a literal costs a skip tag plus a fresh literal header, so a skip only pays for itself once the gap is at least that long. Skips of 128-254 bytes use two short codes (2 bytes) rather than the extended form (3 bytes).
+ *
  * @internal
  */
-static size_t SDL_Libretro_RewindEncodeDelta(
-    const unsigned char* cur, const unsigned char* ref,
-    size_t len, unsigned char* out, size_t outCap)
-{
+static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap) {
+    // A matching gap shorter than this is cheaper to fold into a literal than to emit as a skip. A skip also forces a new literal header afterwards.
+    const size_t kMinSkip = 3;
+
     size_t op = 0, i = 0;
     while (i < len) {
         if (cur[i] == ref[i]) {
-            size_t start = i;
-            while (i < len && cur[i] == ref[i]) i++;
-            size_t run = i - start;
+            size_t run = 0;
+            while (i < len && cur[i] == ref[i]) { i++; run++; }
             while (run > 0) {
                 if (run <= 127) {
                     if (out) { if (op >= outCap) return 0; out[op] = (unsigned char)run; }
                     op++;
                     run = 0;
+                } else if (run < 255) {
+                    // Two short skips (2 bytes) beat one extended skip (3)
+                    if (out) { if (op >= outCap) return 0; out[op] = 127; }
+                    op++;
+                    run -= 127;
                 } else {
                     size_t chunk = run > 65535 ? 65535 : run;
                     if (out) {
@@ -195,17 +210,32 @@ static size_t SDL_Libretro_RewindEncodeDelta(
                 }
             }
         } else {
-            size_t start = i;
-            while (i < len && cur[i] != ref[i] && (i - start) < 128) i++;
-            size_t run = i - start;
-            if (out) {
-                if (op + 1 + run > outCap) return 0;
-                out[op] = (unsigned char)(0x80 | (run - 1));
+            // Literal segment: a span of differing bytes that absorbs any matching gaps shorter than kMinSkip (folded as zero XOR bytes).
+            size_t segStart = i;
+            size_t segEnd = i;
+            size_t j = i;
+            for (;;) {
+                while (j < len && cur[j] != ref[j]) j++;
+                segEnd = j;
+                if (j >= len) break;
+                size_t gapStart = j;
+                while (j < len && cur[j] == ref[j]) j++;
+                if ((j - gapStart) >= kMinSkip || j >= len) break;
             }
-            op++;
-            for (size_t j = start; j < start + run; j++) {
-                if (out) out[op] = cur[j] ^ ref[j];
+            i = segEnd;
+            for (size_t pos = segStart; pos < segEnd; ) {
+                size_t chunk = segEnd - pos;
+                if (chunk > 128) chunk = 128;
+                if (out) {
+                    if (op + 1 + chunk > outCap) return 0;
+                    out[op] = (unsigned char)(0x80 | (chunk - 1));
+                }
                 op++;
+                for (size_t k = pos; k < pos + chunk; k++) {
+                    if (out) out[op] = cur[k] ^ ref[k];
+                    op++;
+                }
+                pos += chunk;
             }
         }
     }

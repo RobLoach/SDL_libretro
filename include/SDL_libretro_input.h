@@ -7,7 +7,7 @@
 
 /**
  * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
- * 
+ *
  * @see RETRO_DEVICE_ID_JOYPAD_B
  * @see SDL_GAMEPAD_BUTTON_SOUTH
  */
@@ -33,7 +33,7 @@ static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button
 
 /**
  * Ports a RETROK_* to a SDL_SCANCODE_*
- * 
+ *
  * @see RETROK_BACKSPACE
  * @see SDL_SCANCODE_BACKSPACE
  * @see SDL_Libretro_ScancodeToRetroKey()
@@ -163,7 +163,7 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
 
 /**
  * Ports a SDL physical key to a RETROK_*.
- * 
+ *
  * @see SDL_SCANCODE_BACKSPACE
  * @see RETROK_BACKSPACE
  * @see SDL_Libretro_RetroKeyToScancode()
@@ -280,7 +280,11 @@ static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode) {
     }
 }
 
-/* Map SDL modifier flags to the RETROKMOD_* bitmask the core expects. */
+/**
+ * Map SDL modifier flags to the RETROKMOD_* bitmask the core expects.
+ *
+ * @internal
+ */
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod) {
     uint16_t retromod = RETROKMOD_NONE;
     if (mod & SDL_KMOD_SHIFT)  retromod |= RETROKMOD_SHIFT;
@@ -496,14 +500,38 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
     lr->core.virtualJoypadState[button] = pressed;
 }
 
-/* Input descriptor query */
+// Input Descriptors
 
+/**
+ * Retrieve the number of input descriptors provided by a Libretro core.
+ *
+ * @param lr Pointer to an initialized SDL_Libretro instance. Must not be NULL.
+ *
+ * @see SDL_Libretro_GetInputDescriptor
+ */
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.inputDescriptorCount : 0;
 }
 
-bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index,
-    unsigned* port, unsigned* device, unsigned* id, const char** description) {
+/**
+ * @brief Retrieve an input descriptor by index.
+ *
+ * This function can be used to enumerate all available input descriptors by calling it with incrementing index values starting at 0 until no descriptor is returned or an error is indicated.
+ *
+ * @param[in] index Zero-based index of the input descriptor to retrieve. The value should start at 0 and be incremented to enumerate successive descriptors.
+ * @param[out] port Zero-based port number to query (e.g., controller port).
+ * @param[out] device Device identifier within the port (if applicable).
+ * @param[out] id The ID of the descriptor.
+ * @param[out] description The description of the input device.
+ *
+ * @return 0 on success, a negative error code on failure.
+ *
+ * @note The contents written to @p out_desc are owned by the caller after the
+ *       call returns and may be modified or freed as appropriate by the caller.
+ *
+ * @see retro_input_descriptor
+ */
+bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, unsigned* port, unsigned* device, unsigned* id, const char** description) {
     if (!lr || !lr->core.loaded || index >= lr->core.inputDescriptorCount) return false;
     const struct retro_input_descriptor* d = &lr->core.inputDescriptors[index];
     if (port) *port = d->port;

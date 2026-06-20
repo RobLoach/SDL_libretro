@@ -16,14 +16,14 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     const char* tooltip, const char* categoryKey) {
     if (!lr || !key) return;
 
-    /* Check if already registered */
+    // Check if already registered
     for (unsigned i = 0; i < lr->core.optionCount; i++) {
         if (lr->core.options[i].key && SDL_strcmp(lr->core.options[i].key, key) == 0) {
             return;
         }
     }
 
-    /* Grow array if needed */
+    // Grow array if needed
     if (lr->core.optionCount >= lr->core.optionCapacity) {
         unsigned newCap = lr->core.optionCapacity ? lr->core.optionCapacity * 2 : 32;
         SDL_LibretroCoreOption* newOpts = (SDL_LibretroCoreOption*)SDL_realloc(
