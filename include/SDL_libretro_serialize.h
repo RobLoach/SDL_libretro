@@ -291,6 +291,12 @@ bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr) {
     return lr && lr->rewindEnabled && lr->speed < 0.0f;
 }
 
+double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr) {
+    if (!lr || !lr->rewindEnabled || lr->rewindCount == 0) return 0.0;
+    double fps = lr->core.fps > 0.0 ? lr->core.fps : 60.0;
+    return (double)lr->rewindCount * (double)lr->rewindCaptureInterval / fps;
+}
+
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     if (!lr->rewindEnabled || !lr->rewindReference) return;
 

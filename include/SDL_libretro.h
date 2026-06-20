@@ -177,6 +177,15 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
  */
 bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr);
 
+/**
+ * Get the amount of rewind time remaining in the buffer.
+ *
+ * \param lr the libretro context.
+ * \returns seconds of gameplay that can still be rewound, or 0.0 if rewind
+ *          is disabled or the buffer is empty.
+ */
+double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr);
+
 /* VFS */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
 
