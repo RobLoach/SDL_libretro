@@ -496,4 +496,21 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
     lr->core.virtualJoypadState[button] = pressed;
 }
 
+/* Input descriptor query */
+
+unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
+    return (lr && lr->core.loaded) ? lr->core.inputDescriptorCount : 0;
+}
+
+bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index,
+    unsigned* port, unsigned* device, unsigned* id, const char** description) {
+    if (!lr || !lr->core.loaded || index >= lr->core.inputDescriptorCount) return false;
+    const struct retro_input_descriptor* d = &lr->core.inputDescriptors[index];
+    if (port) *port = d->port;
+    if (device) *device = d->device;
+    if (id) *id = d->id;
+    if (description) *description = d->description;
+    return true;
+}
+
 #endif /* SDL_LIBRETRO_INPUT_IMPL_ONCE */
