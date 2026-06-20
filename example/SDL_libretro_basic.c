@@ -128,6 +128,14 @@ int main(int argc, char* argv[]) {
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             SDL_RenderDebugText(renderer, 19.0f, 19.0f, message);
         }
+        else if (SDL_Libretro_IsRewinding(lr)) {
+            // Display how much rewind time is left if they're rewinding.
+            float remaining = SDL_Libretro_GetRewindRemaining(lr);
+            char buf[64];
+            SDL_snprintf(buf, sizeof(buf), "REWIND: %.1fs remaining", remaining);
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderDebugText(renderer, 19.0f, 39.0f, buf);
+        }
 
         SDL_RenderPresent(renderer);
     }

@@ -177,6 +177,19 @@ bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
     return lr && lr->core.loaded;
 }
 
+/**
+ * Copy the file name portion of a path into a caller-provided buffer.
+ *
+ * The leading directory components and (optionally) the trailing extension
+ * are stripped. Useful for deriving save/state file names from a content path.
+ *
+ * \param dst the destination buffer to fill (always null-terminated).
+ * \param dstSize the size of `dst` in bytes.
+ * \param path the source path, may be NULL.
+ * \param withExtension if true, keep the file extension; if false, strip it.
+ * \returns the length of the resulting string in `dst`, excluding the null
+ *          terminator (0 on invalid arguments).
+ */
 size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension) {
     if (!dst || dstSize == 0) return 0;
     dst[0] = '\0';

@@ -155,18 +155,18 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
     return ok;
 }
 
-/* Rewind — delta-compressed circular buffer
+/**
+ * Rewind: delta-compressed circular buffer.
  *
- * Instead of storing full serialized states, each entry holds an RLE-compressed
- * XOR delta between consecutive captures.  A single full "reference" state is
- * kept; on rewind the delta is XOR'd back to reconstruct the previous state.
+ * Instead of storing full serialized states, each entry holds an RLE-compressed XOR delta between consecutive captures. A single full "reference" state is kept; on rewind the delta is XOR'd back to reconstruct the previous state.
  *
  * Encoding format (operates on the XOR of two serialized states):
- *   0x00 LL HH — skip (LL | HH<<8) unchanged bytes  (extended, 1-65535)
- *   0x01-0x7F  — skip 1-127 unchanged bytes           (short)
- *   0x80-0xFF  — (tag & 0x7F)+1 literal XOR bytes follow (1-128)
+ *   0x00 LL HH - skip (LL | HH<<8) unchanged bytes (extended, 1-65535)
+ *   0x01-0x7F - skip 1-127 unchanged bytes (short)
+ *   0x80-0xFF - (tag & 0x7F)+1 literal XOR bytes follow (1-128)
+ *
+ * @internal
  */
-
 static size_t SDL_Libretro_RewindEncodeDelta(
     const unsigned char* cur, const unsigned char* ref,
     size_t len, unsigned char* out, size_t outCap)
@@ -212,6 +212,17 @@ static size_t SDL_Libretro_RewindEncodeDelta(
     return op;
 }
 
+
+/**
+ * Rewind the decode state by applying a negative delta to the decoder cursor.
+ *
+ * Attempts to move the internal decode position/state backwards so that subsequent
+ * decode operations will re-process bytes as if the specified delta had not been
+ * consumed. This is used by the libretro serialization layer to undo partial
+ * decode steps when restoring or validating saved state.
+ *
+ * @internal
+ */
 static bool SDL_Libretro_RewindDecodeDelta(
     const unsigned char* delta, size_t deltaLen,
     unsigned char* state, size_t stateLen)
@@ -236,6 +247,17 @@ static bool SDL_Libretro_RewindDecodeDelta(
     return (sp <= stateLen);
 }
 
+/**
+ * Enable or disable the rewind system.
+ *
+ * When enabled, a circular buffer of serialized core states is maintained so that setting a negative speed (via SDL_Libretro_SetSpeed()) rewinds gameplay. The buffer is allocated lazily once a game is loaded and the core's serialize size is known.
+ *
+ * @param lr the libretro context.
+ * @param enabled true to enable, false to disable.
+ * @param bufferFrames maximum number of state snapshots to keep (0 for a sensible default of 300, roughly 5 seconds at 60 fps).
+ * @param captureInterval capture a snapshot every N frames (0 for the default of 1, i.e. every frame).
+ * @returns true on success, false on allocation failure or if the core does not support serialization.
+ */
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
     if (!lr) return false;
 
@@ -287,16 +309,34 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     return true;
 }
 
+/**
+ * Check whether the core is currently rewinding.
+ *
+ * @param lr the libretro context.
+ * @returns true if rewind is enabled and the speed is negative.
+ */
 bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr) {
     return lr && lr->rewindEnabled && lr->speed < 0.0f;
 }
 
+/**
+ * Get the amount of rewind time remaining in the buffer.
+ *
+ * @param lr the libretro context.
+ * @returns seconds of gameplay that can still be rewound, or 0.0 if rewind
+ *          is disabled or the buffer is empty.
+ */
 double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr) {
     if (!lr || !lr->rewindEnabled || lr->rewindCount == 0) return 0.0;
     double fps = lr->core.fps > 0.0 ? lr->core.fps : 60.0;
     return (double)lr->rewindCount * (double)lr->rewindCaptureInterval / fps;
 }
 
+/**
+ * Captures the current instance state into the rewind buffer.
+ *
+ * @internal
+ */
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     if (!lr->rewindEnabled || !lr->rewindReference) return;
 
@@ -333,6 +373,11 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     SDL_memcpy(lr->rewindReference, lr->rewindScratch, lr->rewindSlotSize);
 }
 
+/**
+ * Step back a single frame in the rewind buffer.
+ *
+ * @internal
+ */
 static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
     if (!lr->rewindEnabled || !lr->rewindReference || lr->rewindCount == 0) return false;
 
@@ -354,6 +399,11 @@ static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
     return lr->core.symbols.retro_unserialize(lr->rewindReference, lr->rewindSlotSize);
 }
 
+/**
+ * Frees the entire rewind buffer.
+ *
+ * @internal
+ */
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr) {
     if (lr->rewindEntries) {
         for (unsigned i = 0; i < lr->rewindCapacity; i++) {
