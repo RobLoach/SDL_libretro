@@ -566,6 +566,56 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: {
+            if (!data) return false;
+            *(unsigned*)data = 2;
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS: {
+            if (!data) return false;
+            const struct retro_core_option_definition* defs = (const struct retro_core_option_definition*)data;
+            unsigned count = 0;
+            while (defs[count].key) count++;
+            struct retro_core_option_v2_definition* v2defs =
+                (struct retro_core_option_v2_definition*)SDL_calloc(count + 1, sizeof(*v2defs));
+            if (!v2defs) return false;
+            for (unsigned i = 0; i < count; i++) {
+                v2defs[i].key           = defs[i].key;
+                v2defs[i].desc          = defs[i].desc;
+                v2defs[i].info          = defs[i].info;
+                v2defs[i].default_value = defs[i].default_value;
+                SDL_memcpy(v2defs[i].values, defs[i].values, sizeof(defs[i].values));
+            }
+            struct retro_core_options_v2 opts = { NULL, v2defs };
+            bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts);
+            SDL_free(v2defs);
+            return result;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL: {
+            if (!data) return false;
+            const struct retro_core_options_intl* intl = (const struct retro_core_options_intl*)data;
+            const struct retro_core_option_definition* defs = intl->us;
+            if (!defs) return false;
+            unsigned count = 0;
+            while (defs[count].key) count++;
+            struct retro_core_option_v2_definition* v2defs =
+                (struct retro_core_option_v2_definition*)SDL_calloc(count + 1, sizeof(*v2defs));
+            if (!v2defs) return false;
+            for (unsigned i = 0; i < count; i++) {
+                v2defs[i].key           = defs[i].key;
+                v2defs[i].desc          = defs[i].desc;
+                v2defs[i].info          = defs[i].info;
+                v2defs[i].default_value = defs[i].default_value;
+                SDL_memcpy(v2defs[i].values, defs[i].values, sizeof(defs[i].values));
+            }
+            struct retro_core_options_v2 opts = { NULL, v2defs };
+            bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts);
+            SDL_free(v2defs);
+            return result;
+        }
+
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
             if (!data) return false;
             const struct retro_core_options_v2* opts = (const struct retro_core_options_v2*)data;
@@ -590,6 +640,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 }
             }
             return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
+            if (!data) return false;
+            const struct retro_core_options_v2_intl* intl = (const struct retro_core_options_v2_intl*)data;
+            /* Frontend language is English, so the US definitions are used directly. The `us` member is already a retro_core_options_v2, so forward it as-is. */
+            if (!intl->us) return false;
+            return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, intl->us);
         }
 
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
