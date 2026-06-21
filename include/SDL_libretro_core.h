@@ -125,6 +125,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     SDL_strlcpy(lr->core.libraryVersion, sysinfo.library_version ? sysinfo.library_version : "", sizeof(lr->core.libraryVersion));
     SDL_strlcpy(lr->core.validExtensions, sysinfo.valid_extensions ? sysinfo.valid_extensions : "", sizeof(lr->core.validExtensions));
     lr->core.needFullpath = sysinfo.need_fullpath;
+    lr->core.needFullpathOriginal = sysinfo.need_fullpath;
     lr->core.blockExtract = sysinfo.block_extract;
 
     lr->core.symbols.retro_init();
@@ -221,18 +222,18 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
+    bool persistData = false;
 
     if (gamePath) {
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
 
         // Get the Content Name (base name without extension).
         SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), gamePath, false);
-
-        // Apply content info overrides based on file extension.
         const char* ext = SDL_Libretro_GetContentExtension(lr);
         for (unsigned i = 0; i < lr->core.contentInfoOverrideCount; i++) {
             if (SDL_Libretro_ExtensionInList(ext, lr->core.contentInfoOverrideExts[i])) {
                 lr->core.needFullpath = lr->core.contentInfoOverrideNeedFullpath[i];
+                persistData = lr->core.contentInfoOverridePersistent[i];
                 break;
             }
         }
@@ -260,7 +261,12 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     bool result = lr->core.symbols.retro_load_game(gamePath ? &gameInfo : NULL);
 
     if (fileData) {
-        SDL_free(fileData);
+        if (persistData && result) {
+            lr->core.persistentGameData = (unsigned char*)fileData;
+            lr->core.persistentGameDataSize = gameInfo.size;
+        } else {
+            SDL_free(fileData);
+        }
     }
 
     if (!result) {
@@ -305,6 +311,14 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
         lr->core.symbols.retro_unload_game();
         lr->core.contentPath[0] = '\0';
         lr->core.contentName[0] = '\0';
+    }
+
+    lr->core.needFullpath = lr->core.needFullpathOriginal;
+
+    if (lr->core.persistentGameData) {
+        SDL_free(lr->core.persistentGameData);
+        lr->core.persistentGameData = NULL;
+        lr->core.persistentGameDataSize = 0;
     }
 
     SDL_Libretro_RewindFree(lr);

@@ -243,6 +243,7 @@ typedef struct SDL_LibretroCoreData {
     char libraryVersion[200];
     char validExtensions[200];
     bool needFullpath;
+    bool needFullpathOriginal;
     bool blockExtract;
     bool supportNoGame;
     unsigned apiVersion;

@@ -379,6 +379,51 @@ static int SDLCALL test_LogLevel(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_ContentExtension(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "") == 0,
+        "GetContentExtension empty without content");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(NULL), "") == 0,
+        "GetContentExtension(NULL) empty");
+
+    SDL_strlcpy(lr->core.contentPath, "/path/to/game.sfc", sizeof(lr->core.contentPath));
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "sfc") == 0,
+        "GetContentExtension returns 'sfc' for game.sfc");
+
+    SDL_strlcpy(lr->core.contentPath, "/path/to/rom.nes", sizeof(lr->core.contentPath));
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "nes") == 0,
+        "GetContentExtension returns 'nes' for rom.nes");
+
+    SDL_strlcpy(lr->core.contentPath, "/path/to/noext", sizeof(lr->core.contentPath));
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "") == 0,
+        "GetContentExtension empty for file without extension");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL test_ExtensionInList(void *arg) {
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList("sfc", "sfc|smc|bs") == true,
+        "sfc found at start of list");
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList("smc", "sfc|smc|bs") == true,
+        "smc found in middle of list");
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList("bs", "sfc|smc|bs") == true,
+        "bs found at end of list");
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList("gb", "sfc|smc|bs") == false,
+        "gb not in list");
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList("sfc", "sfc") == true,
+        "sfc found in single-entry list");
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList("SFC", "sfc|smc") == true,
+        "Case-insensitive match");
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList(NULL, "sfc") == false,
+        "NULL ext returns false");
+    SDLTest_AssertCheck(SDL_Libretro_ExtensionInList("sfc", NULL) == false,
+        "NULL list returns false");
+
+    return TEST_COMPLETED;
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -398,6 +443,8 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
+    LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
+    LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
     NULL
 };
 
