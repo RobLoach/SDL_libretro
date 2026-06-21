@@ -1,12 +1,11 @@
 # SDL_libretro
 
-An [SDL3](https://libsdl.org/)-based [libretro](https://www.libretro.com/) frontend library. Spiritual successor to [raylib-libretro](https://github.com/RobLoach/raylib-libretro), redesigned with SDL3-idiomatic conventions.
+An [SDL3](https://libsdl.org/)-based [libretro](https://www.libretro.com/) frontend library.
 
 ## Features
 
 - Header-only C99 library
 - Context-based design (`SDL_Libretro*`)
-- Video with aspect-ratio-correct rendering (RGB565, XRGB8888, 0RGB1555)
 - Audio via SDL_AudioStream with dynamic rate control
 - Gamepad, keyboard, mouse, lightgun, and pointer input
 - Save states and SRAM
@@ -68,7 +67,7 @@ while (!SDL_Libretro_ShouldClose(lr)) {
 SDL_Libretro_Destroy(lr);
 ```
 
-See [example/SDL_libretro_basic.c](example/SDL_libretro_basic.c) for a complete working example with save states, rewind, fast-forward, and screenshots.
+See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example.
 
 ## Dependencies
 
