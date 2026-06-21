@@ -318,6 +318,10 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
     }
     lr->core.symbols.retro_reset();
 
+    // A reset is a timeline discontinuity: drop rewind history so a subsequent
+    // rewind can't walk back across it into the pre-reset timeline.
+    if (lr->rewindEnabled) SDL_Libretro_RewindClear(lr);
+
     // Drop the audio queued from before the reset so it doesn't continue into the reset.
     if (lr->core.audioStream) {
         SDL_ClearAudioStream(lr->core.audioStream);
@@ -385,11 +389,15 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         lr->lastTickNS = nowNS;
         double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
         lr->speedAccumulator += frameTime * (double)(-lr->speed);
+        // Mute audio and neutralize input for the throwaway re-runs that produce
+        // the displayed frames while scrubbing backward.
+        lr->rewindActive = true;
         while (lr->speedAccumulator >= framePeriod) {
             lr->speedAccumulator -= framePeriod;
-            if (!SDL_Libretro_RewindStep(lr)) break;
+            if (!SDL_Libretro_RewindStepState(lr)) break;
             lr->core.symbols.retro_run();
         }
+        lr->rewindActive = false;
         return;
     }
 

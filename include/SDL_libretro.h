@@ -145,8 +145,14 @@ size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, boo
 // Rewind
 
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval);
+bool SDL_Libretro_IsRewindEnabled(const SDL_Libretro* lr);
 bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr);
+bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
+void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr);
+size_t SDL_Libretro_GetRewindMemoryUsage(const SDL_Libretro* lr);
+void SDL_Libretro_SetRewindMemoryLimit(SDL_Libretro* lr, size_t maxBytes);
+size_t SDL_Libretro_GetRewindMemoryLimit(const SDL_Libretro* lr);
 
 // VFS
 
@@ -324,7 +330,8 @@ typedef struct SDL_LibretroCoreData {
 
 typedef struct SDL_LibretroRewindDelta {
     unsigned char* data;
-    size_t length;
+    size_t length;   /* used bytes of the encoded delta */
+    size_t capacity; /* allocated bytes of data (>= length); enables in-place reuse */
 } SDL_LibretroRewindDelta;
 
 struct SDL_Libretro {
@@ -357,6 +364,8 @@ struct SDL_Libretro {
     unsigned char* rewindScratch;
     SDL_LibretroRewindDelta* rewindEntries;
     size_t rewindSlotSize;
+    size_t rewindBytes;    /* live encoded delta bytes currently stored */
+    size_t rewindMaxBytes; /* memory budget for delta data; 0 = unbounded */
     unsigned rewindCapacity;
     unsigned rewindHead;
     unsigned rewindCount;
@@ -364,6 +373,7 @@ struct SDL_Libretro {
     unsigned rewindFrameCounter;
     bool rewindEnabled;
     bool rewindHasReference;
+    bool rewindActive; /* true only during a backward step's re-run (mutes audio, neutralizes input) */
 
     /* SDL gamepads (opened handles, indexed by port) */
     SDL_Gamepad* gamepads[16];
@@ -402,7 +412,9 @@ static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button
 static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap);
 static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen);
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr);
-static bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
+static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr);
+static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr);
+static void SDL_Libretro_RewindClear(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
 
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,

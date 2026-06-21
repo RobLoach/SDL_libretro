@@ -316,6 +316,10 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return 0;
 
+    // During a backward step's throwaway re-run, report neutral input so the
+    // discarded frame doesn't react to currently-held buttons.
+    if (lr->rewindActive) return 0;
+
     unsigned baseDevice = device & RETRO_DEVICE_MASK;
 
     switch (baseDevice) {

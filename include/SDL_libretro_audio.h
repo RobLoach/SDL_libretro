@@ -243,6 +243,9 @@ static void SDL_Libretro_AudioSample(int16_t left, int16_t right) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
+    // Mute the throwaway frames emitted while stepping backward.
+    if (lr->rewindActive) return;
+
     if (lr->core.singleSampleCount >= SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE) {
         SDL_Libretro_FlushSingleSamples(lr);
     }
@@ -256,6 +259,9 @@ static void SDL_Libretro_AudioSample(int16_t left, int16_t right) {
 static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || !lr->core.audioStream || frames == 0) return frames;
+
+    // Mute the throwaway frames emitted while stepping backward.
+    if (lr->rewindActive) return frames;
 
     if (lr->core.singleSampleCount > 0) {
         SDL_Libretro_FlushSingleSamples(lr);
