@@ -157,6 +157,22 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         }
     }
 
+    // Snap to integer multiples of core resolution
+    if (lr->scaleMode == SDL_LIBRETRO_SCALE_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
+        float coreW = (float)lr->core.width;
+        float coreH = (float)lr->core.height;
+        int scaleX = (int)(dst.w / coreW);
+        int scaleY = (int)(dst.h / coreH);
+        int scale = scaleX < scaleY ? scaleX : scaleY;
+        if (scale < 1) scale = 1;
+        float intW = coreW * (float)scale;
+        float intH = coreH * (float)scale;
+        dst.x += (dst.w - intW) * 0.5f;
+        dst.y += (dst.h - intH) * 0.5f;
+        dst.w = intW;
+        dst.h = intH;
+    }
+
     double angle = lr->core.rotation * 90.0;
     SDL_FPoint center = { dst.w * 0.5f, dst.h * 0.5f };
 
@@ -179,6 +195,14 @@ double SDL_Libretro_GetFPS(const SDL_Libretro* lr) {
 
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr) {
     return lr ? lr->core.rotation * 90 : 0;
+}
+
+void SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_LibretroScaleMode mode) {
+    if (lr) lr->scaleMode = mode;
+}
+
+SDL_LibretroScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr) {
+    return lr ? lr->scaleMode : SDL_LIBRETRO_SCALE_ASPECT;
 }
 
 #endif /* SDL_LIBRETRO_VIDEO_IMPL_ONCE */
