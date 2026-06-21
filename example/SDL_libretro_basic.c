@@ -79,7 +79,7 @@ int main(int argc, char* argv[]) {
 
             // Rewind
             else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_R && !event.key.repeat) {
-                SDL_Libretro_SetSpeed(lr, -2.0f);
+                SDL_Libretro_SetSpeed(lr, -0.8f);
             }
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_R) {
                 SDL_Libretro_SetSpeed(lr, 1.0f);

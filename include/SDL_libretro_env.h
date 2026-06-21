@@ -679,6 +679,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 45:
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
             if (!data) return false;
             struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;

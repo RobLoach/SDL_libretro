@@ -509,6 +509,9 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
             lr->core.drcAdjustment = 1.0f;
             lr->core.drcDriftAvg = 0.0;
             SDL_ClearAudioStream(lr->core.audioStream);
+            // Pitch and consume the reversed audio at the rewind speed, mirroring
+            // the forward path (which sets the ratio to speed * drcAdjustment).
+            SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, -speed);
         }
     } else {
         lr->speed = SDL_max(speed, 0.0f);
