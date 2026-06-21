@@ -253,6 +253,7 @@ typedef struct SDL_LibretroCoreData {
     // Video
     SDL_Texture* texture;
     SDL_Renderer* renderer;
+    SDL_FRect renderDstRect;
     bool videoReinitPending;
 
     // Audio
