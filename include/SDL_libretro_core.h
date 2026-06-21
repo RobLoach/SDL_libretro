@@ -277,13 +277,13 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "SDL_libretro: Audio unavailable: %s", SDL_GetError());
     }
 
+    SDL_Log("SDL_libretro: Game loaded (%ux%u @ %.2f fps, %.0f Hz)",
+        lr->core.width, lr->core.height, lr->core.fps, lr->core.sampleRate);
+
     // Allocate rewind buffer now that serialize size is known.
     if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
         SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
     }
-
-    SDL_Log("SDL_libretro: Game loaded (%ux%u @ %.2f fps, %.0f Hz)",
-        lr->core.width, lr->core.height, lr->core.fps, lr->core.sampleRate);
 
     return true;
 }
@@ -320,7 +320,7 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
 
     // A reset is a timeline discontinuity: drop rewind history so a subsequent
     // rewind can't walk back across it into the pre-reset timeline.
-    if (lr->rewindEnabled) SDL_Libretro_RewindClear(lr);
+    if (lr->rewindEnabled) SDL_Libretro_ClearRewind(lr);
 
     // Drop the audio queued from before the reset so it doesn't continue into the reset.
     if (lr->core.audioStream) {

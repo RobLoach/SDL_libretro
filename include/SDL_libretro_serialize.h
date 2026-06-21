@@ -72,9 +72,8 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
     if (!data) return false;
     bool ok = (size > 0) && lr->core.symbols.retro_unserialize(data, size);
     SDL_free(data);
-    // A load is a timeline discontinuity: drop rewind history so a subsequent
-    // rewind can't walk back across it into the pre-load timeline.
-    if (ok && lr->rewindEnabled) SDL_Libretro_RewindClear(lr);
+    // A load is a timeline discontinuity: drop rewind history so a subsequent rewind can't walk back across it into the pre-load timeline.
+    if (ok && lr->rewindEnabled) SDL_Libretro_ClearRewind(lr);
     return ok;
 }
 
@@ -98,7 +97,7 @@ bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio)
         void* sram = lr->core.symbols.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
         size_t sramSize = lr->core.symbols.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
         if (!sram || sramSize == 0) {
-            ok = true; /* core has no SRAM; nothing to save */
+            ok = true; // core has no SRAM; nothing to save
         } else {
             ok = (SDL_WriteIO(dst, sram, sramSize) == sramSize);
         }
@@ -115,7 +114,8 @@ bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file) {
 
     void* sram = lr->core.symbols.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
     size_t sramSize = lr->core.symbols.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
-    if (!sram || sramSize == 0) return true; /* nothing to save; don't create an empty file */
+    // Nothing to save, so don't create an empty file.
+    if (!sram || sramSize == 0) return true;
 
     SDL_IOStream* io = SDL_IOFromFile(file, "wb");
     if (!io) return false;
@@ -171,9 +171,7 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
 /**
  * Default ceiling on the encoded rewind history (delta data only), in bytes.
  *
- * Caps worst-case memory for cores with a large or incompressible serialize
- * size, where the frame-count limit alone could otherwise grow the buffer to
- * gigabytes. Override per build, or at runtime via SDL_Libretro_SetRewindMemoryLimit().
+ * Caps worst-case memory for cores with a large or incompressible serialize size, where the frame-count limit alone could otherwise grow the buffer to gigabytes. Override per build, or at runtime via SDL_Libretro_SetRewindMemoryLimit().
  */
 #define SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES ((size_t)256 * 1024 * 1024)
 #endif
@@ -256,21 +254,16 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
     return op;
 }
 
-
 /**
- * Rewind the decode state by applying a negative delta to the decoder cursor.
+ * Apply an encoded XOR delta to the `state` in place, reconstructing the prior state.
  *
- * Attempts to move the internal decode position/state backwards so that subsequent
- * decode operations will re-process bytes as if the specified delta had not been
- * consumed. This is used by the libretro serialization layer to undo partial
- * decode steps when restoring or validating saved state.
+ * Walks the delta produced by SDL_Libretro_RewindEncodeDelta(): skip codes advance past unchanged bytes, literal codes XOR their bytes into `state`. Given the newer serialized state in `state`, this yields the older one.
  *
+ * @returns true on success, false if the delta is malformed (a code runs past the
+ *          end of the delta or `state`).
  * @internal
  */
-static bool SDL_Libretro_RewindDecodeDelta(
-    const unsigned char* delta, size_t deltaLen,
-    unsigned char* state, size_t stateLen)
-{
+static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen) {
     size_t dp = 0, sp = 0;
     while (dp < deltaLen && sp < stateLen) {
         unsigned char tag = delta[dp++];
@@ -299,7 +292,7 @@ static bool SDL_Libretro_RewindDecodeDelta(
  * @param lr the libretro context.
  * @param enabled true to enable, false to disable.
  * @param bufferFrames maximum number of state snapshots to keep (0 for a sensible default of 300, roughly 5 seconds at 60 fps).
- * @param captureInterval capture a snapshot every N frames (0 for the default of 1, i.e. every frame).
+ * @param captureInterval capture a snapshot every N frames (0 for the default of 1, i.e. every frame). Provide a larger number in order to allow a longer rewind duration.
  * @returns true on success, false on allocation failure or if the core does not support serialization.
  */
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
@@ -312,32 +305,34 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
         return true;
     }
 
+    // Sane defaults.
     if (bufferFrames == 0) bufferFrames = 300;
     if (captureInterval == 0) captureInterval = 1;
+    if (lr->rewindMaxBytes == 0) lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
 
+    // Allow enabling rewind, when a core isn't loaded.
     if (!lr->core.loaded) {
         lr->rewindEnabled = true;
         lr->rewindCapacity = bufferFrames;
         lr->rewindCaptureInterval = captureInterval;
-        if (lr->rewindMaxBytes == 0) lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
         return true;
     }
 
-    // Cores that flag their state as incomplete warn the frontend not to rely on
-    // it for frame-sensitive features (netplay, rerecording). Rewind is one such
-    // feature, so honour the quirk by warning; the buffer is still built since a
-    // visually-imperfect rewind is usually preferable to none.
-    if (lr->core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_INCOMPLETE) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "SDL_libretro: Core reports incomplete serialization; rewind may be unreliable");
-    }
-
+    // Figure out how large the state needs to be.
     size_t slotSize = lr->core.symbols.retro_serialize_size();
     if (slotSize == 0) {
         SDL_SetError("SDL_libretro: Core does not support serialization");
+        lr->rewindEnabled = false;
         return false;
     }
 
+    // Cores that flag their state as incomplete warn the frontend not to rely on it for frame-sensitive features (netplay, rerecording).
+    if (lr->core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_INCOMPLETE) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+            "SDL_libretro: Core reports incomplete serialization, so rewind may be unreliable");
+    }
+
+    // Initialize the rewind slots.
     unsigned char* ref = (unsigned char*)SDL_calloc(1, slotSize);
     unsigned char* scratch = (unsigned char*)SDL_malloc(slotSize);
     SDL_LibretroRewindDelta* entries = (SDL_LibretroRewindDelta*)SDL_calloc(bufferFrames, sizeof(*entries));
@@ -346,15 +341,16 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
         SDL_free(scratch);
         SDL_free(entries);
         SDL_SetError("SDL_libretro: Failed to allocate rewind buffers");
+        lr->rewindEnabled = false;
         return false;
     }
 
+    // Set the initial state.
     lr->rewindReference = ref;
     lr->rewindScratch = scratch;
     lr->rewindEntries = entries;
     lr->rewindSlotSize = slotSize;
     lr->rewindBytes = 0;
-    if (lr->rewindMaxBytes == 0) lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
     lr->rewindCapacity = bufferFrames;
     lr->rewindCaptureInterval = captureInterval;
     lr->rewindHead = 0;
@@ -387,11 +383,10 @@ bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr) {
 }
 
 /**
- * Get the amount of rewind time remaining in the buffer.
+ * Calculates the amount of rewind time remaining in the buffer.
  *
  * @param lr the libretro context.
- * @returns seconds of gameplay that can still be rewound, or 0.0 if rewind
- *          is disabled or the buffer is empty.
+ * @returns seconds of gameplay that can still be rewound, or 0.0 if rewind is disabled or the buffer is empty.
  */
 double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr) {
     if (!lr || !lr->rewindEnabled || lr->rewindCount == 0) return 0.0;
@@ -402,8 +397,7 @@ double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr) {
 /**
  * Get the approximate memory currently held by the rewind buffer, in bytes.
  *
- * Includes the encoded delta history plus the fixed reference/scratch buffers
- * and the entry table. Useful for debug overlays and tuning the memory limit.
+ * Includes the encoded delta history plus the fixed reference/scratch buffers and the entry table. Useful for debug overlays and tuning the memory limit.
  *
  * @param lr the libretro context.
  * @returns total bytes held by the rewind subsystem, or 0 if disabled.
@@ -421,10 +415,7 @@ size_t SDL_Libretro_GetRewindMemoryUsage(const SDL_Libretro* lr) {
 /**
  * Set the maximum number of bytes of encoded delta history to retain.
  *
- * When the stored history exceeds this budget the oldest snapshots are dropped
- * until it fits (the most recent snapshot is always kept), trading rewind
- * duration for bounded memory. Applies immediately. Pass 0 to remove the byte
- * limit and rely solely on the frame-count capacity.
+ * When the stored history exceeds this budget the oldest snapshots are dropped until it fits (the most recent snapshot is always kept), trading rewind duration for bounded memory. Applies immediately. Pass 0 to remove the byte limit and rely solely on the frame-count capacity.
  *
  * @param lr the libretro context.
  * @param maxBytes the budget in bytes, or 0 for unbounded.
@@ -443,20 +434,6 @@ void SDL_Libretro_SetRewindMemoryLimit(SDL_Libretro* lr, size_t maxBytes) {
  */
 size_t SDL_Libretro_GetRewindMemoryLimit(const SDL_Libretro* lr) {
     return lr ? lr->rewindMaxBytes : 0;
-}
-
-/**
- * Discard all recorded rewind history without disabling rewind.
- *
- * Keeps the buffer allocated; the next captured frame starts a fresh reference.
- * Call this after a discontinuity (state load, reset) so rewinding can't walk
- * back across it into a stale timeline.
- *
- * @param lr the libretro context.
- */
-void SDL_Libretro_ClearRewind(SDL_Libretro* lr) {
-    if (!lr) return;
-    SDL_Libretro_RewindClear(lr);
 }
 
 /**
@@ -492,7 +469,7 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         lr->rewindReference = nref;
         lr->rewindScratch = nscr;
         lr->rewindSlotSize = curSize;
-        SDL_Libretro_RewindClear(lr);
+        SDL_Libretro_ClearRewind(lr);
     }
 
     if (!lr->core.symbols.retro_serialize(lr->rewindScratch, lr->rewindSlotSize)) return;
@@ -520,8 +497,7 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         slot->data = data;
         slot->capacity = encSize;
     }
-    SDL_Libretro_RewindEncodeDelta(
-        lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize, slot->data, encSize);
+    SDL_Libretro_RewindEncodeDelta(lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize, slot->data, encSize);
     slot->length = encSize;
 
     lr->rewindHead = (lr->rewindHead + 1) % lr->rewindCapacity;
@@ -534,6 +510,19 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     // Keep total delta memory under the configured budget by dropping the oldest
     // snapshots; this bounds worst-case memory for large/incompressible states.
     SDL_Libretro_RewindEvictToBudget(lr);
+}
+
+/**
+ * Free a single delta slot and deduct its allocation from the byte total.
+ *
+ * @internal
+ */
+static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDelta* entry) {
+    lr->rewindBytes -= entry->capacity;
+    SDL_free(entry->data);
+    entry->data = NULL;
+    entry->length = 0;
+    entry->capacity = 0;
 }
 
 /**
@@ -559,11 +548,7 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
         return false;
     }
 
-    lr->rewindBytes -= entry->capacity;
-    SDL_free(entry->data);
-    entry->data = NULL;
-    entry->length = 0;
-    entry->capacity = 0;
+    SDL_Libretro_RewindFreeEntry(lr, entry);
 
     return lr->core.symbols.retro_unserialize(lr->rewindReference, lr->rewindSlotSize);
 }
@@ -605,22 +590,23 @@ static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr) {
 
     while (lr->rewindBytes > lr->rewindMaxBytes && lr->rewindCount > 1) {
         unsigned tail = (lr->rewindHead + lr->rewindCapacity - lr->rewindCount) % lr->rewindCapacity;
-        SDL_LibretroRewindDelta* entry = &lr->rewindEntries[tail];
-        lr->rewindBytes -= entry->capacity;
-        SDL_free(entry->data);
-        entry->data = NULL;
-        entry->length = 0;
-        entry->capacity = 0;
+        SDL_Libretro_RewindFreeEntry(lr, &lr->rewindEntries[tail]);
         lr->rewindCount--;
     }
 }
 
 /**
- * Discard all recorded history, keeping the buffer allocated.
+ * Discard all recorded rewind history without disabling rewind.
  *
- * @internal
+ * Keeps the buffer allocated; the next captured frame starts a fresh reference.
+ * Called both by the public API and internally after a discontinuity (state
+ * load, reset, serialize-size change) so rewinding can't walk back across it
+ * into a stale timeline.
+ *
+ * @param lr the libretro context.
  */
-static void SDL_Libretro_RewindClear(SDL_Libretro* lr) {
+void SDL_Libretro_ClearRewind(SDL_Libretro* lr) {
+    if (!lr) return;
     if (lr->rewindEntries) {
         for (unsigned i = 0; i < lr->rewindCapacity; i++) {
             SDL_free(lr->rewindEntries[i].data);
@@ -642,23 +628,17 @@ static void SDL_Libretro_RewindClear(SDL_Libretro* lr) {
  * @internal
  */
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr) {
-    if (lr->rewindEntries) {
-        for (unsigned i = 0; i < lr->rewindCapacity; i++) {
-            SDL_free(lr->rewindEntries[i].data);
-        }
-        SDL_free(lr->rewindEntries);
-        lr->rewindEntries = NULL;
-    }
+    // Clear the rewind data.
+    SDL_Libretro_ClearRewind(lr);
+
+    // Free all of the allocated memory.
+    SDL_free(lr->rewindEntries);
+    lr->rewindEntries = NULL;
     SDL_free(lr->rewindReference);
     lr->rewindReference = NULL;
     SDL_free(lr->rewindScratch);
     lr->rewindScratch = NULL;
     lr->rewindSlotSize = 0;
-    lr->rewindBytes = 0;
-    lr->rewindHead = 0;
-    lr->rewindCount = 0;
-    lr->rewindFrameCounter = 0;
-    lr->rewindHasReference = false;
     lr->rewindActive = false;
 }
 

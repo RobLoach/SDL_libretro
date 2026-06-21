@@ -413,8 +413,8 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
 static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen);
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr);
 static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr);
+static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDelta* entry);
 static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr);
-static void SDL_Libretro_RewindClear(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
 
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
