@@ -30,6 +30,7 @@ int main(int argc, char* argv[]) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");
+    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
@@ -76,10 +77,12 @@ int main(int argc, char* argv[]) {
                 SDL_Libretro_SetSpeed(lr, 1.0f);
             }
 
-            // Reset
+            // Rewind
+            else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_R && !event.key.repeat) {
+                SDL_Libretro_SetSpeed(lr, -1.0f);
+            }
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_R) {
-                SDL_Libretro_Reset(lr);
-                SDL_Libretro_SetMessage(lr, "Reset", 2.0f);
+                SDL_Libretro_SetSpeed(lr, 1.0f);
             }
 
             // Volume
@@ -100,11 +103,13 @@ int main(int argc, char* argv[]) {
             // Save State
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F2) {
                 SDL_Libretro_SaveState(lr, "save.sav");
+                SDL_Libretro_SetMessage(lr, "State Saved", 3.0);
             }
 
             // Load State
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F4) {
                 SDL_Libretro_LoadState(lr, "save.sav");
+                SDL_Libretro_SetMessage(lr, "State Loaded", 3.0);
             }
 
             // Pass all events to SDL_Libretro.
@@ -124,6 +129,14 @@ int main(int argc, char* argv[]) {
         if (message) {
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             SDL_RenderDebugText(renderer, 19.0f, 19.0f, message);
+        }
+        else if (SDL_Libretro_IsRewinding(lr)) {
+            // Display how much rewind time is left if they're rewinding.
+            float remaining = SDL_Libretro_GetRewindRemaining(lr);
+            char buf[64];
+            SDL_snprintf(buf, sizeof(buf), "REWIND: %.1fs remaining", remaining);
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderDebugText(renderer, 19.0f, 39.0f, buf);
         }
 
         SDL_RenderPresent(renderer);

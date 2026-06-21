@@ -56,6 +56,31 @@ static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const float* samples, int 
 }
 
 /**
+ * Convert and queue int16 stereo frames in reverse frame order.
+ *
+ * Used while rewinding: each captured frame's audio is emitted back-to-front,
+ * and since frames are replayed newest-to-oldest the result is clean
+ * time-reversed audio (the classic "rewind" sound) rather than forward chirps.
+ * Chunked through the same fixed float scratch as the forward path.
+ *
+ * @internal
+ */
+static void SDL_Libretro_QueueAudioReversed(SDL_Libretro* lr, const int16_t* data, size_t frames) {
+    float convBuf[512 * 2];
+    size_t remaining = frames;
+    while (remaining > 0) {
+        size_t chunk = remaining > 512 ? 512 : remaining;
+        for (size_t i = 0; i < chunk; i++) {
+            size_t src = remaining - 1 - i; /* walk backward from the batch tail */
+            convBuf[i * 2]     = (float)data[src * 2]     * (1.0f / 32768.0f);
+            convBuf[i * 2 + 1] = (float)data[src * 2 + 1] * (1.0f / 32768.0f);
+        }
+        SDL_Libretro_QueueAudio(lr, convBuf, (int)(chunk * sizeof(float) * 2));
+        remaining -= chunk;
+    }
+}
+
+/**
  * Update the audio stream's consumption rate using dynamic-rate-control (DRC).
  *
  * The frequency ratio scales how fast SDL consumes queued input: `speed` makes
@@ -261,6 +286,12 @@ static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) 
         SDL_Libretro_FlushSingleSamples(lr);
     }
 
+    // While rewinding, emit this frame's audio reversed for a clean rewind sound.
+    if (lr->rewindActive) {
+        SDL_Libretro_QueueAudioReversed(lr, data, frames);
+        return frames;
+    }
+
     float convBuf[512 * 2];
     size_t written = 0;
     while (written < frames) {
@@ -280,6 +311,13 @@ static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) 
 
 static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
     if (!lr || lr->core.singleSampleCount == 0) return;
+
+    // While rewinding, emit the buffered frames reversed for a clean rewind sound.
+    if (lr->rewindActive) {
+        SDL_Libretro_QueueAudioReversed(lr, lr->core.singleSampleBuffer, lr->core.singleSampleCount);
+        lr->core.singleSampleCount = 0;
+        return;
+    }
 
     float convBuf[SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
     for (size_t i = 0; i < lr->core.singleSampleCount * 2; i++) {

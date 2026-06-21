@@ -470,7 +470,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
             double fps = lr->core.fps > 0.0 ? lr->core.fps : 60.0;
             float speed = lr->speed;
-            if (speed > 1.0f) {
+            if (speed == 0.0f) {
+                throttle->mode = RETRO_THROTTLE_FRAME_STEPPING;
+                throttle->rate = 0.0f;
+            }
+            else if (speed > 1.0f) {
                 throttle->mode = RETRO_THROTTLE_FAST_FORWARD;
                 throttle->rate = (float)(fps * speed);
             }
@@ -480,7 +484,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             }
             else if (speed < 0.0f) {
                 throttle->mode = RETRO_THROTTLE_REWINDING;
-                throttle->rate = (float)(fps * speed);
+                throttle->rate = (float)(fps * -speed);
             }
             else {
                 throttle->mode = RETRO_THROTTLE_NONE;
@@ -675,6 +679,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 45:
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
             if (!data) return false;
             struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;

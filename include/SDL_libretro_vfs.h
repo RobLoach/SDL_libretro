@@ -29,8 +29,7 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, uns
     (void)hints;
     if (!path) return NULL;
 
-    /* The VFS contract requires open() to fail on a directory; SDL_IOFromFile
-     * may otherwise succeed in opening one for read on some platforms. */
+    // The VFS contract requires open() to fail on a directory; SDL_IOFromFile may otherwise succeed in opening one for read on some platforms.
     SDL_PathInfo pathInfo;
     if (SDL_GetPathInfo(path, &pathInfo) && pathInfo.type == SDL_PATHTYPE_DIRECTORY) return NULL;
 

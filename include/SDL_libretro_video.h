@@ -5,7 +5,11 @@
  * SDL_libretro - video subsystem
  */
 
-
+/**
+ * Maps a libretro pixel format over to an SDL_PixelFormat.
+ *
+ * @internal
+ */
 static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt) {
     switch (fmt) {
         case RETRO_PIXEL_FORMAT_XRGB8888: return SDL_PIXELFORMAT_XRGB8888;
@@ -15,6 +19,11 @@ static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt
     }
 }
 
+/**
+ * Initialize the libretro video system.
+ *
+ * @internal
+ */
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     if (!lr || !lr->core.renderer) return false;
 
@@ -42,6 +51,11 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     return true;
 }
 
+/**
+ * Cleans up any video memory reserved for the core.
+ *
+ * @internal
+ */
 static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
     if (!lr) return;
 

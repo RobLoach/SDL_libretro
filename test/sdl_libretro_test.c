@@ -116,9 +116,9 @@ static int SDLCALL test_VolumeSpeed(void *arg) {
     SDL_Libretro_SetSpeed(lr, 2.0f);
     SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 2.0f, "Speed set to 2.0");
     SDL_Libretro_SetSpeed(lr, 0.0f);
-    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.1f, "Speed clamped to 0.1 from 0.0");
+    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.0f, "Speed 0.0 accepted (paused)");
     SDL_Libretro_SetSpeed(lr, -5.0f);
-    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.1f, "Speed clamped to 0.1 from -5.0");
+    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.0f, "Speed clamped to 0.0 from -5.0");
     SDL_Libretro_SetSpeed(lr, 10.0f);
     SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 10.0f, "Speed set to 10.0 (no upper clamp)");
     SDL_Libretro_SetSpeed(NULL, 2.0f);
@@ -176,6 +176,106 @@ static int SDLCALL test_Options(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_Rewind(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(lr) == false, "Not rewinding on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, true, 600, 2) == true, "Enable rewind before core load");
+    SDLTest_AssertCheck(lr->rewindEnabled == true, "Rewind enabled flag set");
+    SDLTest_AssertCheck(lr->rewindCapacity == 600, "Rewind capacity stored");
+    SDLTest_AssertCheck(lr->rewindCaptureInterval == 2, "Rewind capture interval stored");
+    SDLTest_AssertCheck(lr->rewindReference == NULL, "Buffer not allocated without core");
+
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, false, 0, 0) == true, "Disable rewind");
+    SDLTest_AssertCheck(lr->rewindEnabled == false, "Rewind disabled");
+
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(NULL, true, 100, 1) == false, "SetRewindEnabled(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(NULL) == false, "IsRewinding(NULL) false");
+
+    // Negative speed only accepted when rewind is enabled.
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(lr->speed == 0.0f, "Negative speed clamped without rewind");
+    SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(lr->speed == -1.0f, "Negative speed accepted with rewind");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
+// Rewind
+
+/**
+ * Minimal stub core: serialize/unserialize just copy a small "RAM"
+ * buffer, so the rewind capture/step path can run without loading
+ * a real core.
+ */
+static unsigned char g_rewindState[32];
+
+static void rewind_stub_run(void) {
+    // Nothing.
+}
+
+static size_t rewind_stub_size(void) {
+    return sizeof(g_rewindState);
+}
+
+static bool rewind_stub_serialize(void* data, size_t size) {
+    if (size < sizeof(g_rewindState)) return false;
+    SDL_memcpy(data, g_rewindState, sizeof(g_rewindState));
+    return true;
+}
+
+static bool rewind_stub_unserialize(const void* data, size_t size) {
+    if (size < sizeof(g_rewindState)) return false;
+    SDL_memcpy(g_rewindState, data, sizeof(g_rewindState));
+    return true;
+}
+
+static int SDLCALL test_RewindBuffer(void *arg) {
+    // Codec: encoding then decoding a delta reconstructs the older state.
+    unsigned char older[32], newer[32], work[32], enc[64];
+    SDL_memset(older, 0xA5, sizeof(older));
+    SDL_memcpy(newer, older, sizeof(newer));
+    newer[0] = 0x00; newer[31] = 0xFF; // differ at both ends
+    size_t encSize = SDL_Libretro_RewindEncodeDelta(newer, older, sizeof(newer), enc, sizeof(enc));
+    SDL_memcpy(work, newer, sizeof(work));
+    bool decoded = SDL_Libretro_RewindDecodeDelta(enc, encSize, work, sizeof(work));
+    SDLTest_AssertCheck(decoded && SDL_memcmp(work, older, sizeof(work)) == 0,
+        "Codec delta round-trip reconstructs the previous state");
+
+    // End-to-end: capture a few states through a stub core, then rewind.
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    lr->core.loaded = true;
+    lr->core.fps = 60.0;
+    lr->core.symbols.retro_run = rewind_stub_run;
+    lr->core.symbols.retro_serialize_size = rewind_stub_size;
+    lr->core.symbols.retro_serialize = rewind_stub_serialize;
+    lr->core.symbols.retro_unserialize = rewind_stub_unserialize;
+
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, true, 16, 1) == true, "Enable rewind with stub core");
+
+    // State k is all-bytes==k. First capture only seeds the reference.
+    for (int k = 0; k < 4; k++) {
+        SDL_memset(g_rewindState, (unsigned char)k, sizeof(g_rewindState));
+        SDL_Libretro_RewindCapture(lr);
+    }
+    SDLTest_AssertCheck(lr->rewindCount == 3, "Three deltas captured");
+
+    SDL_Libretro_RewindStep(lr);
+    SDLTest_AssertCheck(g_rewindState[0] == 2, "Step back restores the previous state");
+    SDL_Libretro_RewindStep(lr);
+    SDLTest_AssertCheck(g_rewindState[0] == 1, "Step back again restores the earlier state");
+
+    SDL_Libretro_ClearRewind(lr);
+    SDLTest_AssertCheck(lr->rewindCount == 0, "ClearRewind empties the buffer");
+
+    SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
+    lr->core.loaded = false; /* let Destroy skip the unset core teardown symbols */
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_LogLevel(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -208,6 +308,8 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
+    LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
+    LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     NULL
 };

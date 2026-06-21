@@ -177,6 +177,19 @@ bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
     return lr && lr->core.loaded;
 }
 
+/**
+ * Copy the file name portion of a path into a caller-provided buffer.
+ *
+ * The leading directory components and (optionally) the trailing extension
+ * are stripped. Useful for deriving save/state file names from a content path.
+ *
+ * \param dst the destination buffer to fill (always null-terminated).
+ * \param dstSize the size of `dst` in bytes.
+ * \param path the source path, may be NULL.
+ * \param withExtension if true, keep the file extension; if false, strip it.
+ * \returns the length of the resulting string in `dst`, excluding the null
+ *          terminator (0 on invalid arguments).
+ */
 size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension) {
     if (!dst || dstSize == 0) return 0;
     dst[0] = '\0';
@@ -267,6 +280,11 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     SDL_Log("SDL_libretro: Game loaded (%ux%u @ %.2f fps, %.0f Hz)",
         lr->core.width, lr->core.height, lr->core.fps, lr->core.sampleRate);
 
+    // Allocate rewind buffer now that serialize size is known.
+    if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
+        SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
+    }
+
     return true;
 }
 
@@ -280,6 +298,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
         lr->core.contentName[0] = '\0';
     }
 
+    SDL_Libretro_RewindFree(lr);
     SDL_Libretro_CloseAudio(lr);
     SDL_Libretro_CloseVideo(lr);
 }
@@ -298,6 +317,10 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
         return false;
     }
     lr->core.symbols.retro_reset();
+
+    // A reset is a timeline discontinuity: drop rewind history so a subsequent
+    // rewind can't walk back across it into the pre-reset timeline.
+    if (lr->rewindEnabled) SDL_Libretro_ClearRewind(lr);
 
     // Drop the audio queued from before the reset so it doesn't continue into the reset.
     if (lr->core.audioStream) {
@@ -329,6 +352,9 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
     // Run the frame.
     lr->core.symbols.retro_run();
 
+    // Capture rewind state after each forward tick.
+    SDL_Libretro_RewindCapture(lr);
+
     // Only pump the core's async-audio callback when audio is actually up.
     if (lr->core.audioStream && lr->core.audio_callback.callback) {
         lr->core.audio_callback.callback();
@@ -348,6 +374,31 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     if (lr->core.audioReinitPending) {
         lr->core.audioReinitPending = false;
         SDL_Libretro_InitAudio(lr);
+    }
+
+    // Paused: do nothing when speed is zero.
+    if (lr->speed == 0.0f) return;
+
+    // Rewind mode: step backwards when speed is negative.
+    if (lr->speed < 0.0f && lr->rewindEnabled) {
+        Uint64 nowNS = SDL_GetTicksNS();
+        if (lr->lastTickNS == 0) {
+            lr->lastTickNS = nowNS;
+        }
+        double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9;
+        lr->lastTickNS = nowNS;
+        double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
+        lr->speedAccumulator += frameTime * (double)(-lr->speed);
+        // Mute audio and neutralize input for the throwaway re-runs that produce
+        // the displayed frames while scrubbing backward.
+        lr->rewindActive = true;
+        while (lr->speedAccumulator >= framePeriod) {
+            lr->speedAccumulator -= framePeriod;
+            if (!SDL_Libretro_RewindStepState(lr)) break;
+            lr->core.symbols.retro_run();
+        }
+        lr->rewindActive = false;
+        return;
     }
 
     // Keep audio consumption locked to speed + nudge the queue toward its target
@@ -451,10 +502,22 @@ float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
 
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     if (!lr) return;
-    lr->speed = SDL_max(speed, 0.1f);
 
-    // Reset DRC so the next steady state re-settles from a neutral ratio, and apply the new rate immediately for instant pitch response.
-    if (lr->core.audioStream) {
+    if (speed < 0.0f && lr->rewindEnabled) {
+        lr->speed = speed;
+        if (lr->core.audioStream) {
+            lr->core.drcAdjustment = 1.0f;
+            lr->core.drcDriftAvg = 0.0;
+            SDL_ClearAudioStream(lr->core.audioStream);
+            // Pitch and consume the reversed audio at the rewind speed, mirroring
+            // the forward path (which sets the ratio to speed * drcAdjustment).
+            SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, -speed);
+        }
+    } else {
+        lr->speed = SDL_max(speed, 0.0f);
+    }
+
+    if (lr->core.audioStream && lr->speed > 0.0f) {
         lr->core.drcAdjustment = 1.0f;
         lr->core.drcDriftAvg = 0.0;
         SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->speed * lr->core.drcAdjustment);
