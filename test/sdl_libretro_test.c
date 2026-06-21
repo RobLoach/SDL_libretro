@@ -276,6 +276,90 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_LoadCore(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, "nonexistent.so") == false, "LoadCore fails for missing file");
+    SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == false, "Not ready after failed load");
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds for test_core");
+    SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == true, "Core is ready after load");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreName(lr), "test_core") == 0, "Core name is test_core");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreVersion(lr), "1.0") == 0, "Core version is 1.0");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "txt") == 0, "Valid extensions is txt");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_LoadGame(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game is ready after load");
+
+    int w = 0, h = 0;
+    SDL_Libretro_GetSize(lr, &w, &h);
+    SDLTest_AssertCheck(w == 320 && h == 240, "Core reports 320x240, got %dx%d", w, h);
+    SDLTest_AssertCheck(SDL_Libretro_GetFPS(lr) == 60.0, "FPS is 60.0");
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture created");
+    SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 128, "Serialize size is 128");
+
+    SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_RunFrame(lr);
+
+    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == true, "SaveState succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_LoadGameNoContent(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL, renderer) == true, "LoadGame succeeds with NULL content");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready with no content");
+
+    SDL_Libretro_RunFrame(lr);
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LogLevel(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -311,6 +395,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
+    LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
+    LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
+    LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
     NULL
 };
 

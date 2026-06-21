@@ -157,6 +157,8 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         }
     }
 
+    lr->core.renderDstRect = dst;
+
     double angle = lr->core.rotation * 90.0;
     SDL_FPoint center = { dst.w * 0.5f, dst.h * 0.5f };
 
