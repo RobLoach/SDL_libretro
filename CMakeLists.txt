@@ -32,8 +32,17 @@ endif()
 option(SDL_LIBRETRO_BUILD_TESTS "Build unit tests" ON)
 if(SDL_LIBRETRO_BUILD_TESTS)
     enable_testing()
+
+    add_library(test_core SHARED test/test_core.c)
+    target_include_directories(test_core PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include)
+    set_target_properties(test_core PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
+
     add_executable(sdl_libretro_test test/sdl_libretro_test.c)
     target_link_libraries(sdl_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
+    target_compile_definitions(sdl_libretro_test PRIVATE
+        TEST_CORE_PATH="$<TARGET_FILE:test_core>"
+        TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt")
     add_test(NAME sdl_libretro_test COMMAND sdl_libretro_test)
 endif()
 
