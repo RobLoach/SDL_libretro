@@ -228,6 +228,15 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         // Get the Content Name (base name without extension).
         SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), gamePath, false);
 
+        // Apply content info overrides based on file extension.
+        const char* ext = SDL_Libretro_GetContentExtension(lr);
+        for (unsigned i = 0; i < lr->core.contentInfoOverrideCount; i++) {
+            if (SDL_Libretro_ExtensionInList(ext, lr->core.contentInfoOverrideExts[i])) {
+                lr->core.needFullpath = lr->core.contentInfoOverrideNeedFullpath[i];
+                break;
+            }
+        }
+
         gameInfo.path = gamePath;
 
         if (!lr->core.needFullpath) {
@@ -549,6 +558,26 @@ const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr) {
 
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.validExtensions : "";
+}
+
+const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr) {
+    if (!lr || lr->core.contentPath[0] == '\0') return "";
+    const char* dot = SDL_strrchr(lr->core.contentPath, '.');
+    return dot ? dot + 1 : "";
+}
+
+static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) {
+    if (!ext || !pipeList) return false;
+    size_t extLen = SDL_strlen(ext);
+    const char* p = pipeList;
+    while (*p) {
+        const char* sep = SDL_strchr(p, '|');
+        size_t segLen = sep ? (size_t)(sep - p) : SDL_strlen(p);
+        if (segLen == extLen && SDL_strncasecmp(p, ext, extLen) == 0) return true;
+        if (!sep) break;
+        p = sep + 1;
+    }
+    return false;
 }
 
 /* OSD */

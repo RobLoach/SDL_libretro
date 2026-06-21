@@ -137,6 +137,7 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
+const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr);
 
 // Utilities
 
@@ -416,6 +417,8 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDelta* entry);
 static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
+
+static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList);
 
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
     const char* label, const char* valuesList, const char* displayList,
