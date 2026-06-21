@@ -8,6 +8,21 @@ project(SDL_libretro
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(SDL3 REQUIRED)
 
+# Core downloads for development/testing
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    option(SDL_LIBRETRO_DOWNLOAD_CORES "Download libretro cores for testing" ON)
+else()
+    option(SDL_LIBRETRO_DOWNLOAD_CORES "Download libretro cores for testing" OFF)
+endif()
+
+if(NOT DEFINED CORES_DIR)
+    set(CORES_DIR "${CMAKE_BINARY_DIR}/cores")
+endif()
+
+if(SDL_LIBRETRO_DOWNLOAD_CORES)
+    include(DownloadCores)
+endif()
+
 # Header-only (INTERFACE) library. Consumers define SDL_LIBRETRO_IMPLEMENTATION
 # in exactly one translation unit before including <SDL_libretro.h>.
 add_library(SDL_libretro INTERFACE)
