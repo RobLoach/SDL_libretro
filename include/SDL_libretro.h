@@ -186,6 +186,7 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
 #define SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES 16
 #define SDL_LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN 256
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
+#define SDL_LIBRETRO_SENSOR_PORTS 4
 
 typedef struct SDL_LibretroCoreSymbols {
     SDL_SharedObject* handle;
@@ -310,6 +311,12 @@ typedef struct SDL_LibretroCoreData {
     float rumbleStrong[SDL_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_RUMBLE_PORTS];
 
+    // Sensors
+    SDL_Sensor* sensorAccel[SDL_LIBRETRO_SENSOR_PORTS];
+    SDL_Sensor* sensorGyro[SDL_LIBRETRO_SENSOR_PORTS];
+    float sensorAccelData[SDL_LIBRETRO_SENSOR_PORTS][3];
+    float sensorGyroData[SDL_LIBRETRO_SENSOR_PORTS][3];
+
     /* Disk control */
     struct retro_disk_control_ext_callback disk_control;
     bool diskControlActive;
@@ -409,6 +416,10 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
+
+static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action action, unsigned rate);
+static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id);
+static void SDL_Libretro_CloseSensors(SDL_Libretro* lr);
 
 static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap);
 static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen);

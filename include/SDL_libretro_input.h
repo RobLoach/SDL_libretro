@@ -576,4 +576,96 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
     return true;
 }
 
+// Sensors
+
+static SDL_Sensor* SDL_Libretro_OpenSensorByType(SDL_SensorType type) {
+    int count = 0;
+    SDL_SensorID* sensors = SDL_GetSensors(&count);
+    if (!sensors) return NULL;
+    SDL_Sensor* result = NULL;
+    for (int i = 0; i < count; i++) {
+        if (SDL_GetSensorTypeForID(sensors[i]) == type) {
+            result = SDL_OpenSensor(sensors[i]);
+            break;
+        }
+    }
+    SDL_free(sensors);
+    return result;
+}
+
+static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action action, unsigned rate) {
+    SDL_Libretro* lr = SDL_Libretro_active;
+    if (!lr || port >= SDL_LIBRETRO_SENSOR_PORTS) return false;
+    (void)rate;
+
+    switch (action) {
+        case RETRO_SENSOR_ACCELEROMETER_ENABLE:
+            if (!lr->core.sensorAccel[port]) {
+                lr->core.sensorAccel[port] = SDL_Libretro_OpenSensorByType(SDL_SENSOR_ACCEL);
+            }
+            return lr->core.sensorAccel[port] != NULL;
+        case RETRO_SENSOR_ACCELEROMETER_DISABLE:
+            if (lr->core.sensorAccel[port]) {
+                SDL_CloseSensor(lr->core.sensorAccel[port]);
+                lr->core.sensorAccel[port] = NULL;
+            }
+            SDL_memset(lr->core.sensorAccelData[port], 0, sizeof(lr->core.sensorAccelData[port]));
+            return true;
+        case RETRO_SENSOR_GYROSCOPE_ENABLE:
+            if (!lr->core.sensorGyro[port]) {
+                lr->core.sensorGyro[port] = SDL_Libretro_OpenSensorByType(SDL_SENSOR_GYRO);
+            }
+            return lr->core.sensorGyro[port] != NULL;
+        case RETRO_SENSOR_GYROSCOPE_DISABLE:
+            if (lr->core.sensorGyro[port]) {
+                SDL_CloseSensor(lr->core.sensorGyro[port]);
+                lr->core.sensorGyro[port] = NULL;
+            }
+            SDL_memset(lr->core.sensorGyroData[port], 0, sizeof(lr->core.sensorGyroData[port]));
+            return true;
+        default:
+            return false;
+    }
+}
+
+static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
+    SDL_Libretro* lr = SDL_Libretro_active;
+    if (!lr || port >= SDL_LIBRETRO_SENSOR_PORTS) return 0.0f;
+
+    if (id <= RETRO_SENSOR_ACCELEROMETER_Z && lr->core.sensorAccel[port]) {
+        float data[3];
+        if (SDL_GetSensorData(lr->core.sensorAccel[port], data, 3)) {
+            lr->core.sensorAccelData[port][0] = data[0] / SDL_STANDARD_GRAVITY;
+            lr->core.sensorAccelData[port][1] = data[1] / SDL_STANDARD_GRAVITY;
+            lr->core.sensorAccelData[port][2] = data[2] / SDL_STANDARD_GRAVITY;
+        }
+        return lr->core.sensorAccelData[port][id - RETRO_SENSOR_ACCELEROMETER_X];
+    }
+
+    if (id >= RETRO_SENSOR_GYROSCOPE_X && id <= RETRO_SENSOR_GYROSCOPE_Z && lr->core.sensorGyro[port]) {
+        float data[3];
+        if (SDL_GetSensorData(lr->core.sensorGyro[port], data, 3)) {
+            lr->core.sensorGyroData[port][0] = data[0];
+            lr->core.sensorGyroData[port][1] = data[1];
+            lr->core.sensorGyroData[port][2] = data[2];
+        }
+        return lr->core.sensorGyroData[port][id - RETRO_SENSOR_GYROSCOPE_X];
+    }
+
+    return 0.0f;
+}
+
+static void SDL_Libretro_CloseSensors(SDL_Libretro* lr) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_SENSOR_PORTS; i++) {
+        if (lr->core.sensorAccel[i]) {
+            SDL_CloseSensor(lr->core.sensorAccel[i]);
+            lr->core.sensorAccel[i] = NULL;
+        }
+        if (lr->core.sensorGyro[i]) {
+            SDL_CloseSensor(lr->core.sensorGyro[i]);
+            lr->core.sensorGyro[i] = NULL;
+        }
+    }
+}
+
 #endif /* SDL_LIBRETRO_INPUT_IMPL_ONCE */

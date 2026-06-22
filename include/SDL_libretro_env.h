@@ -696,8 +696,15 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE: {
+            if (!data) return false;
+            struct retro_sensor_interface* sensor = (struct retro_sensor_interface*)data;
+            sensor->set_sensor_state = SDL_Libretro_SetSensorState;
+            sensor->get_sensor_input = SDL_Libretro_GetSensorInput;
+            return true;
+        }
+
         /* Unimplemented - return false */
-        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
         case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
         case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
         case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
