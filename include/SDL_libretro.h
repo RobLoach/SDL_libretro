@@ -42,6 +42,38 @@ extern "C" {
 
 typedef struct SDL_Libretro SDL_Libretro;
 
+// Core Info (.info file parsing)
+
+typedef struct SDL_Libretro_CoreInfo {
+    char* display_name;
+    char* corename;
+    char* authors;
+    char* supported_extensions;
+    char* license;
+    char* permissions;
+    char* display_version;
+    char* categories;
+    char* manufacturer;
+    char* systemname;
+    char* systemid;
+    char* database;
+    char* description;
+    char* notes;
+    char* required_hw_api;
+    unsigned firmware_count;
+    bool supports_no_game;
+    bool savestate;
+    bool cheats;
+    bool hw_render;
+    bool needs_fullpath;
+    bool disk_control;
+    bool is_experimental;
+} SDL_Libretro_CoreInfo;
+
+bool SDL_Libretro_LoadCoreInfo(const char* path, SDL_Libretro_CoreInfo* out);
+bool SDL_Libretro_LoadCoreInfo_IO(SDL_IOStream* io, SDL_Libretro_CoreInfo* out, bool closeio);
+void SDL_Libretro_FreeCoreInfo(SDL_Libretro_CoreInfo* info);
+
 // Libretro Instance
 
 SDL_Libretro* SDL_Libretro_Create(void);
@@ -429,6 +461,7 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 #include "SDL_libretro_options.h"
 #include "SDL_libretro_serialize.h"
 #include "SDL_libretro_vfs.h"
+#include "SDL_libretro_info.h"
 #include "SDL_libretro_env.h"
 #include "SDL_libretro_core.h"
 
