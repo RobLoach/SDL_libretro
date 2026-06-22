@@ -247,6 +247,7 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     // End-to-end: capture a few states through a stub core, then rewind.
     SDL_Libretro* lr = SDL_Libretro_Create();
     lr->core.loaded = true;
+    lr->core.gameLoaded = true;
     lr->core.fps = 60.0;
     lr->core.symbols.retro_run = rewind_stub_run;
     lr->core.symbols.retro_serialize_size = rewind_stub_size;
@@ -272,6 +273,7 @@ static int SDLCALL test_RewindBuffer(void *arg) {
 
     SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
     lr->core.loaded = false; /* let Destroy skip the unset core teardown symbols */
+    lr->core.gameLoaded = false;
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }
@@ -291,6 +293,18 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreName(lr), "test_core") == 0, "Core name is test_core");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreVersion(lr), "1.0") == 0, "Core version is 1.0");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "txt") == 0, "Valid extensions is txt");
+
+    // With a core loaded but no game, game-state operations no-op safely.
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready with core but no game");
+    SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 0, "GetStateSize 0 without a game");
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, NULL) == NULL, "GetMemoryData NULL without a game");
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapCount(lr) == 0, "No memory map without a game");
+    SDLTest_AssertCheck(SDL_Libretro_Reset(lr) == false, "Reset fails without a game");
+    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "should_not_exist.sav") == false, "SaveState fails without a game");
+
+    // The LoadCore content-name default makes GetSavePath usable before a game loads.
+    char buf[256];
+    SDLTest_AssertCheck(SDL_Libretro_GetSavePath(lr, ".srm", buf, sizeof(buf)) > 0, "GetSavePath uses core name before a game loads");
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -351,6 +365,131 @@ static int SDLCALL test_LoadGameNoContent(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready with no content");
 
     SDL_Libretro_RunFrame(lr);
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_Memory(void *arg) {
+#if !defined(TEST_CORE_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // NULL / no-core safety.
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryData(NULL, RETRO_MEMORY_SAVE_RAM, NULL) == NULL, "GetMemoryData(NULL) NULL");
+    SDLTest_AssertCheck(SDL_Libretro_SetMemoryData(NULL, RETRO_MEMORY_SAVE_RAM, "x", 1) == false, "SetMemoryData(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapCount(NULL) == 0, "GetMemoryMapCount(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapDescriptor(NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) == false, "GetMemoryMapDescriptor(NULL) false");
+
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL, renderer);
+
+    // GetMemoryData: SAVE_RAM is exposed at 64 bytes; an unsupported type is not.
+    size_t sz = 123;
+    void* mem = SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sz);
+    SDLTest_AssertCheck(mem != NULL, "GetMemoryData(SAVE_RAM) non-NULL");
+    SDLTest_AssertCheck(sz == 64, "GetMemoryData(SAVE_RAM) size 64, got %zu", sz);
+    sz = 123;
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_VIDEO_RAM, &sz) == NULL, "GetMemoryData(VIDEO_RAM) NULL");
+    SDLTest_AssertCheck(sz == 0, "GetMemoryData(VIDEO_RAM) size 0");
+
+    // SetMemoryData writes through to the live buffer; oversized input clamps.
+    unsigned char pattern[64];
+    for (int i = 0; i < 64; i++) pattern[i] = (unsigned char)(i + 1);
+    SDLTest_AssertCheck(SDL_Libretro_SetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, pattern, 64) == true, "SetMemoryData(SAVE_RAM) true");
+    SDLTest_AssertCheck(SDL_memcmp(mem, pattern, 64) == 0, "SetMemoryData wrote through to live buffer");
+    unsigned char big[100];
+    SDL_memset(big, 0x55, sizeof(big));
+    SDLTest_AssertCheck(SDL_Libretro_SetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, big, sizeof(big)) == true, "SetMemoryData clamps oversized input");
+    SDLTest_AssertCheck(((unsigned char*)mem)[63] == 0x55, "SetMemoryData wrote up to capacity");
+    SDLTest_AssertCheck(SDL_Libretro_SetMemoryData(lr, RETRO_MEMORY_VIDEO_RAM, pattern, 64) == false, "SetMemoryData(VIDEO_RAM) false");
+    SDLTest_AssertCheck(SDL_Libretro_SetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, NULL, 1) == false, "SetMemoryData(NULL data) false");
+
+    // Save/Load round-trip: persist pattern, scribble over it, restore.
+    SDL_Libretro_SetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, pattern, 64);
+    SDLTest_AssertCheck(SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_SAVE_RAM, "test_mem.sav") == true, "SaveMemory(SAVE_RAM) true");
+    SDL_memset(mem, 0, 64);
+    SDLTest_AssertCheck(SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_SAVE_RAM, "test_mem.sav") == true, "LoadMemory(SAVE_RAM) true");
+    SDLTest_AssertCheck(SDL_memcmp(mem, pattern, 64) == 0, "LoadMemory restores saved bytes");
+
+    // Unavailable type: save is a no-op success, load fails.
+    SDLTest_AssertCheck(SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_VIDEO_RAM, "test_vram.sav") == true, "SaveMemory(VIDEO_RAM) true (nothing to save)");
+    SDLTest_AssertCheck(SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_VIDEO_RAM, "test_mem.sav") == false, "LoadMemory(VIDEO_RAM) false");
+
+    // SRAM wrappers route to the same path.
+    SDLTest_AssertCheck(SDL_Libretro_SaveSRAM(lr, "test_sram.sav") == true, "SaveSRAM true");
+    SDL_memset(mem, 0, 64);
+    SDLTest_AssertCheck(SDL_Libretro_LoadSRAM(lr, "test_sram.sav") == true, "LoadSRAM true");
+    SDLTest_AssertCheck(SDL_memcmp(mem, pattern, 64) == 0, "LoadSRAM restores saved bytes");
+
+    // Memory map descriptors.
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapCount(lr) == 1, "GetMemoryMapCount 1");
+    Uint64 flags = 0; void* ptr = NULL; size_t off = 9, start = 9, sel = 9, dis = 9, len = 0; const char* as = NULL;
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapDescriptor(lr, 0, &flags, &ptr, &off, &start, &sel, &dis, &len, &as) == true, "GetMemoryMapDescriptor(0) true");
+    SDLTest_AssertCheck(ptr == mem, "Descriptor ptr matches SAVE_RAM region");
+    SDLTest_AssertCheck(len == 64, "Descriptor len 64, got %zu", len);
+    SDLTest_AssertCheck(as != NULL && SDL_strcmp(as, "WRAM") == 0, "Descriptor addrspace is WRAM");
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapDescriptor(lr, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) == false, "GetMemoryMapDescriptor out-of-range false");
+
+    // Guest -> host address translation through the map.
+    size_t rem = 0;
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 0, &rem) == mem, "MapAddress(0) resolves to the SAVE_RAM base");
+    SDLTest_AssertCheck(rem == 64, "MapAddress remaining 64 at base, got %zu", rem);
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 10, &rem) == (void*)((Uint8*)mem + 10), "MapAddress(10) offsets into the region");
+    SDLTest_AssertCheck(rem == 54, "MapAddress remaining 54 at offset 10, got %zu", rem);
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 64, NULL) == NULL, "MapAddress past the region is NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(NULL, 0, NULL) == NULL, "MapAddress(NULL) NULL");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+
+    SDL_RemovePath("test_mem.sav");
+    SDL_RemovePath("test_sram.sav");
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_SavePath(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    char path[256];
+
+    // GetSavePath edge cases (no content, no context).
+    SDLTest_AssertCheck(SDL_Libretro_GetSavePath(NULL, ".srm", path, sizeof(path)) == 0, "GetSavePath(NULL) 0");
+    SDL_Libretro* fresh = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_GetSavePath(fresh, ".srm", path, sizeof(path)) == 0, "GetSavePath with no content 0");
+    SDL_Libretro_Destroy(fresh);
+
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetSaveDirectory(lr, "test_saves");
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer);
+
+    SDLTest_AssertCheck(SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) > 0, "GetSavePath derives a path with content");
+    SDLTest_AssertCheck(SDL_strstr(path, "test_saves") != NULL && SDL_strstr(path, ".srm") != NULL, "Derived path uses save dir and extension: %s", path);
+
+    // LoadGame again should unload the existing game and reload cleanly.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true, "LoadGame again succeeds (reloads over existing game)");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after reload");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -439,6 +578,8 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
+    LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),
+    LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),

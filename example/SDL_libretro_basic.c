@@ -28,8 +28,6 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_SetSystemDirectory(lr, "system");
-    SDL_Libretro_SetSaveDirectory(lr, "saves");
     SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 
     // Load the core.

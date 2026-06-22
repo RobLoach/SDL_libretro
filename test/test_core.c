@@ -105,6 +105,14 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
     if (environ_cb) environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
     game_loaded = true;
 
+    // Publish a one-entry memory map covering save_ram so the frontend's
+    // memory-map accessors have something to read.
+    static const struct retro_memory_descriptor mmap_desc[] = {
+        { RETRO_MEMDESC_SYSTEM_RAM, save_ram, 0, 0x0000, 0, 0, sizeof(save_ram), "WRAM" },
+    };
+    static const struct retro_memory_map mmap = { mmap_desc, 1 };
+    if (environ_cb) environ_cb(RETRO_ENVIRONMENT_SET_MEMORY_MAPS, (void *)&mmap);
+
     if (game && game->data && game->size > 0) {
         size_t n = game->size < sizeof(save_ram) ? game->size : sizeof(save_ram);
         memcpy(save_ram, game->data, n);

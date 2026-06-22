@@ -9,6 +9,7 @@ An [SDL3](https://libsdl.org/)-based [libretro](https://www.libretro.com/) front
 - Audio via SDL_AudioStream with dynamic rate control
 - Gamepad, keyboard, mouse, lightgun, and pointer input
 - Save states and SRAM
+- Memory access and memory-map descriptors (cheats, debuggers, RAM watching)
 - Core options
 - Rewind with delta compression
 - Fast-forward and slow-motion

@@ -2,19 +2,19 @@
 #define SDL_LIBRETRO_SERIALIZE_IMPL_ONCE
 
 /*
- * SDL_libretro - save state and SRAM
+ * SDL_libretro - save states, core memory (SRAM/RTC/...), and rewind
  */
 
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
-    if (!lr || !lr->core.loaded) return false;
+    if (!lr || !lr->core.gameLoaded) return false;
     lr->core.symbols.retro_cheat_set(index, enabled, code);
     return true;
 }
 
 void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return;
+    if (!lr || !lr->core.gameLoaded) return;
     lr->core.symbols.retro_cheat_reset();
 }
 
@@ -24,13 +24,13 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
  * Retrieves the size of serialized states.
  */
 size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return 0;
+    if (!lr || !lr->core.gameLoaded) return 0;
     return lr->core.symbols.retro_serialize_size();
 }
 
 bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
-    if (!lr || !lr->core.loaded || !dst) {
+    if (!lr || !lr->core.gameLoaded || !dst) {
         SDL_SetError("SDL_libretro: Invalid SaveState_IO arguments");
     } else {
         size_t size = lr->core.symbols.retro_serialize_size();
@@ -51,7 +51,7 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
 }
 
 bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
-    if (!lr || !lr->core.loaded || !file) {
+    if (!lr || !lr->core.gameLoaded || !file) {
         SDL_SetError("SDL_libretro: Invalid SaveState arguments");
         return false;
     }
@@ -62,7 +62,7 @@ bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
 }
 
 bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
-    if (!lr || !lr->core.loaded || !src) {
+    if (!lr || !lr->core.gameLoaded || !src) {
         SDL_SetError("SDL_libretro: Invalid LoadState_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
         return false;
@@ -78,7 +78,7 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
 }
 
 bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
-    if (!lr || !lr->core.loaded || !file) {
+    if (!lr || !lr->core.gameLoaded || !file) {
         SDL_SetError("SDL_libretro: Invalid LoadState arguments");
         return false;
     }
@@ -87,56 +87,280 @@ bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
     return SDL_Libretro_LoadState_IO(lr, io, true);
 }
 
-// SRAM
+// Memory
 
-bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
+/**
+ * Get a pointer to a core memory region and its size.
+ *
+ * Returns the core's live buffer for the given RETRO_MEMORY_* type. The pointer is owned by the core: do not free it, it stays valid until the core is unloaded, and writing through it pokes the running game directly. Must not be called concurrently with SDL_Libretro_RunFrame().
+ *
+ * @param lr the libretro context.
+ * @param memoryType one of the RETRO_MEMORY_* constants.
+ * @param size receives the region size in bytes (set to 0 when unavailable), or NULL.
+ * @returns the live region pointer, or NULL if the core exposes no such memory.
+ *
+ * @see SDL_Libretro_SetMemoryData()
+ */
+void* SDL_Libretro_GetMemoryData(const SDL_Libretro* lr, unsigned memoryType, size_t* size) {
+    if (!lr || !lr->core.gameLoaded || !lr->core.symbols.retro_get_memory_data || !lr->core.symbols.retro_get_memory_size) {
+        if (size) *size = 0;
+        return NULL;
+    }
+    void* ptr = lr->core.symbols.retro_get_memory_data(memoryType);
+    if (size) *size = lr->core.symbols.retro_get_memory_size(memoryType);
+    return ptr;
+}
+
+/**
+ * Overwrite a core memory region with caller-provided bytes.
+ *
+ * Copies up to the region's capacity; any extra bytes are ignored. Writes to the core's live memory, so it must not race SDL_Libretro_RunFrame().
+ *
+ * @param lr the libretro context.
+ * @param memoryType one of the RETRO_MEMORY_* constants.
+ * @param data the source bytes.
+ * @param size the number of bytes available in `data`.
+ * @returns true on success, false on invalid arguments or if the core exposes no such memory.
+ *
+ * @see SDL_Libretro_GetMemoryData()
+ */
+bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const void* data, size_t size) {
+    if (!lr || !data) {
+        SDL_SetError("SDL_libretro: Invalid SetMemoryData arguments");
+        return false;
+    }
+    size_t capacity = 0;
+    void* dst = SDL_Libretro_GetMemoryData(lr, memoryType, &capacity);
+    if (!dst || capacity == 0) {
+        SDL_SetError("SDL_libretro: Memory type %u unavailable", memoryType);
+        return false;
+    }
+    size_t copySize = size < capacity ? size : capacity;
+    SDL_memcpy(dst, data, copySize);
+    return true;
+}
+
+/**
+ * Free the stored memory-map descriptors, including the deep-copied addrspace
+ * label strings, and reset the count.
+ *
+ * @internal
+ */
+static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr) {
+    if (lr->core.memoryMapDescriptors) {
+        for (unsigned i = 0; i < lr->core.memoryMapDescriptorCount; i++) {
+            SDL_free((void*)lr->core.memoryMapDescriptors[i].addrspace);
+        }
+        SDL_free(lr->core.memoryMapDescriptors);
+        lr->core.memoryMapDescriptors = NULL;
+    }
+    lr->core.memoryMapDescriptorCount = 0;
+}
+
+/**
+ * Get the number of memory-map descriptors the core has published.
+ *
+ * Cores describe their address space via RETRO_ENVIRONMENT_SET_MEMORY_MAPS for
+ * the benefit of debuggers, cheat finders, and achievement runtimes. Returns 0
+ * if the core published no map.
+ *
+ * @param lr the libretro context.
+ * @returns the descriptor count.
+ * @see SDL_Libretro_GetMemoryMapDescriptor()
+ * @see RETRO_ENVIRONMENT_SET_MEMORY_MAPS
+ */
+unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr) {
+    return (lr && lr->core.gameLoaded) ? lr->core.memoryMapDescriptorCount : 0;
+}
+
+/**
+ * Retrieve one memory-map descriptor by index.
+ *
+ * Maps a region of the emulated address space onto a host pointer. To translate a guest address that falls in this descriptor to a host pointer:
+ *
+ *     host = (Uint8*)ptr + offset + ((guest & ~disconnect) - start)
+ *
+ * Any out-parameter may be NULL if not needed. The returned `ptr` and `addrspace` are owned by the context and remain valid until the core is unloaded; do not free them.
+ *
+ * @param lr the libretro context.
+ * @param index the descriptor index, in [0, SDL_Libretro_GetMemoryMapCount()).
+ * @param flags receives the RETRO_MEMDESC_* flag bits, or NULL.
+ * @param ptr receives the host base pointer of the region, or NULL.
+ * @param offset receives the offset from `ptr` to the region start, or NULL.
+ * @param start receives the first emulated address mapped here, or NULL.
+ * @param select receives the address-decode select mask, or NULL.
+ * @param disconnect receives the disconnect (ignored-bits) mask, or NULL.
+ * @param len receives the region length in bytes, or NULL.
+ * @param addrspace receives the address-space label (may be NULL itself), or NULL.
+ * @returns true on success, false if the index is out of range or no core is loaded.
+ */
+bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
+    Uint64* flags, void** ptr, size_t* offset, size_t* start,
+    size_t* select, size_t* disconnect, size_t* len, const char** addrspace) {
+    if (!lr || !lr->core.gameLoaded || index >= lr->core.memoryMapDescriptorCount) {
+        return false;
+    }
+    const struct retro_memory_descriptor* d = &lr->core.memoryMapDescriptors[index];
+    if (flags) *flags = d->flags;
+    if (ptr) *ptr = d->ptr;
+    if (offset) *offset = d->offset;
+    if (start) *start = d->start;
+    if (select) *select = d->select;
+    if (disconnect) *disconnect = d->disconnect;
+    if (len) *len = d->len;
+    if (addrspace) *addrspace = d->addrspace;
+    return true;
+}
+
+/**
+ * Translate an emulated (guest) address to a live host pointer via the memory map.
+ *
+ * Walks the descriptors published by the core (RETRO_ENVIRONMENT_SET_MEMORY_MAPS)
+ * and returns a pointer into the core's live memory for `address`, so debuggers,
+ * cheat finders, and RAM watchers don't have to reimplement the descriptor math.
+ *
+ * Resolves an address that lies within a descriptor's primary mapped range
+ * (`[start, start + len)`, after folding out `disconnect` bits). Mirror/aliased
+ * addresses that rely on a descriptor's `select` mask to wrap back into the
+ * region may return NULL rather than a guess; the result is always either a
+ * correct pointer or NULL, never a wrong one.
+ *
+ * @param lr the libretro context.
+ * @param address the emulated address to resolve.
+ * @param regionRemaining if non-NULL, receives the number of contiguous bytes
+ *        from `address` to the end of the matched region (0 when unmatched).
+ * @returns a host pointer into the core's live memory, or NULL if no descriptor
+ *          maps the address (or no core/game/map is present). Do not free it.
+ * @see SDL_Libretro_GetMemoryMapDescriptor()
+ * @see RETRO_ENVIRONMENT_SET_MEMORY_MAPS
+ */
+void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining) {
+    if (regionRemaining) *regionRemaining = 0;
+    if (!lr || !lr->core.gameLoaded) return NULL;
+
+    for (unsigned i = 0; i < lr->core.memoryMapDescriptorCount; i++) {
+        const struct retro_memory_descriptor* d = &lr->core.memoryMapDescriptors[i];
+        if (!d->ptr || d->len == 0) continue;
+
+        // Does this descriptor's address space contain `address`?
+        if (d->select != 0) {
+            if (((address ^ d->start) & d->select) != 0) continue;
+        } else if (address < d->start || (address - d->start) >= d->len) {
+            continue;
+        }
+
+        // Fold out disconnected bits, then offset into the host buffer.
+        size_t masked = address & ~d->disconnect;
+        if (masked < d->start) continue;
+        size_t within = masked - d->start;
+        if (within >= d->len) continue;
+
+        if (regionRemaining) *regionRemaining = d->len - within;
+        return (Uint8*)d->ptr + d->offset + within;
+    }
+    return NULL;
+}
+
+/**
+ * Human-readable name for a libretro memory type, used in log/error messages.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_GetMemoryTypeName(unsigned memoryType) {
+    switch (memoryType) {
+        case RETRO_MEMORY_SAVE_RAM:   return "SRAM";
+        case RETRO_MEMORY_RTC:        return "RTC";
+        case RETRO_MEMORY_SYSTEM_RAM: return "system RAM";
+        case RETRO_MEMORY_VIDEO_RAM:  return "video RAM";
+        default:                      return "memory";
+    }
+}
+
+/**
+ * Write a core memory region to a stream.
+ *
+ * Persists the live contents of the given libretro memory type (e.g. RETRO_MEMORY_SAVE_RAM for battery saves, RETRO_MEMORY_RTC for a real-time clock). A core that exposes no such region is treated as success with nothing written, so callers don't have to special-case it.
+ *
+ * @param lr the libretro context.
+ * @param memoryType one of the RETRO_MEMORY_* constants.
+ * @param dst the destination stream.
+ * @param closeio if true, close `dst` before returning (even on failure).
+ * @returns true on success (including "core has no such memory"), false on a write error or invalid arguments.
+ */
+bool SDL_Libretro_SaveMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
-    if (!lr || !lr->core.loaded || !dst) {
-        SDL_SetError("SDL_libretro: Invalid SaveSRAM_IO arguments");
+    if (!lr || !lr->core.gameLoaded || !dst) {
+        SDL_SetError("SDL_libretro: Invalid SaveMemory_IO arguments");
     } else {
-        void* sram = lr->core.symbols.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
-        size_t sramSize = lr->core.symbols.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
-        if (!sram || sramSize == 0) {
-            ok = true; // core has no SRAM; nothing to save
+        size_t size = 0;
+        void* mem = SDL_Libretro_GetMemoryData(lr, memoryType, &size);
+        if (!mem || size == 0) {
+            ok = true; // core has no such memory; nothing to save
         } else {
-            ok = (SDL_WriteIO(dst, sram, sramSize) == sramSize);
+            ok = (SDL_WriteIO(dst, mem, size) == size);
         }
     }
     if (closeio && dst) SDL_CloseIO(dst);
     return ok;
 }
 
-bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file) {
-    if (!lr || !lr->core.loaded || !file) {
-        SDL_SetError("SDL_libretro: Invalid SaveSRAM arguments");
+/**
+ * Write a core memory region to a file.
+ *
+ * Convenience wrapper over SDL_Libretro_SaveMemory_IO(). No file is created when
+ * the core exposes no such memory region.
+ *
+ * @param lr the libretro context.
+ * @param memoryType one of the RETRO_MEMORY_* constants.
+ * @param file the destination file path.
+ * @returns true on success, false on error.
+ */
+bool SDL_Libretro_SaveMemory(SDL_Libretro* lr, unsigned memoryType, const char* file) {
+    if (!lr || !lr->core.gameLoaded || !file) {
+        SDL_SetError("SDL_libretro: Invalid SaveMemory arguments");
         return false;
     }
 
-    void* sram = lr->core.symbols.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
-    size_t sramSize = lr->core.symbols.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
+    size_t size = 0;
+    void* mem = SDL_Libretro_GetMemoryData(lr, memoryType, &size);
     // Nothing to save, so don't create an empty file.
-    if (!sram || sramSize == 0) return true;
+    if (!mem || size == 0) return true;
 
     SDL_IOStream* io = SDL_IOFromFile(file, "wb");
     if (!io) return false;
-    bool ok = SDL_Libretro_SaveSRAM_IO(lr, io, true);
+    bool ok = SDL_Libretro_SaveMemory_IO(lr, memoryType, io, true);
     if (ok) {
-        SDL_Log("SDL_libretro: SRAM saved to %s (%zu bytes)", file, sramSize);
+        SDL_Log("SDL_libretro: %s saved to %s (%zu bytes)",
+            SDL_Libretro_GetMemoryTypeName(memoryType), file, size);
     }
     return ok;
 }
 
-bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
-    if (!lr || !lr->core.loaded || !src) {
-        SDL_SetError("SDL_libretro: Invalid LoadSRAM_IO arguments");
+/**
+ * Load a core memory region from a stream.
+ *
+ * Copies stream contents into the live memory region for the given type. When
+ * the stream and the region differ in size, only the overlapping bytes are
+ * copied, so a save from a slightly different revision still loads what it can.
+ *
+ * @param lr the libretro context.
+ * @param memoryType one of the RETRO_MEMORY_* constants.
+ * @param src the source stream.
+ * @param closeio if true, close `src` before returning (even on failure).
+ * @returns true on success, false if the core exposes no such memory, on a read
+ *          error, or on invalid arguments.
+ */
+bool SDL_Libretro_LoadMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStream* src, bool closeio) {
+    if (!lr || !lr->core.gameLoaded || !src) {
+        SDL_SetError("SDL_libretro: Invalid LoadMemory_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
         return false;
     }
 
-    void* sram = lr->core.symbols.retro_get_memory_data(RETRO_MEMORY_SAVE_RAM);
-    size_t sramSize = lr->core.symbols.retro_get_memory_size(RETRO_MEMORY_SAVE_RAM);
-    if (!sram || sramSize == 0) {
-        SDL_SetError("SDL_libretro: Core has no SRAM");
+    // Bail before reading the stream when there's nowhere to put the data.
+    size_t capacity = 0;
+    if (!SDL_Libretro_GetMemoryData(lr, memoryType, &capacity) || capacity == 0) {
+        SDL_SetError("SDL_libretro: Core has no %s", SDL_Libretro_GetMemoryTypeName(memoryType));
         if (closeio) SDL_CloseIO(src);
         return false;
     }
@@ -145,24 +369,61 @@ bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio)
     void* data = SDL_LoadFile_IO(src, &fileSize, closeio);
     if (!data) return false;
 
-    size_t copySize = (fileSize < sramSize) ? fileSize : sramSize;
-    SDL_memcpy(sram, data, copySize);
+    // A size mismatch is the usual cause of a save that loads only partially.
+    if (fileSize != capacity) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+            "SDL_libretro: %s size mismatch (file %zu bytes, region %zu bytes); loading %zu",
+            SDL_Libretro_GetMemoryTypeName(memoryType), fileSize, capacity,
+            fileSize < capacity ? fileSize : capacity);
+    }
+
+    // SetMemoryData clamps to the region capacity.
+    bool ok = SDL_Libretro_SetMemoryData(lr, memoryType, data, fileSize);
     SDL_free(data);
-    return true;
+    return ok;
 }
 
-bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
-    if (!lr || !lr->core.loaded || !file) {
-        SDL_SetError("SDL_libretro: Invalid LoadSRAM arguments");
+/**
+ * Load a core memory region from a file.
+ *
+ * Convenience wrapper over SDL_Libretro_LoadMemory_IO().
+ *
+ * @param lr the libretro context.
+ * @param memoryType one of the RETRO_MEMORY_* constants.
+ * @param file the source file path.
+ * @returns true on success, false on error.
+ */
+bool SDL_Libretro_LoadMemory(SDL_Libretro* lr, unsigned memoryType, const char* file) {
+    if (!lr || !lr->core.gameLoaded || !file) {
+        SDL_SetError("SDL_libretro: Invalid LoadMemory arguments");
         return false;
     }
     SDL_IOStream* io = SDL_IOFromFile(file, "rb");
     if (!io) return false;
-    bool ok = SDL_Libretro_LoadSRAM_IO(lr, io, true);
+    bool ok = SDL_Libretro_LoadMemory_IO(lr, memoryType, io, true);
     if (ok) {
-        SDL_Log("SDL_libretro: SRAM loaded from %s", file);
+        SDL_Log("SDL_libretro: %s loaded from %s",
+            SDL_Libretro_GetMemoryTypeName(memoryType), file);
     }
     return ok;
+}
+
+// SRAM convenience wrappers (RETRO_MEMORY_SAVE_RAM)
+
+bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
+    return SDL_Libretro_SaveMemory_IO(lr, RETRO_MEMORY_SAVE_RAM, dst, closeio);
+}
+
+bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file) {
+    return SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_SAVE_RAM, file);
+}
+
+bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
+    return SDL_Libretro_LoadMemory_IO(lr, RETRO_MEMORY_SAVE_RAM, src, closeio);
+}
+
+bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
+    return SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_SAVE_RAM, file);
 }
 
 // Rewind
@@ -565,7 +826,7 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
  *          buffer is empty.
  */
 bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded || !lr->rewindEnabled) {
+    if (!lr || !lr->core.gameLoaded || !lr->rewindEnabled) {
         SDL_SetError("SDL_libretro: Rewind is not enabled");
         return false;
     }
