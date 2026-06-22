@@ -529,6 +529,21 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
     return true;
 }
 
+/**
+ * Get the device type assigned to a controller port.
+ *
+ * Returns the RETRO_DEVICE_* type last set via SDL_Libretro_SetPortDevice(),
+ * or RETRO_DEVICE_NONE if none was set or the arguments are invalid.
+ *
+ * @param lr the libretro context.
+ * @param port the controller port, in [0, 16).
+ * @returns the assigned RETRO_DEVICE_* type, or RETRO_DEVICE_NONE.
+ */
+unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port) {
+    if (!lr || port >= 16) return RETRO_DEVICE_NONE;
+    return lr->core.portDeviceMap[port];
+}
+
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode) {
     if (!lr || retroButton < 0 || retroButton > RETRO_DEVICE_ID_JOYPAD_R3) return;
     lr->keyboardPlayer1[retroButton] = scancode;

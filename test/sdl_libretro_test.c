@@ -145,11 +145,14 @@ static int SDLCALL test_Input(void *arg) {
     SDL_Libretro_SetVirtualButton(lr, 0, 16, true);
     SDL_Libretro_SetVirtualButton(NULL, 0, 0, true);
 
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_NONE, "Port 0 device defaults to NONE");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 0 true");
-    SDLTest_AssertCheck(lr->core.portDeviceMap[0] == RETRO_DEVICE_JOYPAD, "Port 0 device stored");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_JOYPAD, "GetPortDevice returns stored device");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 15, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 15 true");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 16, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice port 16 false");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(NULL, 0, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 16) == RETRO_DEVICE_NONE, "GetPortDevice out-of-range NONE");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(NULL, 0) == RETRO_DEVICE_NONE, "GetPortDevice(NULL) NONE");
 
     // Input descriptors (empty without a loaded core)
     SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptorCount(lr) == 0, "Descriptor count 0 without core");
@@ -293,6 +296,8 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreName(lr), "test_core") == 0, "Core name is test_core");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreVersion(lr), "1.0") == 0, "Core version is 1.0");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "txt") == 0, "Valid extensions is txt");
+    SDLTest_AssertCheck(SDL_Libretro_GetPerformanceLevel(lr) == 2, "Performance level reported by core is 2");
+    SDLTest_AssertCheck(SDL_Libretro_GetPerformanceLevel(NULL) == 0, "GetPerformanceLevel(NULL) 0");
 
     // With a core loaded but no game, game-state operations no-op safely.
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready with core but no game");
@@ -348,6 +353,40 @@ static int SDLCALL test_LoadGame(void *arg) {
 #endif
 }
 
+static int SDLCALL test_GameInfoExt(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer);
+
+    // The test core probes GET_GAME_INFO_EXT during load and exposes the result
+    // via SYSTEM_RAM, verifying the frontend populated the extended game info.
+    size_t sz = 0;
+    const Uint8* probe = (const Uint8*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SYSTEM_RAM, &sz);
+    SDLTest_AssertCheck(probe != NULL && sz >= 18, "GET_GAME_INFO_EXT probe region available (size %zu)", sz);
+    if (probe) {
+        SDLTest_AssertCheck(SDL_strcmp((const char*)probe, "txt") == 0,
+            "GET_GAME_INFO_EXT reports lower-case ext 'txt', got '%s'", (const char*)probe);
+        SDLTest_AssertCheck(probe[16] == 1, "content-info override set persistent_data");
+        SDLTest_AssertCheck(probe[17] == 1, "content data buffer present (need_fullpath false)");
+    }
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LoadGameNoContent(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -361,10 +400,59 @@ static int SDLCALL test_LoadGameNoContent(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
+    // The test core opts into no-content, so a NULL load runs.
+    SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == false, "Core does not require content");
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL, renderer) == true, "LoadGame succeeds with NULL content");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready with no content");
 
     SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_UnloadGame(lr);
+
+    // A core that requires content must reject a NULL load (and not disturb state).
+    lr->core.supportNoGame = false;
+    SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == true, "Core now reports content required");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL, renderer) == false, "LoadGame(NULL) rejected when content is required");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready after a rejected NULL load");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_LoadGameFailure(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // A missing ".txt" file fails the load (the core wants the data buffer).
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "definitely_missing.txt", renderer) == false,
+        "LoadGame fails for a missing content file");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready after a failed load");
+
+    // The partial content identity is reset: extension cleared, and the content
+    // name falls back to the core-name default so GetSavePath still works.
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "") == 0,
+        "Content extension cleared after a failed load");
+    char path[256];
+    SDLTest_AssertCheck(SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) > 0,
+        "GetSavePath still works (core-name default) after a failed load");
+    SDLTest_AssertCheck(SDL_strstr(path, "test_core") != NULL,
+        "Save path falls back to the core name, not the failed content: %s", path);
+
+    // The context still works: a real load afterward succeeds.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true,
+        "LoadGame succeeds after a prior failure");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -583,7 +671,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
+    LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
+    LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
     NULL

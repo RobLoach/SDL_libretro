@@ -45,7 +45,6 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     opt->visible = true;
 
     lr->core.optionCount++;
-    lr->core.optionsVisibilityDirty = true;
 }
 
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
