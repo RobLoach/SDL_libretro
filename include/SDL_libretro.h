@@ -128,6 +128,11 @@ bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key);
 void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr);
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr);
 
+// Memory Access
+
+void* SDL_Libretro_GetMemoryData(const SDL_Libretro* lr, unsigned memoryType, size_t* size);
+bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const void* data, size_t size);
+
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code);

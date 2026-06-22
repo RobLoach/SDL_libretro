@@ -542,6 +542,33 @@ int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
     return lr ? lr->logLevel : RETRO_LOG_DEBUG;
 }
 
+/* Memory Access */
+void* SDL_Libretro_GetMemoryData(const SDL_Libretro* lr, unsigned memoryType, size_t* size) {
+    if (!lr || !lr->core.loaded) {
+        if (size) *size = 0;
+        return NULL;
+    }
+    void* ptr = lr->core.symbols.retro_get_memory_data(memoryType);
+    if (size) *size = lr->core.symbols.retro_get_memory_size(memoryType);
+    return ptr;
+}
+
+bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const void* data, size_t size) {
+    if (!lr || !lr->core.loaded || !data) {
+        SDL_SetError("SDL_libretro: Invalid arguments");
+        return false;
+    }
+    void* dst = lr->core.symbols.retro_get_memory_data(memoryType);
+    size_t capacity = lr->core.symbols.retro_get_memory_size(memoryType);
+    if (!dst || capacity == 0) {
+        SDL_SetError("SDL_libretro: Memory type %u unavailable", memoryType);
+        return false;
+    }
+    size_t copySize = size < capacity ? size : capacity;
+    SDL_memcpy(dst, data, copySize);
+    return true;
+}
+
 /* Metadata */
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.libraryName : "";
