@@ -127,7 +127,7 @@ unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr);
 bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
     Uint64* flags, void** ptr, size_t* offset, size_t* start,
     size_t* select, size_t* disconnect, size_t* len, const char** addrspace);
-void* SDL_Libretro_MapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining);
+void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining);
 
 // Core Options
 

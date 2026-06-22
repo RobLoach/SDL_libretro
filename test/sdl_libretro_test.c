@@ -443,12 +443,12 @@ static int SDLCALL test_Memory(void *arg) {
 
     // Guest -> host address translation through the map.
     size_t rem = 0;
-    SDLTest_AssertCheck(SDL_Libretro_MapAddress(lr, 0, &rem) == mem, "MapAddress(0) resolves to the SAVE_RAM base");
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 0, &rem) == mem, "MapAddress(0) resolves to the SAVE_RAM base");
     SDLTest_AssertCheck(rem == 64, "MapAddress remaining 64 at base, got %zu", rem);
-    SDLTest_AssertCheck(SDL_Libretro_MapAddress(lr, 10, &rem) == (void*)((Uint8*)mem + 10), "MapAddress(10) offsets into the region");
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 10, &rem) == (void*)((Uint8*)mem + 10), "MapAddress(10) offsets into the region");
     SDLTest_AssertCheck(rem == 54, "MapAddress remaining 54 at offset 10, got %zu", rem);
-    SDLTest_AssertCheck(SDL_Libretro_MapAddress(lr, 64, NULL) == NULL, "MapAddress past the region is NULL");
-    SDLTest_AssertCheck(SDL_Libretro_MapAddress(NULL, 0, NULL) == NULL, "MapAddress(NULL) NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 64, NULL) == NULL, "MapAddress past the region is NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(NULL, 0, NULL) == NULL, "MapAddress(NULL) NULL");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);

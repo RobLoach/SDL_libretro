@@ -164,9 +164,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return false;
 
-    unsigned baseCmd = cmd & ~RETRO_ENVIRONMENT_EXPERIMENTAL;
-
-    switch (baseCmd) {
+    switch (cmd) {
         case RETRO_ENVIRONMENT_SET_ROTATION: {
             if (!data) return false;
             lr->core.rotation = (int)*(const unsigned*)data;
@@ -219,16 +217,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 case RETRO_PIXEL_FORMAT_RGB565: {
                     bool changed = (fmt != lr->core.pixelFormat);
                     lr->core.pixelFormat = fmt;
-                    /* The texture's format is fixed at creation. The load path
-                     * builds it from this field; a runtime change (texture already
-                     * exists) defers a rebuild to the next RunFrame. */
+                    // The texture's format is fixed at creation. The load path builds it from this field, a runtime change (texture already exists) defers a rebuild to the next RunFrame.
                     if (changed && lr->core.texture) {
                         lr->core.videoReinitPending = true;
                     }
                     return true;
                 }
                 default:
-                    /* Unsupported: signal false without clobbering the current format. */
+                    // Unsupported. Signal false without clobbering the current format.
                     return false;
             }
         }
@@ -729,7 +725,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return false;
 
         default: {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_libretro: Unhandled env cmd %u", baseCmd);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_libretro: Unhandled environment callback: %u", cmd);
             return false;
         }
     }

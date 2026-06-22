@@ -225,16 +225,13 @@ size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, boo
 /**
  * Build a path in the save directory for the currently loaded content.
  *
- * Produces "<saveDirectory>/<contentName><extension>" (or just
- * "<contentName><extension>" when no save directory is set). Handy for deriving
- * SRAM (".srm"), RTC (".rtc"), or save-state file names without hardcoding them.
+ * Produces "<saveDirectory>/<contentName><extension>" (or just "<contentName><extension>" when no save directory is set). Handy for deriving SRAM (".srm"), RTC (".rtc"), or save-state file names without hardcoding them.
  *
  * @param lr the libretro context.
  * @param extension the extension to append, including the dot (NULL or "" for none).
  * @param dst the destination buffer (always null-terminated when dstSize > 0).
  * @param dstSize the size of `dst` in bytes.
- * @returns the length of the resulting string, or 0 if no content is loaded or
- *          on invalid arguments.
+ * @returns the length of the resulting string, or 0 if no content is loaded or on invalid arguments.
  */
 size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, char* dst, size_t dstSize) {
     if (!dst || dstSize == 0) return 0;
@@ -299,7 +296,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     }
 
     if (!result) {
-        SDL_SetError("SDL_libretro: Core rejected the game");
+        SDL_SetError("SDL_libretro: Core failed to load the game");
         return false;
     }
 

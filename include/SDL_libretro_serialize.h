@@ -126,7 +126,7 @@ void* SDL_Libretro_GetMemoryData(const SDL_Libretro* lr, unsigned memoryType, si
  */
 bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const void* data, size_t size) {
     if (!lr || !data) {
-        SDL_SetError("SDL_libretro: Invalid arguments");
+        SDL_SetError("SDL_libretro: Invalid SetMemoryData arguments");
         return false;
     }
     size_t capacity = 0;
@@ -232,8 +232,9 @@ bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
  * @returns a host pointer into the core's live memory, or NULL if no descriptor
  *          maps the address (or no core/game/map is present). Do not free it.
  * @see SDL_Libretro_GetMemoryMapDescriptor()
+ * @see RETRO_ENVIRONMENT_SET_MEMORY_MAPS
  */
-void* SDL_Libretro_MapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining) {
+void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining) {
     if (regionRemaining) *regionRemaining = 0;
     if (!lr || !lr->core.gameLoaded) return NULL;
 
