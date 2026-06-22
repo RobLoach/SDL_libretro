@@ -570,13 +570,20 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!data) return false;
             const struct retro_system_content_info_override* overrides =
                 (const struct retro_system_content_info_override*)data;
-            lr->core.contentInfoOverrideCount = 0;
-            for (unsigned i = 0; overrides[i].extensions && i < SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES; i++) {
-                SDL_strlcpy(lr->core.contentInfoOverrideExts[i], overrides[i].extensions,
-                    SDL_LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN);
-                lr->core.contentInfoOverrideNeedFullpath[i] = overrides[i].need_fullpath;
-                lr->core.contentInfoOverridePersistent[i] = overrides[i].persistent_data;
-                lr->core.contentInfoOverrideCount++;
+            SDL_Libretro_FreeContentInfoOverrides(lr);
+            unsigned count = 0;
+            while (overrides[count].extensions) count++;
+            if (count > 0) {
+                lr->core.contentInfoOverrides = (struct retro_system_content_info_override*)
+                    SDL_calloc(count, sizeof(struct retro_system_content_info_override));
+                if (lr->core.contentInfoOverrides) {
+                    for (unsigned i = 0; i < count; i++) {
+                        lr->core.contentInfoOverrides[i] = overrides[i];
+                        // The core only guarantees the extensions string for this call, so deep-copy it.
+                        lr->core.contentInfoOverrides[i].extensions = SDL_strdup(overrides[i].extensions);
+                    }
+                    lr->core.contentInfoOverrideCount = count;
+                }
             }
             return true;
         }
@@ -681,7 +688,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
-            if (!data || !lr->core.gameInfoExtValid) return false;
+            // A non-NULL full_path means LoadGame populated this for content.
+            if (!data || !lr->core.gameInfoExt.full_path) return false;
             *(const struct retro_game_info_ext**)data = &lr->core.gameInfoExt;
             return true;
         }

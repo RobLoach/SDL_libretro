@@ -550,11 +550,14 @@ static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t de
  *
  * When enabled, a circular buffer of serialized core states is maintained so that setting a negative speed (via SDL_Libretro_SetSpeed()) rewinds gameplay. The buffer is allocated lazily once a game is loaded and the core's serialize size is known.
  *
+ * History is bounded by two independent limits: the snapshot count (`bufferFrames`) and the delta memory budget (see SDL_Libretro_SetRewindMemoryLimit(), which defaults to SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES at context creation). Whichever is reached first caps the rewind depth. This call does not change the memory budget, a budget you set beforehand, including 0 (unbounded), is preserved.
+ *
  * @param lr the libretro context.
  * @param enabled true to enable, false to disable.
  * @param bufferFrames maximum number of state snapshots to keep (0 for a sensible default of 300, roughly 5 seconds at 60 fps).
  * @param captureInterval capture a snapshot every N frames (0 for the default of 1, i.e. every frame). Provide a larger number in order to allow a longer rewind duration.
  * @returns true on success, false on allocation failure or if the core does not support serialization.
+ * @see SDL_Libretro_SetRewindMemoryLimit()
  */
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
     if (!lr) return false;
@@ -569,7 +572,6 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     // Sane defaults.
     if (bufferFrames == 0) bufferFrames = 300;
     if (captureInterval == 0) captureInterval = 1;
-    if (lr->rewindMaxBytes == 0) lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
 
     // Allow enabling rewind, when a core isn't loaded.
     if (!lr->core.loaded) {
@@ -678,8 +680,11 @@ size_t SDL_Libretro_GetRewindMemoryUsage(const SDL_Libretro* lr) {
  *
  * When the stored history exceeds this budget the oldest snapshots are dropped until it fits (the most recent snapshot is always kept), trading rewind duration for bounded memory. Applies immediately. Pass 0 to remove the byte limit and rely solely on the frame-count capacity.
  *
+ * The budget defaults to SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES at context creation. Whatever value is set here, including 0 (unbounded), persists across SDL_Libretro_SetRewindEnabled() calls.
+ *
  * @param lr the libretro context.
  * @param maxBytes the budget in bytes, or 0 for unbounded.
+ * @see SDL_Libretro_SetRewindEnabled()
  */
 void SDL_Libretro_SetRewindMemoryLimit(SDL_Libretro* lr, size_t maxBytes) {
     if (!lr) return;
@@ -745,11 +750,9 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize, NULL, 0);
     if (encSize == 0) return;
 
-    // Reuse the slot's existing allocation when it's already big enough; only
-    // (re)allocate when the new delta needs more room. At steady state this stops
-    // allocating entirely, avoiding a malloc/free on every captured frame.
-    // rewindBytes tracks allocated delta memory (capacity), so it stays accurate
-    // whether or not a slot is overwritten in place.
+    // Reuse the slot's existing allocation when it's already big enough; only (re)allocate when the new delta needs more room. At steady state this stops allocating entirely, avoiding a malloc/free on every captured frame.
+    //
+    // rewindBytes tracks allocated delta memory (capacity), so it stays accurate whether or not a slot is overwritten in place.
     SDL_LibretroRewindDelta* slot = &lr->rewindEntries[lr->rewindHead];
     if (slot->capacity < encSize) {
         unsigned char* data = (unsigned char*)SDL_realloc(slot->data, encSize);
@@ -768,8 +771,7 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
 
     SDL_memcpy(lr->rewindReference, lr->rewindScratch, lr->rewindSlotSize);
 
-    // Keep total delta memory under the configured budget by dropping the oldest
-    // snapshots; this bounds worst-case memory for large/incompressible states.
+    // Keep total delta memory under the configured budget by dropping the oldest snapshots; this bounds worst-case memory for large/incompressible states.
     SDL_Libretro_RewindEvictToBudget(lr);
 }
 
@@ -789,9 +791,7 @@ static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDel
 /**
  * Restore the previous snapshot from the rewind buffer (state only, no re-run).
  *
- * XORs the most recent delta back into the reference and hands it to the core
- * via retro_unserialize. The consumed delta is freed. The caller is responsible
- * for running the core afterwards if it needs fresh video/audio for the frame.
+ * XORs the most recent delta back into the reference and hands it to the core via retro_unserialize. The consumed delta is freed. The caller is responsible for running the core afterwards if it needs fresh video/audio for the frame.
  *
  * @internal
  */
@@ -817,13 +817,10 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
 /**
  * Step back a single captured frame and re-run the core to emit its output.
  *
- * Decoupled from the negative-speed path so a frontend can offer manual
- * frame-by-frame reverse stepping. Audio is muted and input neutralized during
- * the throwaway re-run that produces the displayed frame.
+ * Decoupled from the negative-speed path so a frontend can offer manual frame-by-frame reverse stepping. Audio is muted and input neutralized during the throwaway re-run that produces the displayed frame.
  *
  * @param lr the libretro context.
- * @returns true if a frame was rewound, false if rewind is unavailable or the
- *          buffer is empty.
+ * @returns true if a frame was rewound, false if rewind is unavailable or the buffer is empty.
  */
 bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded || !lr->rewindEnabled) {
@@ -841,8 +838,7 @@ bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
 /**
  * Drop the oldest snapshots until the stored delta memory fits the budget.
  *
- * Always retains at least the most recent snapshot so a non-zero budget can't
- * empty the buffer entirely. A zero budget means unbounded (no-op).
+ * Always retains at least the most recent snapshot so a non-zero budget can't empty the buffer entirely. A zero budget means unbounded (no-op).
  *
  * @internal
  */
@@ -859,10 +855,7 @@ static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr) {
 /**
  * Discard all recorded rewind history without disabling rewind.
  *
- * Keeps the buffer allocated; the next captured frame starts a fresh reference.
- * Called both by the public API and internally after a discontinuity (state
- * load, reset, serialize-size change) so rewinding can't walk back across it
- * into a stale timeline.
+ * Keeps the buffer allocated; the next captured frame starts a fresh reference. Called both by the public API and internally after a discontinuity (state load, reset, serialize-size change) so rewinding can't walk back across it into a stale timeline.
  *
  * @param lr the libretro context.
  */

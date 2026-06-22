@@ -225,7 +225,7 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
         lr->core.audio_callback.set_state(true);
     }
 
-    SDL_Log("SDL_libretro: Audio initialized (%.0f Hz, push model, %u ms latency threshold)",
+    SDL_Log("SDL_libretro: Audio initialized (%.0fHz, %u ms latency threshold)",
         sampleRate, latencyMs);
 
     return true;

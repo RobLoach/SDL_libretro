@@ -16,10 +16,26 @@ static uint8_t save_ram[64];
 static uint8_t state_data[128];
 static bool game_loaded;
 
+/* Captures what GET_GAME_INFO_EXT returns during retro_load_game so the
+ * frontend test can verify the extended-game-info wiring. Exposed as
+ * SYSTEM_RAM: [0..15] lower-case ext, [16] persistent_data, [17] data != NULL. */
+static uint8_t game_info_probe[32];
+
 RETRO_API void retro_set_environment(retro_environment_t cb) {
     environ_cb = cb;
-    bool no_game = false;
+    bool no_game = true; // retro_load_game(NULL) is handled, so advertise it
     cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
+
+    unsigned perf_level = 2;
+    cb(RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL, &perf_level);
+
+    // Mark "txt" content as loaded into a persistent buffer; the frontend test
+    // checks this round-trips through GET_GAME_INFO_EXT.
+    static const struct retro_system_content_info_override overrides[] = {
+        { "txt", false, true },
+        { NULL, false, false },
+    };
+    cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void *)overrides);
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }
@@ -117,6 +133,15 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
         size_t n = game->size < sizeof(save_ram) ? game->size : sizeof(save_ram);
         memcpy(save_ram, game->data, n);
     }
+
+    // Probe the extended game info the frontend published for this content.
+    memset(game_info_probe, 0, sizeof(game_info_probe));
+    const struct retro_game_info_ext *ext = NULL;
+    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_GAME_INFO_EXT, &ext) && ext) {
+        if (ext->ext) strncpy((char *)game_info_probe, ext->ext, 15);
+        game_info_probe[16] = ext->persistent_data ? 1 : 0;
+        game_info_probe[17] = ext->data != NULL ? 1 : 0;
+    }
     return true;
 }
 
@@ -131,10 +156,12 @@ RETRO_API unsigned retro_get_region(void) { return RETRO_REGION_NTSC; }
 
 RETRO_API void *retro_get_memory_data(unsigned id) {
     if (id == RETRO_MEMORY_SAVE_RAM) return save_ram;
+    if (id == RETRO_MEMORY_SYSTEM_RAM) return game_info_probe;
     return NULL;
 }
 
 RETRO_API size_t retro_get_memory_size(unsigned id) {
     if (id == RETRO_MEMORY_SAVE_RAM) return sizeof(save_ram);
+    if (id == RETRO_MEMORY_SYSTEM_RAM) return sizeof(game_info_probe);
     return 0;
 }

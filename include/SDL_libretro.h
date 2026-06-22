@@ -104,6 +104,7 @@ double SDL_Libretro_GetSampleRate(const SDL_Libretro* lr);
 
 void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event);
 bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device);
+unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port);
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr);
@@ -155,6 +156,8 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
+const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr);
+unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr);
 
 // Utilities
 
@@ -202,8 +205,6 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
 
 #define SDL_LIBRETRO_MAX_PATH 4096
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
-#define SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES 16
-#define SDL_LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN 256
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
 
 typedef struct SDL_LibretroCoreSymbols {
@@ -262,11 +263,10 @@ typedef struct SDL_LibretroCoreData {
     char libraryVersion[200];
     char validExtensions[200];
     bool needFullpath;
-    bool blockExtract;
     bool supportNoGame;
     unsigned apiVersion;
     enum retro_pixel_format pixelFormat;
-    unsigned performanceLevel;
+    unsigned performanceLevel; /** @see SDL_Libretro_GetPerformanceLevel() */
     uint64_t serializationQuirks;
     int rotation;
 
@@ -304,7 +304,6 @@ typedef struct SDL_LibretroCoreData {
     unsigned optionCount;
     unsigned optionCapacity;
     bool optionsDirty;
-    bool optionsVisibilityDirty;
 
     // Input Descriptors
     struct retro_input_descriptor* inputDescriptors;
@@ -313,24 +312,22 @@ typedef struct SDL_LibretroCoreData {
     unsigned controllerPortCount;
 
     // Game Content
-    char contentPath[SDL_LIBRETRO_MAX_PATH];
-    char contentName[SDL_LIBRETRO_MAX_PATH];
-    struct retro_game_info_ext gameInfoExt;
-    bool gameInfoExtValid;
-    unsigned char* persistentGameData;
-    size_t persistentGameDataSize;
+    char contentPath[SDL_LIBRETRO_MAX_PATH]; /** The path to the content that's being loaded. */
+    char contentName[SDL_LIBRETRO_MAX_PATH]; /** The human-readable content name. */
+    char contentDir[SDL_LIBRETRO_MAX_PATH]; /** Directory of the content file; backs gameInfoExt.dir. */
+    char contentExt[16]; /** Lower-case content extension; backs gameInfoExt.ext. */
+
+    struct retro_game_info_ext gameInfoExt; /** Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
 
     // Content Info Overrides
-    char contentInfoOverrideExts[SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES][SDL_LIBRETRO_CONTENT_INFO_OVERRIDE_EXTS_LEN];
-    bool contentInfoOverrideNeedFullpath[SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES];
-    bool contentInfoOverridePersistent[SDL_LIBRETRO_MAX_CONTENT_INFO_OVERRIDES];
-    unsigned contentInfoOverrideCount;
+    struct retro_system_content_info_override* contentInfoOverrides; /** Deep-copied; owned by the context. */
+    unsigned contentInfoOverrideCount; /** The number of content info overrides. @see contentInfoOverrides */
 
     // Rumble
     float rumbleStrong[SDL_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_RUMBLE_PORTS];
 
-    /* Disk control */
+    // Disk control
     struct retro_disk_control_ext_callback disk_control;
     bool diskControlActive;
 
@@ -439,12 +436,15 @@ static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDel
 static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
 
+static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList);
+
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
     const char* label, const char* valuesList, const char* displayList,
     const char* tooltip, const char* categoryKey);
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
+static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"

@@ -123,6 +123,12 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
     return out;
 }
 
+/**
+ * Render the libretro context, using the provided scale method in the loaded renderer.
+ *
+ * @param lr The libretro context.
+ * @param dstRect The desintation rectangle, or NULL to fit within the full width and height of the renderer.
+ */
 bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
     if (!lr || !lr->core.texture || !lr->core.renderer) return false;
 
