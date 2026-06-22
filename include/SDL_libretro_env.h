@@ -638,6 +638,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return result;
         }
 
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
+            // TODO: Implement RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY
+            return false;
+        }
+
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
             if (!data) return false;
             const struct retro_core_options_v2* opts = (const struct retro_core_options_v2*)data;

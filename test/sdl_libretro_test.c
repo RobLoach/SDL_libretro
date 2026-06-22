@@ -256,6 +256,25 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     SDLTest_AssertCheck(decoded && SDL_memcmp(work, older, sizeof(work)) == 0,
         "Codec delta round-trip reconstructs the previous state");
 
+    // Worst case: every byte differs over a buffer that spans several 128-byte
+    // literal chunks. SDL_Libretro_RewindMaxEncodedSize must bound the output so
+    // the capture path's single-pass encode never overflows its scratch (a
+    // too-small buffer makes the encoder return 0 and silently drop the frame).
+    {
+        unsigned char wOld[300], wNew[300], wWork[300];
+        SDL_memset(wOld, 0x00, sizeof(wOld));
+        SDL_memset(wNew, 0xFF, sizeof(wNew)); // all bytes differ
+        size_t cap = SDL_Libretro_RewindMaxEncodedSize(sizeof(wNew));
+        unsigned char* wEnc = (unsigned char*)SDL_malloc(cap);
+        size_t wEncSize = SDL_Libretro_RewindEncodeDelta(wNew, wOld, sizeof(wNew), wEnc, cap);
+        SDLTest_AssertCheck(wEncSize > 0, "Worst-case delta fits the bounded scratch (got %zu of %zu)", wEncSize, cap);
+        SDL_memcpy(wWork, wNew, sizeof(wWork));
+        bool wDecoded = SDL_Libretro_RewindDecodeDelta(wEnc, wEncSize, wWork, sizeof(wWork));
+        SDLTest_AssertCheck(wDecoded && SDL_memcmp(wWork, wOld, sizeof(wWork)) == 0,
+            "Worst-case delta round-trips after a single-pass encode");
+        SDL_free(wEnc);
+    }
+
     // End-to-end: capture a few states through a stub core, then rewind.
     SDL_Libretro* lr = SDL_Libretro_Create();
     lr->core.loaded = true;

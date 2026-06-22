@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
+    SDL_Libretro_SetRewindEnabled(lr, true, 0, 60);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {

@@ -438,6 +438,22 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
 #endif
 
 /**
+ * Worst-case encoded size of a delta over `len` bytes.
+ *
+ * Reached when every byte differs: the whole buffer becomes one literal run,
+ * emitted in chunks of at most 128 bytes each prefixed by a one-byte header.
+ * That is `len` data bytes plus ceil(len/128) headers; `len/128 + 1` is a tight
+ * integer upper bound on the header count. Sizing the reusable encode scratch to
+ * this lets the capture path encode in a single pass instead of a sizing pass
+ * followed by a real one.
+ *
+ * @internal
+ */
+static size_t SDL_Libretro_RewindMaxEncodedSize(size_t len) {
+    return len + (len / 128) + 1;
+}
+
+/**
  * Rewind: delta-compressed circular buffer.
  *
  * Instead of storing full serialized states, each entry holds an RLE-compressed XOR delta between consecutive captures. A single full "reference" state is kept; on rewind the delta is XOR'd back to reconstruct the previous state.
@@ -598,10 +614,12 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     // Initialize the rewind slots.
     unsigned char* ref = (unsigned char*)SDL_calloc(1, slotSize);
     unsigned char* scratch = (unsigned char*)SDL_malloc(slotSize);
+    unsigned char* encScratch = (unsigned char*)SDL_malloc(SDL_Libretro_RewindMaxEncodedSize(slotSize));
     SDL_LibretroRewindDelta* entries = (SDL_LibretroRewindDelta*)SDL_calloc(bufferFrames, sizeof(*entries));
-    if (!ref || !scratch || !entries) {
+    if (!ref || !scratch || !encScratch || !entries) {
         SDL_free(ref);
         SDL_free(scratch);
+        SDL_free(encScratch);
         SDL_free(entries);
         SDL_SetError("SDL_libretro: Failed to allocate rewind buffers");
         lr->rewindEnabled = false;
@@ -611,6 +629,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     // Set the initial state.
     lr->rewindReference = ref;
     lr->rewindScratch = scratch;
+    lr->rewindEncodeScratch = encScratch;
     lr->rewindEntries = entries;
     lr->rewindSlotSize = slotSize;
     lr->rewindBytes = 0;
@@ -725,15 +744,19 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     if (curSize != lr->rewindSlotSize) {
         unsigned char* nref = (unsigned char*)SDL_calloc(1, curSize);
         unsigned char* nscr = (unsigned char*)SDL_malloc(curSize);
-        if (!nref || !nscr) {
+        unsigned char* nenc = (unsigned char*)SDL_malloc(SDL_Libretro_RewindMaxEncodedSize(curSize));
+        if (!nref || !nscr || !nenc) {
             SDL_free(nref);
             SDL_free(nscr);
+            SDL_free(nenc);
             return;
         }
         SDL_free(lr->rewindReference);
         SDL_free(lr->rewindScratch);
+        SDL_free(lr->rewindEncodeScratch);
         lr->rewindReference = nref;
         lr->rewindScratch = nscr;
+        lr->rewindEncodeScratch = nenc;
         lr->rewindSlotSize = curSize;
         SDL_Libretro_ClearRewind(lr);
     }
@@ -746,8 +769,10 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         return;
     }
 
+    // Encode the delta once into the reusable worst-case-sized scratch, then copy just the produced bytes into the slot. The old approach ran the encoder twice (a NULL pass to size, then a real pass), scanning the whole state both times; for cores with multi-megabyte states (e.g. PSX) that second full-state pass dominated capture cost. The copy here is only of the compressed delta, which is far smaller.
     size_t encSize = SDL_Libretro_RewindEncodeDelta(
-        lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize, NULL, 0);
+        lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize,
+        lr->rewindEncodeScratch, SDL_Libretro_RewindMaxEncodedSize(lr->rewindSlotSize));
     if (encSize == 0) return;
 
     // Reuse the slot's existing allocation when it's already big enough; only (re)allocate when the new delta needs more room. At steady state this stops allocating entirely, avoiding a malloc/free on every captured frame.
@@ -761,7 +786,7 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         slot->data = data;
         slot->capacity = encSize;
     }
-    SDL_Libretro_RewindEncodeDelta(lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize, slot->data, encSize);
+    SDL_memcpy(slot->data, lr->rewindEncodeScratch, encSize);
     slot->length = encSize;
 
     lr->rewindHead = (lr->rewindHead + 1) % lr->rewindCapacity;
@@ -892,6 +917,8 @@ static void SDL_Libretro_RewindFree(SDL_Libretro* lr) {
     lr->rewindReference = NULL;
     SDL_free(lr->rewindScratch);
     lr->rewindScratch = NULL;
+    SDL_free(lr->rewindEncodeScratch);
+    lr->rewindEncodeScratch = NULL;
     lr->rewindSlotSize = 0;
     lr->rewindActive = false;
 }

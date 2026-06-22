@@ -381,6 +381,7 @@ struct SDL_Libretro {
     // Rewind (delta-compressed circular buffer)
     unsigned char* rewindReference;
     unsigned char* rewindScratch;
+    unsigned char* rewindEncodeScratch; /* reusable worst-case-sized buffer for one-pass delta encoding */
     SDL_LibretroRewindDelta* rewindEntries;
     size_t rewindSlotSize;
     size_t rewindBytes;    /* live encoded delta bytes currently stored */
