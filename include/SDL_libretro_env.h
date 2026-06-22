@@ -696,6 +696,19 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE: {
+            if (!data) return false;
+            struct retro_microphone_interface* mic = (struct retro_microphone_interface*)data;
+            mic->interface_version = RETRO_MICROPHONE_INTERFACE_VERSION;
+            mic->open_mic = SDL_Libretro_MicOpen;
+            mic->close_mic = SDL_Libretro_MicClose;
+            mic->get_params = SDL_Libretro_MicGetParams;
+            mic->set_mic_state = SDL_Libretro_MicSetState;
+            mic->get_mic_state = SDL_Libretro_MicGetState;
+            mic->read_mic = SDL_Libretro_MicRead;
+            return true;
+        }
+
         /* Unimplemented - return false */
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
         case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:

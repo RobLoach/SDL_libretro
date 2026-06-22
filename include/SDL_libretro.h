@@ -228,6 +228,12 @@ typedef struct SDL_LibretroCoreOption {
     bool visible;
 } SDL_LibretroCoreOption;
 
+typedef struct SDL_LibretroMicrophone {
+    SDL_AudioStream* stream;
+    unsigned rate;
+    bool active;
+} SDL_LibretroMicrophone;
+
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
@@ -309,6 +315,9 @@ typedef struct SDL_LibretroCoreData {
     // Rumble
     float rumbleStrong[SDL_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_RUMBLE_PORTS];
+
+    // Microphone
+    SDL_LibretroMicrophone* microphone;
 
     /* Disk control */
     struct retro_disk_control_ext_callback disk_control;
@@ -409,6 +418,14 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
+
+static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t* params);
+static void SDL_Libretro_MicClose(retro_microphone_t* microphone);
+static bool SDL_Libretro_MicGetParams(const retro_microphone_t* microphone, retro_microphone_params_t* params);
+static bool SDL_Libretro_MicSetState(retro_microphone_t* microphone, bool state);
+static bool SDL_Libretro_MicGetState(const retro_microphone_t* microphone);
+static int SDL_Libretro_MicRead(retro_microphone_t* microphone, int16_t* samples, size_t num_samples);
+static void SDL_Libretro_CloseMicrophone(SDL_Libretro* lr);
 
 static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap);
 static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen);
