@@ -1,0 +1,79 @@
+# SDL_libretro
+
+An [SDL3](https://libsdl.org/)-based [libretro](https://www.libretro.com/) frontend library.
+
+## Features
+
+- Header-only C99 library
+- Context-based design (`SDL_Libretro*`)
+- Audio via SDL_AudioStream with dynamic rate control
+- Gamepad, keyboard, mouse, lightgun, and pointer input
+- Save states and SRAM
+- Core options
+- Rewind with delta compression
+- Fast-forward and slow-motion
+- Rumble feedback
+- On-screen display messages
+
+## Build
+
+```sh
+git clone --recurse-submodules https://github.com/RobLoach/SDL_libretro.git
+cd SDL_libretro
+mkdir build && cd build
+cmake ..
+cmake --build .
+```
+
+SDL3 is fetched automatically via CMake FetchContent if not already installed on the system.
+
+## Usage
+
+Define `SDL_LIBRETRO_IMPLEMENTATION` in exactly one `.c` file before including the header:
+
+```c
+#define SDL_LIBRETRO_IMPLEMENTATION
+#include "SDL_libretro.h"
+```
+
+All other files include `SDL_libretro.h` normally without the define.
+
+### Quickstart
+
+```c
+SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD);
+SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE);
+SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+SDL_Libretro* lr = SDL_Libretro_Create();
+SDL_Libretro_SetSystemDirectory(lr, "system");
+SDL_Libretro_SetSaveDirectory(lr, "saves");
+SDL_Libretro_LoadCore(lr, "core.so");
+SDL_Libretro_LoadGame(lr, "game.rom", renderer);
+
+while (!SDL_Libretro_ShouldClose(lr)) {
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        SDL_Libretro_HandleEvent(lr, &event);
+    }
+
+    SDL_Libretro_RunFrame(lr);
+
+    SDL_RenderClear(renderer);
+    SDL_Libretro_Render(lr, NULL);
+    SDL_RenderPresent(renderer);
+}
+
+SDL_Libretro_Destroy(lr);
+```
+
+See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example.
+
+## Dependencies
+
+- [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
+- [libretro.h](https://github.com/libretro/libretro-common) (included as a submodule)
+
+## License
+
+[zlib/libpng](LICENSE)

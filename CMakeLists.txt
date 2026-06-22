@@ -8,6 +8,21 @@ project(SDL_libretro
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 find_package(SDL3 REQUIRED)
 
+# Core downloads for development/testing
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    option(SDL_LIBRETRO_DOWNLOAD_CORES "Download libretro cores for testing" ON)
+else()
+    option(SDL_LIBRETRO_DOWNLOAD_CORES "Download libretro cores for testing" OFF)
+endif()
+
+if(NOT DEFINED CORES_DIR)
+    set(CORES_DIR "${CMAKE_BINARY_DIR}/cores")
+endif()
+
+if(SDL_LIBRETRO_DOWNLOAD_CORES)
+    include(DownloadCores)
+endif()
+
 # Header-only (INTERFACE) library. Consumers define SDL_LIBRETRO_IMPLEMENTATION
 # in exactly one translation unit before including <SDL_libretro.h>.
 add_library(SDL_libretro INTERFACE)
@@ -32,8 +47,17 @@ endif()
 option(SDL_LIBRETRO_BUILD_TESTS "Build unit tests" ON)
 if(SDL_LIBRETRO_BUILD_TESTS)
     enable_testing()
+
+    add_library(test_core SHARED test/test_core.c)
+    target_include_directories(test_core PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include)
+    set_target_properties(test_core PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
+
     add_executable(sdl_libretro_test test/sdl_libretro_test.c)
     target_link_libraries(sdl_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
+    target_compile_definitions(sdl_libretro_test PRIVATE
+        TEST_CORE_PATH="$<TARGET_FILE:test_core>"
+        TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt")
     add_test(NAME sdl_libretro_test COMMAND sdl_libretro_test)
 endif()
 

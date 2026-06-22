@@ -408,6 +408,41 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
             return 0;
         }
 
+        case RETRO_DEVICE_POINTER: {
+            float mx = lr->core.inputMouseX;
+            float my = lr->core.inputMouseY;
+            SDL_FRect r = lr->core.renderDstRect;
+            bool inside = r.w > 0 && r.h > 0 &&
+                mx >= r.x && mx < r.x + r.w &&
+                my >= r.y && my < r.y + r.h;
+
+            if (index > 0) return 0;
+
+            switch (id) {
+                case RETRO_DEVICE_ID_POINTER_X: {
+                    if (r.w <= 0) return 0;
+                    float v = (mx - r.x) / r.w * 2.0f - 1.0f;
+                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                }
+                case RETRO_DEVICE_ID_POINTER_Y: {
+                    if (r.h <= 0) return 0;
+                    float v = (my - r.y) / r.h * 2.0f - 1.0f;
+                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                }
+                case RETRO_DEVICE_ID_POINTER_PRESSED: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_LMASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_POINTER_COUNT: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_LMASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_POINTER_IS_OFFSCREEN:
+                    return inside ? 0 : 1;
+            }
+            return 0;
+        }
+
         case RETRO_DEVICE_LIGHTGUN: {
             if (id == RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X || id == RETRO_DEVICE_ID_LIGHTGUN_X) {
                 int w = 0, h = 0;
