@@ -26,6 +26,7 @@ SDL_Libretro* SDL_Libretro_Create(void) {
 
     lr->volume = 1.0f;
     lr->speed = 1.0f;
+    lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
     SDL_strlcpy(lr->username, "SDL_libretro", sizeof(lr->username));
     SDL_strlcpy(lr->coreDirectory, "cores", sizeof(lr->coreDirectory));
     SDL_strlcpy(lr->saveDirectory, "saves", sizeof(lr->saveDirectory));

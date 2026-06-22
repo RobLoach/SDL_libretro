@@ -183,6 +183,15 @@ static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
     SDLTest_AssertCheck(SDL_Libretro_IsRewinding(lr) == false, "Not rewinding on fresh context");
+
+    // Memory budget: a fresh context carries the default, and an explicit 0
+    // (unbounded) must survive enabling rather than being reset to the default.
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) > 0, "Fresh context has a default rewind budget");
+    SDL_Libretro_SetRewindMemoryLimit(lr, 0);
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, true, 600, 2) == true, "Enable rewind (unbounded budget)");
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) == 0, "Explicit unbounded budget survives enabling");
+    SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
+
     SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, true, 600, 2) == true, "Enable rewind before core load");
     SDLTest_AssertCheck(lr->rewindEnabled == true, "Rewind enabled flag set");
     SDLTest_AssertCheck(lr->rewindCapacity == 600, "Rewind capacity stored");
