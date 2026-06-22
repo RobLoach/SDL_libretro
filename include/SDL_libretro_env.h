@@ -164,9 +164,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return false;
 
-    unsigned baseCmd = cmd & ~RETRO_ENVIRONMENT_EXPERIMENTAL;
-
-    switch (baseCmd) {
+    switch (cmd) {
         case RETRO_ENVIRONMENT_SET_ROTATION: {
             if (!data) return false;
             lr->core.rotation = (int)*(const unsigned*)data;
@@ -219,16 +217,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 case RETRO_PIXEL_FORMAT_RGB565: {
                     bool changed = (fmt != lr->core.pixelFormat);
                     lr->core.pixelFormat = fmt;
-                    /* The texture's format is fixed at creation. The load path
-                     * builds it from this field; a runtime change (texture already
-                     * exists) defers a rebuild to the next RunFrame. */
+                    // The texture's format is fixed at creation. The load path builds it from this field, a runtime change (texture already exists) defers a rebuild to the next RunFrame.
                     if (changed && lr->core.texture) {
                         lr->core.videoReinitPending = true;
                     }
                     return true;
                 }
                 default:
-                    /* Unsupported: signal false without clobbering the current format. */
+                    // Unsupported. Signal false without clobbering the current format.
                     return false;
             }
         }
@@ -451,6 +447,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 49:
+        case RETRO_ENVIRONMENT_GET_FASTFORWARDING: {
+            if (!data) return false;
+            *(bool*)data = SDL_Libretro_GetSpeed(lr) > 1.0f;
+            return true;
+        }
+
         case 50:
         case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
             if (!data) return false;
@@ -523,18 +526,22 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 36:
         case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
             if (!data) return false;
             const struct retro_memory_map* map = (const struct retro_memory_map*)data;
-            SDL_free(lr->core.memoryMapDescriptors);
-            lr->core.memoryMapDescriptors = NULL;
-            lr->core.memoryMapDescriptorCount = 0;
+            SDL_Libretro_FreeMemoryMap(lr);
             if (map->num_descriptors > 0) {
                 size_t sz = map->num_descriptors * sizeof(struct retro_memory_descriptor);
                 lr->core.memoryMapDescriptors = (struct retro_memory_descriptor*)SDL_malloc(sz);
                 if (lr->core.memoryMapDescriptors) {
                     SDL_memcpy(lr->core.memoryMapDescriptors, map->descriptors, sz);
                     lr->core.memoryMapDescriptorCount = map->num_descriptors;
+                    // The core only guarantees the addrspace label strings for the duration of this call, so deep-copy them.
+                    for (unsigned i = 0; i < lr->core.memoryMapDescriptorCount; i++) {
+                        const char* as = lr->core.memoryMapDescriptors[i].addrspace;
+                        if (as) lr->core.memoryMapDescriptors[i].addrspace = SDL_strdup(as);
+                    }
                 }
             }
             return true;
@@ -697,20 +704,28 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         /* Unimplemented - return false */
+        case 25:
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
+        case 26:
         case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
         case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
         case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
+        case 40:
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER:
+        case 41:
         case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:
+        case 42:
         case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
+        case 43:
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
+        case 46:
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE:
+        case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
             return false;
 
         default: {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_libretro: Unhandled env cmd %u", baseCmd);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_libretro: Unhandled environment callback: %u", cmd);
             return false;
         }
     }

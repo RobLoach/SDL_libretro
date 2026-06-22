@@ -118,12 +118,23 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
 bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
 
-// SRAM
+// Memory
 
+bool SDL_Libretro_SaveMemory(SDL_Libretro* lr, unsigned memoryType, const char* file);
+bool SDL_Libretro_SaveMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStream* dst, bool closeio);
+bool SDL_Libretro_LoadMemory(SDL_Libretro* lr, unsigned memoryType, const char* file);
+bool SDL_Libretro_LoadMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStream* src, bool closeio);
+void* SDL_Libretro_GetMemoryData(const SDL_Libretro* lr, unsigned memoryType, size_t* size);
+bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const void* data, size_t size);
 bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio);
 bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
+unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr);
+bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
+    Uint64* flags, void** ptr, size_t* offset, size_t* start,
+    size_t* select, size_t* disconnect, size_t* len, const char** addrspace);
+void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining);
 
 // Core Options
 
@@ -148,6 +159,7 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 // Utilities
 
 size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension);
+size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, char* dst, size_t dstSize);
 
 // Rewind
 
@@ -238,7 +250,8 @@ typedef struct SDL_LibretroCoreOption {
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
-    bool loaded;
+    bool loaded;     /** A core is loaded. */
+    bool gameLoaded; /** A game is loaded into the core (content or no-content). */
     bool shutdown;
     unsigned width, height;
     double fps;
@@ -430,6 +443,8 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     const char* label, const char* valuesList, const char* displayList,
     const char* tooltip, const char* categoryKey);
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
+
+static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
 
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"

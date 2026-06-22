@@ -91,9 +91,18 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
         return false;
     }
 
+    // Verify core API version.
+    LOAD_SYM(retro_api_version);
+    lr->core.apiVersion = lr->core.symbols.retro_api_version();
+    if (lr->core.apiVersion != 1) {
+        SDL_UnloadObject(lr->core.symbols.handle);
+        SDL_SetError("SDL_libretro: Unsupported Core API Version: %d", (int)lr->core.apiVersion);
+        SDL_memset(&lr->core, 0, sizeof(lr->core));
+        return false;
+    }
+
     LOAD_SYM(retro_init);
     LOAD_SYM(retro_deinit);
-    LOAD_SYM(retro_api_version);
     LOAD_SYM(retro_set_environment);
     LOAD_SYM(retro_set_video_refresh);
     LOAD_SYM(retro_set_audio_sample);
@@ -131,10 +140,11 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     lr->core.needFullpath = sysinfo.need_fullpath;
     lr->core.blockExtract = sysinfo.block_extract;
 
+    // Default the content name to the core's reported name.
+    SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
+
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
-
-    lr->core.apiVersion = lr->core.symbols.retro_api_version();
 
     SDL_Log("SDL_libretro: Loaded core '%s' v%s (API %u)",
         lr->core.libraryName, lr->core.libraryVersion, lr->core.apiVersion);
@@ -161,9 +171,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (lr->core.controllerInfo) {
         SDL_free(lr->core.controllerInfo);
     }
-    if (lr->core.memoryMapDescriptors) {
-        SDL_free(lr->core.memoryMapDescriptors);
-    }
+    SDL_Libretro_FreeMemoryMap(lr);
     if (lr->core.persistentGameData) {
         SDL_free(lr->core.persistentGameData);
     }
@@ -214,10 +222,39 @@ size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, boo
     return SDL_strlen(dst);
 }
 
+/**
+ * Build a path in the save directory for the currently loaded content.
+ *
+ * Produces "<saveDirectory>/<contentName><extension>" (or just "<contentName><extension>" when no save directory is set). Handy for deriving SRAM (".srm"), RTC (".rtc"), or save-state file names without hardcoding them.
+ *
+ * @param lr the libretro context.
+ * @param extension the extension to append, including the dot (NULL or "" for none).
+ * @param dst the destination buffer (always null-terminated when dstSize > 0).
+ * @param dstSize the size of `dst` in bytes.
+ * @returns the length of the resulting string, or 0 if no content is loaded or on invalid arguments.
+ */
+size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, char* dst, size_t dstSize) {
+    if (!dst || dstSize == 0) return 0;
+    dst[0] = '\0';
+    if (!lr || lr->core.contentName[0] == '\0') return 0;
+    if (!extension) extension = "";
+    if (lr->saveDirectory[0] != '\0') {
+        SDL_snprintf(dst, dstSize, "%s/%s%s", lr->saveDirectory, lr->core.contentName, extension);
+    } else {
+        SDL_snprintf(dst, dstSize, "%s%s", lr->core.contentName, extension);
+    }
+    return SDL_strlen(dst);
+}
+
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
     if (!lr || !lr->core.loaded || !renderer) {
         SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
         return false;
+    }
+
+    // Switching content: unload any game that's already running first.
+    if (lr->core.gameLoaded) {
+        SDL_Libretro_UnloadGame(lr);
     }
 
     lr->core.renderer = renderer;
@@ -259,9 +296,11 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     }
 
     if (!result) {
-        SDL_SetError("SDL_libretro: Core rejected the game");
+        SDL_SetError("SDL_libretro: Core failed to load the game");
         return false;
     }
+
+    lr->core.gameLoaded = true;
 
     struct retro_system_av_info avInfo = {0};
     lr->core.symbols.retro_get_system_av_info(&avInfo);
@@ -272,7 +311,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
 
     if (!SDL_Libretro_InitVideo(lr)) {
-        lr->core.symbols.retro_unload_game();
+        SDL_Libretro_UnloadGame(lr);
         return false;
     }
 
@@ -293,14 +332,14 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 }
 
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return;
+    if (!lr || !lr->core.gameLoaded) return;
 
-    // Call retro_unload_game() prior to closing the audio and video.
-    if (lr->core.contentPath[0] != '\0') {
-        lr->core.symbols.retro_unload_game();
-        lr->core.contentPath[0] = '\0';
-        lr->core.contentName[0] = '\0';
-    }
+    // Unload the game before closing audio and video. Unconditional: a
+    // no-content core has no contentPath but still needs retro_unload_game().
+    lr->core.symbols.retro_unload_game();
+    lr->core.gameLoaded = false;
+    lr->core.contentPath[0] = '\0';
+    lr->core.contentName[0] = '\0';
 
     SDL_Libretro_RewindFree(lr);
     SDL_Libretro_CloseAudio(lr);
@@ -308,7 +347,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
-    return lr && lr->core.loaded && lr->core.renderer != NULL;
+    return lr && lr->core.gameLoaded && lr->core.renderer != NULL;
 }
 
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
@@ -316,8 +355,8 @@ bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
 }
 
 bool SDL_Libretro_Reset(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) {
-        SDL_SetError("SDL_libretro: No core loaded");
+    if (!lr || !lr->core.gameLoaded) {
+        SDL_SetError("SDL_libretro: No game loaded");
         return false;
     }
     lr->core.symbols.retro_reset();
@@ -366,7 +405,7 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
 }
 
 void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return;
+    if (!lr || !lr->core.gameLoaded) return;
 
     // Pending Video Driver Reinit
     if (lr->core.videoReinitPending) {
