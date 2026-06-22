@@ -103,7 +103,6 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
 
     LOAD_SYM(retro_init);
     LOAD_SYM(retro_deinit);
-    LOAD_SYM(retro_api_version);
     LOAD_SYM(retro_set_environment);
     LOAD_SYM(retro_set_video_refresh);
     LOAD_SYM(retro_set_audio_sample);
