@@ -70,14 +70,20 @@ typedef struct SDL_Libretro_CoreInfo {
     bool is_experimental;
 } SDL_Libretro_CoreInfo;
 
-bool SDL_Libretro_LoadCoreInfo(const char* path, SDL_Libretro_CoreInfo* out);
-bool SDL_Libretro_LoadCoreInfo_IO(SDL_IOStream* io, SDL_Libretro_CoreInfo* out, bool closeio);
-void SDL_Libretro_FreeCoreInfo(SDL_Libretro_CoreInfo* info);
+// Scale
+
+typedef enum SDL_LibretroScaleMode {
+    SDL_LIBRETRO_SCALE_ASPECT = 0,
+    SDL_LIBRETRO_SCALE_INTEGER = 1
+} SDL_LibretroScaleMode;
 
 // Libretro Instance
 
 SDL_Libretro* SDL_Libretro_Create(void);
 void SDL_Libretro_Destroy(SDL_Libretro* lr);
+bool SDL_Libretro_LoadCoreInfo(const char* path, SDL_Libretro_CoreInfo* out);
+bool SDL_Libretro_LoadCoreInfo_IO(SDL_IOStream* io, SDL_Libretro_CoreInfo* out, bool closeio);
+void SDL_Libretro_FreeCoreInfo(SDL_Libretro_CoreInfo* info);
 
 // Directories
 
@@ -112,6 +118,8 @@ void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h);
 float SDL_Libretro_GetAspectRatio(const SDL_Libretro* lr);
 double SDL_Libretro_GetFPS(const SDL_Libretro* lr);
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr);
+void SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_LibretroScaleMode mode);
+SDL_LibretroScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr);
 
 // Audio
 
@@ -371,6 +379,7 @@ struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /** The audio volume. */
     float speed;
+    SDL_LibretroScaleMode scaleMode;
     double speedAccumulator;
     Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */
     SDL_Scancode keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3 + 1];

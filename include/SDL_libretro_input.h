@@ -419,12 +419,16 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
             if (index > 0) return 0;
 
             switch (id) {
-                case RETRO_DEVICE_ID_POINTER_X:
+                case RETRO_DEVICE_ID_POINTER_X: {
                     if (r.w <= 0) return 0;
-                    return (int16_t)(((mx - r.x) / r.w * 2.0f - 1.0f) * 0x7FFF);
-                case RETRO_DEVICE_ID_POINTER_Y:
+                    float v = (mx - r.x) / r.w * 2.0f - 1.0f;
+                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                }
+                case RETRO_DEVICE_ID_POINTER_Y: {
                     if (r.h <= 0) return 0;
-                    return (int16_t)(((my - r.y) / r.h * 2.0f - 1.0f) * 0x7FFF);
+                    float v = (my - r.y) / r.h * 2.0f - 1.0f;
+                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                }
                 case RETRO_DEVICE_ID_POINTER_PRESSED: {
                     Uint32 state = SDL_GetMouseState(NULL, NULL);
                     return (state & SDL_BUTTON_LMASK) ? 1 : 0;
