@@ -28,7 +28,7 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_SetRewindEnabled(lr, true, 0, 60);
+    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
 
             // Fast Forward
             else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F && !event.key.repeat) {
-                SDL_Libretro_SetSpeed(lr, 2.0f);
+                SDL_Libretro_SetSpeed(lr, 5.0f);
             }
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F) {
                 SDL_Libretro_SetSpeed(lr, 1.0f);

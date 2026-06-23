@@ -1,9 +1,11 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_ENV_IMPL_ONCE)
-#define SDL_LIBRETRO_ENV_IMPL_ONCE
-
-/*
- * SDL_libretro - environment callback dispatch
+/**
+ * SDL_libretro environment callback dispatch
+ *
+ * @file SDL_libretro_env.h
  */
+
+ #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_ENV_IMPL_ONCE)
+#define SDL_LIBRETRO_ENV_IMPL_ONCE
 
 #include <stdarg.h>
 

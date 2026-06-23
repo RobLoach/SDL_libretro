@@ -1,9 +1,11 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
-#define SDL_LIBRETRO_VIDEO_IMPL_ONCE
-
-/*
- * SDL_libretro - video subsystem
+/**
+ * SDL_libretro - Video System
+ *
+ * @file SDL_libretro_video.h
  */
+
+ #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
+#define SDL_LIBRETRO_VIDEO_IMPL_ONCE
 
 /**
  * Maps a libretro pixel format over to an SDL_PixelFormat.

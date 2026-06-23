@@ -245,7 +245,9 @@ static bool rewind_stub_unserialize(const void* data, size_t size) {
 }
 
 static int SDLCALL test_RewindBuffer(void *arg) {
+#ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
     // Codec: encoding then decoding a delta reconstructs the older state.
+    // (Full-state mode has no codec; the end-to-end checks below cover it.)
     unsigned char older[32], newer[32], work[32], enc[64];
     SDL_memset(older, 0xA5, sizeof(older));
     SDL_memcpy(newer, older, sizeof(newer));
@@ -274,6 +276,7 @@ static int SDLCALL test_RewindBuffer(void *arg) {
             "Worst-case delta round-trips after a single-pass encode");
         SDL_free(wEnc);
     }
+#endif /* SDL_LIBRETRO_ENABLE_REWIND_DELTA */
 
     // End-to-end: capture a few states through a stub core, then rewind.
     SDL_Libretro* lr = SDL_Libretro_Create();

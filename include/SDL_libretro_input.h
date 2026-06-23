@@ -1,9 +1,10 @@
+/**
+ * SDL_libretro - input subsystem
+ * @file SDL_libretro_input.h
+ */
+
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_INPUT_IMPL_ONCE)
 #define SDL_LIBRETRO_INPUT_IMPL_ONCE
-
-/*
- * SDL_libretro - input subsystem
- */
 
 /**
  * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
@@ -568,10 +569,11 @@ unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
 }
 
 /**
- * @brief Retrieve an input descriptor by index.
+ * Retrieve an input descriptor by index.
  *
  * This function can be used to enumerate all available input descriptors by calling it with incrementing index values starting at 0 until no descriptor is returned or an error is indicated.
  *
+ * @param lr The libretro context.
  * @param[in] index Zero-based index of the input descriptor to retrieve. The value should start at 0 and be incremented to enumerate successive descriptors.
  * @param[out] port Zero-based port number to query (e.g., controller port).
  * @param[out] device Device identifier within the port (if applicable).
@@ -580,8 +582,7 @@ unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
  *
  * @return 0 on success, a negative error code on failure.
  *
- * @note The contents written to @p out_desc are owned by the caller after the
- *       call returns and may be modified or freed as appropriate by the caller.
+ * @note The contents written to @p out_desc are owned by the caller after the call returns and may be modified or freed as appropriate by the caller.
  *
  * @see retro_input_descriptor
  */

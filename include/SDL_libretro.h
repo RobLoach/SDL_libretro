@@ -1,4 +1,4 @@
-/*
+/**
  * SDL_libretro - SDL3 libretro frontend library
  *
  * Single-header library. To compile the implementation, define
@@ -10,7 +10,7 @@
  *
  * Every other translation unit includes "SDL_libretro.h" normally.
  *
- * Copyright (c) 2026 Rob Loach (@RobLoach)
+ * Copyright (c) 2026 Rob Loach
  *
  * This software is provided "as-is", without any express or implied warranty.
  * In no event will the authors be held liable for any damages arising from
@@ -29,6 +29,8 @@
  *      be misrepresented as being the original software.
  *
  *   3. This notice may not be removed or altered from any source distribution.
+ *
+ * @file SDL_libretro.h
  */
 
 #ifndef SDL_LIBRETRO_H
@@ -429,8 +431,10 @@ static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
 
+#ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
 static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap);
 static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen);
+#endif
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr);
 static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDelta* entry);
