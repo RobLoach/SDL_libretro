@@ -76,6 +76,9 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_free(lr);
 }
 
+/**
+ * Loads a libretro core.
+ */
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     if (!lr || !corePath) {
         SDL_SetError("SDL_libretro: Invalid arguments");
@@ -326,6 +329,11 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 }
 
+/**
+ * Loads a game at the given path.
+ *
+ * @see SDL_Libretro_UnloadGame()
+ */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
     if (!lr || !lr->core.loaded || !renderer) {
         SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
@@ -623,7 +631,7 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     }
 }
 
-bool SDL_Libretro_ShouldClose(const SDL_Libretro* lr) {
+bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 

@@ -67,7 +67,7 @@ bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username);
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath);
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr);
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr);
-bool SDL_Libretro_ShouldClose(const SDL_Libretro* lr);
+bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr);
 
 // Game
 

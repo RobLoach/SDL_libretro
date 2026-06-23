@@ -146,6 +146,7 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         dst.h = (float)h;
     }
 
+    // Aspect Ratio
     float srcAspect = lr->core.aspectRatio;
     if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
         srcAspect = (float)lr->core.width / (float)lr->core.height;
@@ -165,7 +166,7 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         }
     }
 
-    // Snap to integer multiples of core resolution
+    // Integer Scaling
     if (lr->scaleMode == SDL_LIBRETRO_SCALE_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
         float coreW = (float)lr->core.width;
         float coreH = (float)lr->core.height;

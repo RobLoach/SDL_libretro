@@ -1,5 +1,5 @@
 /**
- * SDL_libretro - save states, core memory (SRAM/RTC/...), and rewind
+ * SDL_libretro - SDL3 Virtual File System interface for libretro
  *
  * @file SDL_libretro_vfs.h
  */

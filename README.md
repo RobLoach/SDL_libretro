@@ -52,7 +52,7 @@ SDL_Libretro_SetSaveDirectory(lr, "saves");
 SDL_Libretro_LoadCore(lr, "core.so");
 SDL_Libretro_LoadGame(lr, "game.rom", renderer);
 
-while (!SDL_Libretro_ShouldClose(lr)) {
+while (!SDL_Libretro_IsShutdown(lr)) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         SDL_Libretro_HandleEvent(lr, &event);

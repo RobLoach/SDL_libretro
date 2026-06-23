@@ -474,6 +474,26 @@ static size_t SDL_Libretro_RewindMaxEncodedSize(size_t len) {
 }
 
 /**
+ * Count the leading bytes that match between two buffers, scanning a machine word at a time and only dropping to a byte compare for the final partial word.
+ *
+ * The encoder spends most of its time skipping over the unchanged bulk of a serialized state; a per-byte compare there is the dominant capture cost for multi-megabyte cores. Comparing `sizeof(size_t)` bytes per step cuts that scan several-fold. This only accelerates *matching* runs: a whole-word inequality means "at least one byte differs", not "all differ", so the differing-byte scan in the literal path stays byte-wise. Endianness is irrelevant, it only asks whether the words are equal. SDL_memcpy is `memcpy`, so each fixed-size load lowers to a single (possibly unaligned) word read.
+ *
+ * @internal
+ * @see SDL_Libretro_RewindEncodeDelta()
+ */
+static size_t SDL_Libretro_RewindMatchRun(const unsigned char* a, const unsigned char* b, size_t max) {
+    size_t i = 0;
+    for (; i + sizeof(size_t) <= max; i += sizeof(size_t)) {
+        size_t wa, wb;
+        SDL_memcpy(&wa, a + i, sizeof(size_t));
+        SDL_memcpy(&wb, b + i, sizeof(size_t));
+        if (wa != wb) break;
+    }
+    while (i < max && a[i] == b[i]) i++;
+    return i;
+}
+
+/**
  * Rewind: delta-compressed circular buffer.
  *
  * Instead of storing full serialized states, each entry holds an RLE-compressed XOR delta between consecutive captures. A single full "reference" state is kept; on rewind the delta is XOR'd back to reconstruct the previous state.
@@ -494,8 +514,8 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
     size_t op = 0, i = 0;
     while (i < len) {
         if (cur[i] == ref[i]) {
-            size_t run = 0;
-            while (i < len && cur[i] == ref[i]) { i++; run++; }
+            size_t run = SDL_Libretro_RewindMatchRun(cur + i, ref + i, len - i);
+            i += run;
             while (run > 0) {
                 if (run <= 127) {
                     if (out) { if (op >= outCap) return 0; out[op] = (unsigned char)run; }
@@ -528,7 +548,7 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
                 segEnd = j;
                 if (j >= len) break;
                 size_t gapStart = j;
-                while (j < len && cur[j] == ref[j]) j++;
+                j += SDL_Libretro_RewindMatchRun(cur + j, ref + j, len - j);
                 if ((j - gapStart) >= kMinSkip || j >= len) break;
             }
             i = segEnd;
@@ -836,7 +856,10 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         lr->rewindCount++;
     }
 
-    SDL_memcpy(lr->rewindReference, lr->rewindScratch, lr->rewindSlotSize);
+    // Ping-pong: the freshly serialized state in `scratch` becomes the new reference, and the now-stale reference buffer is recycled as next frame's scratch (overwritten by the next retro_serialize). Swapping pointers avoids a full state-sized memcpy on every captured frame. Safe here because both modes have already consumed `reference`/`scratch` above. The slot copy captured what was needed and `storeSrc` is no longer read past this point.
+    unsigned char* swap = lr->rewindReference;
+    lr->rewindReference = lr->rewindScratch;
+    lr->rewindScratch = swap;
 
     // Keep total delta memory under the configured budget by dropping the oldest snapshots; this bounds worst-case memory for large/incompressible states.
     SDL_Libretro_RewindEvictToBudget(lr);
@@ -872,19 +895,27 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
     if (!entry->data || entry->length == 0) return false;
 
 #ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
-    if (!SDL_Libretro_RewindDecodeDelta(entry->data, entry->length,
-            lr->rewindReference, lr->rewindSlotSize)) {
-        return false;
-    }
+    bool reconstructed = SDL_Libretro_RewindDecodeDelta(entry->data, entry->length,
+        lr->rewindReference, lr->rewindSlotSize);
 #else
     // Full-state mode: the entry is the previous state verbatim.
-    if (entry->length != lr->rewindSlotSize) return false;
-    SDL_memcpy(lr->rewindReference, entry->data, lr->rewindSlotSize);
+    bool reconstructed = (entry->length == lr->rewindSlotSize);
+    if (reconstructed) SDL_memcpy(lr->rewindReference, entry->data, lr->rewindSlotSize);
 #endif
 
     SDL_Libretro_RewindFreeEntry(lr, entry);
 
-    return lr->core.symbols.retro_unserialize(lr->rewindReference, lr->rewindSlotSize);
+    // A failed reconstruction (a malformed or partial XOR decode) or a rejected
+    // unserialize leaves `reference` out of sync with the state the core still
+    // holds, and the remaining deltas are anchored to a reference we can no
+    // longer rebuild. Discard the now-untrustworthy history so the next forward
+    // capture re-seeds from a clean serialize instead of encoding the next delta
+    // against a corrupt base.
+    if (!reconstructed || !lr->core.symbols.retro_unserialize(lr->rewindReference, lr->rewindSlotSize)) {
+        SDL_Libretro_ClearRewind(lr);
+        return false;
+    }
+    return true;
 }
 
 /**

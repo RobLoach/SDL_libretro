@@ -31,7 +31,7 @@ static int SDLCALL test_StateQueries(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == false, "IsCoreReady false on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "IsGameReady false on fresh context");
-    SDLTest_AssertCheck(SDL_Libretro_ShouldClose(lr) == false, "ShouldClose false on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_IsShutdown(lr) == false, "ShouldClose false on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "GetTexture NULL on fresh context");
     SDL_Libretro_GetSize(lr, &w, &h);
     SDLTest_AssertCheck(w == 0 && h == 0, "GetSize returns 0x0, got %dx%d", w, h);
@@ -53,7 +53,7 @@ static int SDLCALL test_NullSafety(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(NULL) == false, "IsCoreReady(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(NULL) == false, "IsGameReady(NULL) false");
-    SDLTest_AssertCheck(SDL_Libretro_ShouldClose(NULL) == false, "ShouldClose(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_IsShutdown(NULL) == false, "ShouldClose(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(NULL) == NULL, "GetTexture(NULL) NULL");
     SDL_Libretro_GetSize(NULL, &w, &h);
     SDLTest_AssertCheck(w == 0 && h == 0, "GetSize(NULL) returns 0x0, got %dx%d", w, h);
