@@ -680,18 +680,8 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
  * @param lr the libretro context.
  * @returns true if rewind capture is enabled.
  */
-bool SDL_Libretro_IsRewindEnabled(const SDL_Libretro* lr) {
+bool SDL_Libretro_GetRewindEnabled(const SDL_Libretro* lr) {
     return lr && lr->rewindEnabled;
-}
-
-/**
- * Check whether the core is currently rewinding.
- *
- * @param lr the libretro context.
- * @returns true if rewind is enabled and the speed is negative.
- */
-bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr) {
-    return lr && lr->rewindEnabled && lr->speed < 0.0f;
 }
 
 /**
@@ -941,8 +931,10 @@ static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr) {
  * Keeps the buffer allocated; the next captured frame starts a fresh reference. Called both by the public API and internally after a discontinuity (state load, reset, serialize-size change) so rewinding can't walk back across it into a stale timeline.
  *
  * @param lr the libretro context.
+ *
+ * @internal
  */
-void SDL_Libretro_ClearRewind(SDL_Libretro* lr) {
+static void SDL_Libretro_ClearRewind(SDL_Libretro* lr) {
     if (!lr) return;
     if (lr->rewindEntries) {
         for (unsigned i = 0; i < lr->rewindCapacity; i++) {

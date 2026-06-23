@@ -61,7 +61,7 @@ int main(int argc, char* argv[]) {
 
             // Fast Forward
             else if (event.type == SDL_EVENT_KEY_DOWN && event.key.key == SDLK_F && !event.key.repeat) {
-                SDL_Libretro_SetSpeed(lr, 5.0f);
+                SDL_Libretro_SetSpeed(lr, 2.0f);
             }
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F) {
                 SDL_Libretro_SetSpeed(lr, 1.0f);

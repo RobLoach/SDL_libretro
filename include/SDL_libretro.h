@@ -155,6 +155,7 @@ bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const
 void SDL_Libretro_ResetCheats(SDL_Libretro* lr);
 
 // Meta Data
+
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
@@ -169,10 +170,8 @@ size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, c
 // Rewind
 
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval);
-bool SDL_Libretro_IsRewindEnabled(const SDL_Libretro* lr);
-bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr);
+bool SDL_Libretro_GetRewindEnabled(const SDL_Libretro* lr);
 bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
-void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr);
 size_t SDL_Libretro_GetRewindMemoryUsage(const SDL_Libretro* lr);
 void SDL_Libretro_SetRewindMemoryLimit(SDL_Libretro* lr, size_t maxBytes);
@@ -425,6 +424,7 @@ static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
 
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
+static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);

@@ -182,8 +182,6 @@ static int SDLCALL test_Options(void *arg) {
 static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
-    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(lr) == false, "Not rewinding on fresh context");
-
     // Memory budget: a fresh context carries the default, and an explicit 0
     // (unbounded) must survive enabling rather than being reset to the default.
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) > 0, "Fresh context has a default rewind budget");
@@ -202,7 +200,6 @@ static int SDLCALL test_Rewind(void *arg) {
     SDLTest_AssertCheck(lr->rewindEnabled == false, "Rewind disabled");
 
     SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(NULL, true, 100, 1) == false, "SetRewindEnabled(NULL) false");
-    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(NULL) == false, "IsRewinding(NULL) false");
 
     // Negative speed only accepted when rewind is enabled.
     SDL_Libretro_SetSpeed(lr, -1.0f);
