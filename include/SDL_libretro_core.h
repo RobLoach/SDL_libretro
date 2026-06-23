@@ -1,9 +1,11 @@
+/**
+ * SDL_libretro - core lifecycle implementation
+ *
+ * @file SDL_libretro_core.h
+ */
+
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CORE_IMPL_ONCE)
 #define SDL_LIBRETRO_CORE_IMPL_ONCE
-
-/*
- * SDL_libretro - core lifecycle implementation
- */
 
 #define LOAD_SYM(sym) do { \
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
@@ -74,6 +76,9 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_free(lr);
 }
 
+/**
+ * Loads a libretro core.
+ */
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     if (!lr || !corePath) {
         SDL_SetError("SDL_libretro: Invalid arguments");
@@ -324,6 +329,11 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 }
 
+/**
+ * Loads a game at the given path.
+ *
+ * @see SDL_Libretro_UnloadGame()
+ */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
     if (!lr || !lr->core.loaded || !renderer) {
         SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
@@ -556,11 +566,14 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9;
         lr->lastTickNS = nowNS;
         double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
+        // Each stored snapshot spans captureInterval real frames (a snapshot is taken every Nth frame), so a single rewind step undoes that many frames of game time. Scale the per-step wall-clock cost by the interval; otherwise speed -1 would rewind captureInterval times faster than speed +1 plays forward.
+        unsigned interval = lr->rewindCaptureInterval > 0 ? lr->rewindCaptureInterval : 1;
+        double stepPeriod = framePeriod * (double)interval;
         lr->speedAccumulator += frameTime * (double)(-lr->speed);
         // Mute audio and neutralize input for the throwaway re-runs that produce the displayed frames while scrubbing backward.
         lr->rewindActive = true;
-        while (lr->speedAccumulator >= framePeriod) {
-            lr->speedAccumulator -= framePeriod;
+        while (lr->speedAccumulator >= stepPeriod) {
+            lr->speedAccumulator -= stepPeriod;
             if (!SDL_Libretro_RewindStepState(lr)) break;
             lr->core.symbols.retro_run();
         }
@@ -618,7 +631,7 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     }
 }
 
-bool SDL_Libretro_ShouldClose(const SDL_Libretro* lr) {
+bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
@@ -780,6 +793,7 @@ static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) 
 /**
  * Displays the given message within the libretro context.
  *
+ * @param lr The libretro context.
  * @param msg The message to display, or NULL/empty to clear the message.
  * @param duration The amount of time to display the message, in seconds.
  */

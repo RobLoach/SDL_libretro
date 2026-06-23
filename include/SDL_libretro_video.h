@@ -1,9 +1,11 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
-#define SDL_LIBRETRO_VIDEO_IMPL_ONCE
-
-/*
- * SDL_libretro - video subsystem
+/**
+ * SDL_libretro - Video System
+ *
+ * @file SDL_libretro_video.h
  */
+
+ #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
+#define SDL_LIBRETRO_VIDEO_IMPL_ONCE
 
 /**
  * Maps a libretro pixel format over to an SDL_PixelFormat.
@@ -144,6 +146,7 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         dst.h = (float)h;
     }
 
+    // Aspect Ratio
     float srcAspect = lr->core.aspectRatio;
     if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
         srcAspect = (float)lr->core.width / (float)lr->core.height;
@@ -163,7 +166,7 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         }
     }
 
-    // Snap to integer multiples of core resolution
+    // Integer Scaling
     if (lr->scaleMode == SDL_LIBRETRO_SCALE_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
         float coreW = (float)lr->core.width;
         float coreH = (float)lr->core.height;

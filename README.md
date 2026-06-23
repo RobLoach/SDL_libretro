@@ -52,7 +52,7 @@ SDL_Libretro_SetSaveDirectory(lr, "saves");
 SDL_Libretro_LoadCore(lr, "core.so");
 SDL_Libretro_LoadGame(lr, "game.rom", renderer);
 
-while (!SDL_Libretro_ShouldClose(lr)) {
+while (!SDL_Libretro_IsShutdown(lr)) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         SDL_Libretro_HandleEvent(lr, &event);
@@ -69,6 +69,17 @@ SDL_Libretro_Destroy(lr);
 ```
 
 See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example.
+
+## Configuration
+
+Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
+
+```c
+// Enable the XOR delta between rewind frames to reduce
+// memory at the expense of performance.
+#define SDL_LIBRETRO_ENABLE_REWIND_DELTA
+```
+
 
 ## Dependencies
 

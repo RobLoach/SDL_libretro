@@ -1,4 +1,4 @@
-/*
+/**
  * SDL_libretro - SDL3 libretro frontend library
  *
  * Single-header library. To compile the implementation, define
@@ -10,7 +10,7 @@
  *
  * Every other translation unit includes "SDL_libretro.h" normally.
  *
- * Copyright (c) 2026 Rob Loach (@RobLoach)
+ * Copyright (c) 2026 Rob Loach
  *
  * This software is provided "as-is", without any express or implied warranty.
  * In no event will the authors be held liable for any damages arising from
@@ -29,6 +29,8 @@
  *      be misrepresented as being the original software.
  *
  *   3. This notice may not be removed or altered from any source distribution.
+ *
+ * @file SDL_libretro.h
  */
 
 #ifndef SDL_LIBRETRO_H
@@ -65,7 +67,7 @@ bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username);
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath);
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr);
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr);
-bool SDL_Libretro_ShouldClose(const SDL_Libretro* lr);
+bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr);
 
 // Game
 
@@ -153,6 +155,7 @@ bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const
 void SDL_Libretro_ResetCheats(SDL_Libretro* lr);
 
 // Meta Data
+
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
@@ -167,10 +170,8 @@ size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, c
 // Rewind
 
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval);
-bool SDL_Libretro_IsRewindEnabled(const SDL_Libretro* lr);
-bool SDL_Libretro_IsRewinding(const SDL_Libretro* lr);
+bool SDL_Libretro_GetRewindEnabled(const SDL_Libretro* lr);
 bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
-void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr);
 size_t SDL_Libretro_GetRewindMemoryUsage(const SDL_Libretro* lr);
 void SDL_Libretro_SetRewindMemoryLimit(SDL_Libretro* lr, size_t maxBytes);
@@ -381,6 +382,7 @@ struct SDL_Libretro {
     // Rewind (delta-compressed circular buffer)
     unsigned char* rewindReference;
     unsigned char* rewindScratch;
+    unsigned char* rewindEncodeScratch; /* reusable worst-case-sized buffer for one-pass delta encoding */
     SDL_LibretroRewindDelta* rewindEntries;
     size_t rewindSlotSize;
     size_t rewindBytes;    /* live encoded delta bytes currently stored */
@@ -422,14 +424,17 @@ static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
 
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
+static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
 
+#ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
 static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap);
 static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen);
+#endif
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr);
 static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr);
 static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDelta* entry);

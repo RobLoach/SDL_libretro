@@ -1,12 +1,13 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_AUDIO_IMPL_ONCE)
-#define SDL_LIBRETRO_AUDIO_IMPL_ONCE
-
-/*
+/**
  * SDL_libretro - audio subsystem
  *
- * Uses SDL3's push model. The device stream is opened with a NULL callback
- * and samples are pushed directly via SDL_PutAudioStreamData().
+ * Uses SDL3's push model. The device stream is opened with a NULL callback and samples are pushed directly via SDL_PutAudioStreamData().
+ *
+ * @file SDL_libretro_audio.h
  */
+
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_AUDIO_IMPL_ONCE)
+#define SDL_LIBRETRO_AUDIO_IMPL_ONCE
 
 #ifndef SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS
 /**

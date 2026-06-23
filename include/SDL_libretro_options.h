@@ -1,10 +1,10 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_OPTIONS_IMPL_ONCE)
-#define SDL_LIBRETRO_OPTIONS_IMPL_ONCE
-
-/*
+/**
  * SDL_libretro - core options management
+ * @file SDL_libretro_options.h
  */
 
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_OPTIONS_IMPL_ONCE)
+#define SDL_LIBRETRO_OPTIONS_IMPL_ONCE
 
 static char* SDL_Libretro_Strdup(const char* s) {
     if (!s) return SDL_strdup("");

@@ -1,9 +1,11 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_ENV_IMPL_ONCE)
-#define SDL_LIBRETRO_ENV_IMPL_ONCE
-
-/*
- * SDL_libretro - environment callback dispatch
+/**
+ * SDL_libretro environment callback dispatch
+ *
+ * @file SDL_libretro_env.h
  */
+
+ #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_ENV_IMPL_ONCE)
+#define SDL_LIBRETRO_ENV_IMPL_ONCE
 
 #include <stdarg.h>
 
@@ -636,6 +638,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts);
             SDL_free(v2defs);
             return result;
+        }
+
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
+            // TODO: Implement RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY
+            return false;
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {

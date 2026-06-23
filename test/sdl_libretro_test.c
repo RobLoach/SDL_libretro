@@ -31,7 +31,7 @@ static int SDLCALL test_StateQueries(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == false, "IsCoreReady false on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "IsGameReady false on fresh context");
-    SDLTest_AssertCheck(SDL_Libretro_ShouldClose(lr) == false, "ShouldClose false on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_IsShutdown(lr) == false, "ShouldClose false on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "GetTexture NULL on fresh context");
     SDL_Libretro_GetSize(lr, &w, &h);
     SDLTest_AssertCheck(w == 0 && h == 0, "GetSize returns 0x0, got %dx%d", w, h);
@@ -53,7 +53,7 @@ static int SDLCALL test_NullSafety(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(NULL) == false, "IsCoreReady(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(NULL) == false, "IsGameReady(NULL) false");
-    SDLTest_AssertCheck(SDL_Libretro_ShouldClose(NULL) == false, "ShouldClose(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_IsShutdown(NULL) == false, "ShouldClose(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(NULL) == NULL, "GetTexture(NULL) NULL");
     SDL_Libretro_GetSize(NULL, &w, &h);
     SDLTest_AssertCheck(w == 0 && h == 0, "GetSize(NULL) returns 0x0, got %dx%d", w, h);
@@ -182,8 +182,6 @@ static int SDLCALL test_Options(void *arg) {
 static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
-    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(lr) == false, "Not rewinding on fresh context");
-
     // Memory budget: a fresh context carries the default, and an explicit 0
     // (unbounded) must survive enabling rather than being reset to the default.
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) > 0, "Fresh context has a default rewind budget");
@@ -202,7 +200,6 @@ static int SDLCALL test_Rewind(void *arg) {
     SDLTest_AssertCheck(lr->rewindEnabled == false, "Rewind disabled");
 
     SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(NULL, true, 100, 1) == false, "SetRewindEnabled(NULL) false");
-    SDLTest_AssertCheck(SDL_Libretro_IsRewinding(NULL) == false, "IsRewinding(NULL) false");
 
     // Negative speed only accepted when rewind is enabled.
     SDL_Libretro_SetSpeed(lr, -1.0f);
@@ -245,7 +242,9 @@ static bool rewind_stub_unserialize(const void* data, size_t size) {
 }
 
 static int SDLCALL test_RewindBuffer(void *arg) {
+#ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
     // Codec: encoding then decoding a delta reconstructs the older state.
+    // (Full-state mode has no codec; the end-to-end checks below cover it.)
     unsigned char older[32], newer[32], work[32], enc[64];
     SDL_memset(older, 0xA5, sizeof(older));
     SDL_memcpy(newer, older, sizeof(newer));
@@ -255,6 +254,26 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     bool decoded = SDL_Libretro_RewindDecodeDelta(enc, encSize, work, sizeof(work));
     SDLTest_AssertCheck(decoded && SDL_memcmp(work, older, sizeof(work)) == 0,
         "Codec delta round-trip reconstructs the previous state");
+
+    // Worst case: every byte differs over a buffer that spans several 128-byte
+    // literal chunks. SDL_Libretro_RewindMaxEncodedSize must bound the output so
+    // the capture path's single-pass encode never overflows its scratch (a
+    // too-small buffer makes the encoder return 0 and silently drop the frame).
+    {
+        unsigned char wOld[300], wNew[300], wWork[300];
+        SDL_memset(wOld, 0x00, sizeof(wOld));
+        SDL_memset(wNew, 0xFF, sizeof(wNew)); // all bytes differ
+        size_t cap = SDL_Libretro_RewindMaxEncodedSize(sizeof(wNew));
+        unsigned char* wEnc = (unsigned char*)SDL_malloc(cap);
+        size_t wEncSize = SDL_Libretro_RewindEncodeDelta(wNew, wOld, sizeof(wNew), wEnc, cap);
+        SDLTest_AssertCheck(wEncSize > 0, "Worst-case delta fits the bounded scratch (got %zu of %zu)", wEncSize, cap);
+        SDL_memcpy(wWork, wNew, sizeof(wWork));
+        bool wDecoded = SDL_Libretro_RewindDecodeDelta(wEnc, wEncSize, wWork, sizeof(wWork));
+        SDLTest_AssertCheck(wDecoded && SDL_memcmp(wWork, wOld, sizeof(wWork)) == 0,
+            "Worst-case delta round-trips after a single-pass encode");
+        SDL_free(wEnc);
+    }
+#endif /* SDL_LIBRETRO_ENABLE_REWIND_DELTA */
 
     // End-to-end: capture a few states through a stub core, then rewind.
     SDL_Libretro* lr = SDL_Libretro_Create();

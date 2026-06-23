@@ -7,6 +7,7 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#define SDL_LIBRETRO_ENABLE_REWIND_DELTA
 #define SDL_LIBRETRO_IMPLEMENTATION
 #include "SDL_libretro.h"
 
@@ -51,7 +52,7 @@ int main(int argc, char* argv[]) {
     }
 
     bool running = true;
-    while (running && !SDL_Libretro_ShouldClose(lr)) {
+    while (running && !SDL_Libretro_IsShutdown(lr)) {
         // Check any events.
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
