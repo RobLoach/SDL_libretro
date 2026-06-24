@@ -276,6 +276,7 @@ typedef struct SDL_LibretroCoreData {
     SDL_Renderer* renderer;
     SDL_FRect renderDstRect;
     bool videoReinitPending;
+    void* softwareFramebufferPixels; /** Non-NULL while a software framebuffer lock is active. */
 
     // Audio
     SDL_AudioStream* audioStream;
