@@ -309,6 +309,27 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_OptionVisibility(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // test_core registers test_option_a (visible) and test_option_b (hidden)
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 2, "Two options registered by test_core");
+    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(lr, "test_option_a") == true, "Option A visible");
+    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(lr, "test_option_b") == false, "Option B hidden via SET_CORE_OPTIONS_DISPLAY");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "optionsDirty set after display change");
+    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(lr, NULL) == false, "IsOptionVisible(NULL key) false");
+    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(NULL, "test_option_a") == false, "IsOptionVisible(NULL lr) false");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LoadCore(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -697,6 +718,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),
     LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
+    LIBRETRO_TEST_CASE(test_OptionVisibility, "SET_CORE_OPTIONS_DISPLAY and IsOptionVisible"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),

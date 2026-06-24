@@ -127,4 +127,14 @@ bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr) {
     return dirty;
 }
 
+bool SDL_Libretro_IsOptionVisible(const SDL_Libretro* lr, const char* key) {
+    if (!lr || !key) return false;
+    for (unsigned i = 0; i < lr->core.optionCount; i++) {
+        if (lr->core.options[i].key && SDL_strcmp(lr->core.options[i].key, key) == 0) {
+            return lr->core.options[i].visible;
+        }
+    }
+    return false;
+}
+
 #endif /* SDL_LIBRETRO_OPTIONS_IMPL_ONCE */

@@ -641,7 +641,16 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
-            // TODO: Implement RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY
+            if (!data) return false;
+            const struct retro_core_option_display* opt = (const struct retro_core_option_display*)data;
+            if (!opt->key) return false;
+            for (unsigned i = 0; i < lr->core.optionCount; i++) {
+                if (lr->core.options[i].key && SDL_strcmp(lr->core.options[i].key, opt->key) == 0) {
+                    lr->core.options[i].visible = opt->visible;
+                    lr->core.optionsDirty = true;
+                    return true;
+                }
+            }
             return false;
         }
 

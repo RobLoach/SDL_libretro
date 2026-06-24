@@ -148,6 +148,7 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key);
 void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr);
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr);
+bool SDL_Libretro_IsOptionVisible(const SDL_Libretro* lr, const char* key);
 
 // Cheats
 
