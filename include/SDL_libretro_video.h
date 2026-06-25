@@ -29,12 +29,13 @@ static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt
  * @internal
  */
 static void SDL_Libretro_ReleaseSoftwareFramebuffer(SDL_Libretro* lr) {
-    if (lr->core.softwareFramebufferPixels) {
-        if (lr->core.texture) {
-            SDL_UnlockTexture(lr->core.texture);
-        }
-        lr->core.softwareFramebufferPixels = NULL;
+    if (lr->core.softwareFramebufferPixels == NULL) {
+        return;
     }
+    if (lr->core.texture) {
+        SDL_UnlockTexture(lr->core.texture);
+    }
+    lr->core.softwareFramebufferPixels = NULL;
 }
 
 /**
