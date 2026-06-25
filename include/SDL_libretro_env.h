@@ -772,6 +772,18 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 81:
+        case RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: {
+            if (!data) return false;
+            SDL_AudioSpec spec;
+            if (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL) && spec.freq > 0) {
+                *(unsigned*)data = (unsigned)spec.freq;
+            } else {
+                *(unsigned*)data = SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE;
+            }
+            return true;
+        }
+
         /* Unimplemented - return false */
         case 25:
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
