@@ -299,21 +299,33 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     const char* semi = SDL_strchr(var->value, ';');
                     if (semi) {
                         size_t labelLen = (size_t)(semi - var->value);
-                        while (labelLen > 0 && var->value[labelLen - 1] == ' ') labelLen--;
-                        if (labelLen >= sizeof(label)) labelLen = sizeof(label) - 1;
+                        while (labelLen > 0 && var->value[labelLen - 1] == ' ') {
+                            labelLen--;
+                        }
+                        if (labelLen >= sizeof(label)) {
+                            labelLen = sizeof(label) - 1;
+                        }
                         SDL_memcpy(label, var->value, labelLen);
 
                         const char* opts = semi + 1;
-                        while (*opts == ' ') opts++;
+                        while (*opts == ' ') {
+                            opts++;
+                        }
                         SDL_strlcpy(valuesList, opts, sizeof(valuesList));
 
                         const char* pipe = SDL_strchr(opts, '|');
                         size_t len = pipe ? (size_t)(pipe - opts) : SDL_strlen(opts);
-                        if (len >= sizeof(defaultVal)) len = sizeof(defaultVal) - 1;
+                        if (len >= sizeof(defaultVal)) {
+                            len = sizeof(defaultVal) - 1;
+                        }
                         SDL_memcpy(defaultVal, opts, len);
                     }
                 }
-                SDL_Libretro_InitCoreOption(lr, var->key, defaultVal, label, valuesList, valuesList, "", "");
+                SDL_Libretro_InitCoreOption(lr, var->key,
+                    defaultVal,
+                    label,
+                    valuesList, valuesList,
+                    NULL, NULL);
             }
             return true;
         }
@@ -657,25 +669,29 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
             if (!data) return false;
             const struct retro_core_options_v2* opts = (const struct retro_core_options_v2*)data;
-            if (opts->definitions) {
-                for (unsigned i = 0; opts->definitions[i].key; i++) {
-                    const struct retro_core_option_v2_definition* def = &opts->definitions[i];
-                    const char* defaultVal = def->default_value ? def->default_value : "";
+            if (!opts->definitions) {
+                return true; // There arn't any options.
+            }
 
-                    // Build pipe-separated values list.
-                    char valuesList[512] = {0};
-                    size_t pos = 0;
-                    for (unsigned v = 0; v < RETRO_NUM_CORE_OPTION_VALUES_MAX && def->values[v].value; v++) {
-                        if (v > 0 && pos < sizeof(valuesList) - 1) valuesList[pos++] = '|';
-                        pos += SDL_strlcpy(valuesList + pos, def->values[v].value, sizeof(valuesList) - pos);
+            for (unsigned i = 0; opts->definitions[i].key; i++) {
+                // Build pipe-separated values list.
+                char valuesList[1024] = {0};
+                const struct retro_core_option_v2_definition* def = &opts->definitions[i];
+                const char* defaultVal = def->default_value ? def->default_value : "";
+                size_t pos = 0;
+                for (unsigned v = 0; v < RETRO_NUM_CORE_OPTION_VALUES_MAX && def->values[v].value; v++) {
+                    if (v > 0 && pos < sizeof(valuesList) - 1) {
+                        valuesList[pos++] = '|';
                     }
-
-                    SDL_Libretro_InitCoreOption(lr, def->key, defaultVal,
-                        def->desc ? def->desc : "",
-                        valuesList, valuesList,
-                        def->info ? def->info : "",
-                        def->category_key ? def->category_key : "");
+                    pos += SDL_strlcpy(valuesList + pos, def->values[v].value, sizeof(valuesList) - pos);
                 }
+
+                SDL_Libretro_InitCoreOption(lr, def->key,
+                    defaultVal,
+                    def->desc,
+                    valuesList, valuesList,
+                    def->info,
+                    def->category_key);
             }
             return true;
         }
@@ -683,7 +699,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
             if (!data) return false;
             const struct retro_core_options_v2_intl* intl = (const struct retro_core_options_v2_intl*)data;
-            /* Frontend language is English, so the US definitions are used directly. The `us` member is already a retro_core_options_v2, so forward it as-is. */
+            // Frontend language is English, so the US definitions are used directly. The `us` member is already a retro_core_options_v2, so forward it as-is.
             if (!intl->us) return false;
             return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, intl->us);
         }
