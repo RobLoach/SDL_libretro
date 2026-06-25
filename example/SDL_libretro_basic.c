@@ -102,13 +102,11 @@ int main(int argc, char* argv[]) {
             // Save State
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F2) {
                 SDL_Libretro_SaveState(lr, "save.sav");
-                SDL_Libretro_SetMessage(lr, "State Saved", 3.0);
             }
 
             // Load State
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F4) {
                 SDL_Libretro_LoadState(lr, "save.sav");
-                SDL_Libretro_SetMessage(lr, "State Loaded", 3.0);
             }
 
             // Pass all events to SDL_Libretro.
