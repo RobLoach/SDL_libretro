@@ -305,9 +305,16 @@ typedef struct SDL_LibretroCoreData {
 
     // Video
     SDL_Texture* texture;
+    SDL_ScaleMode textureScaleMode;
     SDL_Renderer* renderer;
-    SDL_FRect renderDstRect;
-    bool videoReinitPending;
+    SDL_FRect renderDstRect; /** The desired destination rendering rectangle. */
+    bool videoReinitPending; /** True when the video requires a re-initialization. */
+
+    /**
+     * Non-NULL while a software buffer lock is active.
+     * @see RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER
+     */
+    void* softwareFramebufferPixels;
 
     // Audio
     SDL_AudioStream* audioStream;
@@ -449,6 +456,7 @@ static SDL_Libretro* SDL_Libretro_active = NULL;
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr);
 static void SDL_Libretro_CloseVideo(SDL_Libretro* lr);
 static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch);
+static void SDL_Libretro_ReleaseSoftwareFramebuffer(SDL_Libretro* lr);
 
 static void SDL_Libretro_AudioSample(int16_t left, int16_t right);
 static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames);

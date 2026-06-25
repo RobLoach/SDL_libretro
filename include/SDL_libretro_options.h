@@ -173,7 +173,7 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
             }
         }
         if (!valid) {
-            return SDL_SetError("SDL_Libretro: '%s' is not a valid value for option '%s'", value, key);
+            return SDL_SetError("[SDL_Libretro] '%s' is not a valid value for option '%s'", value, key);
         }
     }
 
