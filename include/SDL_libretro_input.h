@@ -6,8 +6,6 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_INPUT_IMPL_ONCE)
 #define SDL_LIBRETRO_INPUT_IMPL_ONCE
 
-#include <SDL3/SDL.h>
-
 /**
  * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
  *
