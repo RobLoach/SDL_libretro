@@ -762,6 +762,64 @@ size_t SDL_Libretro_GetRewindMemoryLimit(const SDL_Libretro* lr) {
 }
 
 /**
+ * Set the rewind memory budget by target duration instead of raw bytes.
+ *
+ * Computes the worst-case bytes needed to retain `seconds` of rewindable
+ * gameplay and forwards it to SDL_Libretro_SetRewindMemoryLimit(). The estimate
+ * is the number of snapshots that span the duration (the core's frame rate
+ * divided by the capture interval, times `seconds`) multiplied by the per-snapshot
+ * state size. With delta compression enabled (SDL_LIBRETRO_ENABLE_REWIND_DELTA)
+ * snapshots usually store far less than the full state, so this is a conservative
+ * upper bound that will typically hold longer than requested.
+ *
+ * The snapshot count (`bufferFrames` in SDL_Libretro_SetRewindEnabled()) is an
+ * independent limit; if it is smaller than the duration requires, it, not the
+ * byte budget, will cap the achievable rewind depth.
+ *
+ * Requires the core's serialize size to be known, so a core must be loaded (or
+ * rewind already enabled with a game loaded). Roughly the inverse of
+ * SDL_Libretro_GetRewindRemaining().
+ *
+ * @param lr the libretro context.
+ * @param seconds the desired rewind duration in seconds (must be positive).
+ * @returns true on success, false if `lr` or `seconds` is invalid or the core's
+ *          serialize size is not yet available.
+ * @see SDL_Libretro_SetRewindMemoryLimit()
+ * @see SDL_Libretro_GetRewindRemaining()
+ */
+bool SDL_Libretro_SetRewindMemoryDuration(SDL_Libretro* lr, double seconds) {
+    if (!lr) return false;
+    if (!(seconds > 0.0)) {
+        SDL_SetError("[SDL_Libretro] Rewind duration must be positive");
+        return false;
+    }
+
+    // Per-snapshot worst-case size. Prefer the size the rewind buffer is already
+    // using; otherwise query the core directly so this works before rewind is enabled.
+    size_t slotSize = lr->rewindSlotSize;
+    if (slotSize == 0 && lr->core.loaded && lr->core.symbols.retro_serialize_size) {
+        slotSize = lr->core.symbols.retro_serialize_size();
+    }
+    if (slotSize == 0) {
+        SDL_SetError("[SDL_Libretro] Rewind state size unknown; load a serializable core first");
+        return false;
+    }
+
+    double fps = (lr->core.fps > 0.0) ? lr->core.fps : 60.0;
+    unsigned interval = (lr->rewindCaptureInterval > 0) ? lr->rewindCaptureInterval : 1;
+
+    // Number of snapshots that cover the requested span, rounded up so the budget
+    // never falls short of the duration.
+    double snapshots = (seconds * fps) / (double)interval;
+    if (snapshots < 1.0) snapshots = 1.0;
+    size_t snaps = (size_t)snapshots;
+    if ((double)snaps < snapshots) snaps++;
+
+    SDL_Libretro_SetRewindMemoryLimit(lr, snaps * slotSize);
+    return true;
+}
+
+/**
  * Captures the current instance state into the rewind buffer.
  *
  * @internal
@@ -814,10 +872,10 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         return;
     }
 
-    // Produce the bytes to store for this snapshot. Both modes keep `reference`
-    // holding the newest state and store the step needed to walk back to the
-    // previous one, so the head always represents "now" and step-back semantics
-    // are identical.
+    // Store the step needed to walk back to the previous state. Both modes keep
+    // `reference` holding the newest state and the slot holding the previous one,
+    // so the head always represents "now" and step-back semantics are identical.
+    SDL_LibretroRewindDelta* slot = &lr->rewindEntries[lr->rewindHead];
 #ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
     // Delta mode: encode the change between the new state (scratch) and the
     // previous one (reference) once into the reusable worst-case-sized buffer,
@@ -825,22 +883,14 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     // encoder twice (a NULL pass to size, then a real pass), scanning the whole
     // state both times; for multi-megabyte states (e.g. PSX) that second pass
     // dominated capture cost. The copy here is only of the compressed delta.
-    const unsigned char* storeSrc = lr->rewindEncodeScratch;
     size_t storeSize = SDL_Libretro_RewindEncodeDelta(
         lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize,
         lr->rewindEncodeScratch, SDL_Libretro_RewindMaxEncodedSize(lr->rewindSlotSize));
     if (storeSize == 0) return;
-#else
-    // Full-state mode: store the previous state (reference) verbatim. No encode
-    // pass — the per-frame cost is just this fixed-size copy.
-    const unsigned char* storeSrc = lr->rewindReference;
-    size_t storeSize = lr->rewindSlotSize;
-#endif
 
     // Reuse the slot's existing allocation when it's already big enough; only (re)allocate when the snapshot needs more room. At steady state this stops allocating entirely, avoiding a malloc/free on every captured frame.
     //
     // rewindBytes tracks allocated snapshot memory (capacity), so it stays accurate whether or not a slot is overwritten in place.
-    SDL_LibretroRewindDelta* slot = &lr->rewindEntries[lr->rewindHead];
     if (slot->capacity < storeSize) {
         unsigned char* data = (unsigned char*)SDL_realloc(slot->data, storeSize);
         if (!data) return;
@@ -848,18 +898,43 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
         slot->data = data;
         slot->capacity = storeSize;
     }
-    SDL_memcpy(slot->data, storeSrc, storeSize);
+    SDL_memcpy(slot->data, lr->rewindEncodeScratch, storeSize);
     slot->length = storeSize;
+
+    // Ping-pong: the freshly serialized state in `scratch` becomes the new reference, and the now-stale reference buffer is recycled as next frame's scratch (overwritten by the next retro_serialize). Swapping pointers avoids a full state-sized memcpy on every captured frame.
+    unsigned char* swap = lr->rewindReference;
+    lr->rewindReference = lr->rewindScratch;
+    lr->rewindScratch = swap;
+#else
+    // Full-state mode: the slot must hold the previous state verbatim, which is
+    // exactly what `reference` already contains. Rather than memcpy a multi-MB
+    // state into the slot every frame, donate the reference buffer to the slot
+    // and recycle the slot's old (evicted) buffer as the next scratch — a few
+    // pointer assignments instead of a full state-sized copy. The new state in
+    // `scratch` becomes the reference. Both buffers are sized to slotSize, so in
+    // steady state no allocation happens at all.
+    unsigned char* recycled = slot->data; // old state being evicted from this slot (NULL until first wrap)
+    size_t recycledCap = slot->capacity;
+    if (recycledCap < lr->rewindSlotSize) {
+        // Slot's buffer can't serve as a full-state scratch; grow it before
+        // mutating anything so a failure leaves the ring and buffers untouched.
+        unsigned char* grown = (unsigned char*)SDL_realloc(recycled, lr->rewindSlotSize);
+        if (!grown) return;
+        recycled = grown;
+        recycledCap = lr->rewindSlotSize;
+    }
+    lr->rewindBytes += lr->rewindSlotSize - slot->capacity;
+    slot->data = lr->rewindReference; // holds the previous state
+    slot->length = lr->rewindSlotSize;
+    slot->capacity = lr->rewindSlotSize;
+    lr->rewindReference = lr->rewindScratch; // holds the new state
+    lr->rewindScratch = recycled;
+#endif
 
     lr->rewindHead = (lr->rewindHead + 1) % lr->rewindCapacity;
     if (lr->rewindCount < lr->rewindCapacity) {
         lr->rewindCount++;
     }
-
-    // Ping-pong: the freshly serialized state in `scratch` becomes the new reference, and the now-stale reference buffer is recycled as next frame's scratch (overwritten by the next retro_serialize). Swapping pointers avoids a full state-sized memcpy on every captured frame. Safe here because both modes have already consumed `reference`/`scratch` above. The slot copy captured what was needed and `storeSrc` is no longer read past this point.
-    unsigned char* swap = lr->rewindReference;
-    lr->rewindReference = lr->rewindScratch;
-    lr->rewindScratch = swap;
 
     // Keep total delta memory under the configured budget by dropping the oldest snapshots; this bounds worst-case memory for large/incompressible states.
     SDL_Libretro_RewindEvictToBudget(lr);

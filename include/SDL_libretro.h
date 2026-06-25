@@ -220,6 +220,7 @@ double SDL_Libretro_GetRewindRemaining(const SDL_Libretro* lr);
 size_t SDL_Libretro_GetRewindMemoryUsage(const SDL_Libretro* lr);
 void SDL_Libretro_SetRewindMemoryLimit(SDL_Libretro* lr, size_t maxBytes);
 size_t SDL_Libretro_GetRewindMemoryLimit(const SDL_Libretro* lr);
+bool SDL_Libretro_SetRewindMemoryDuration(SDL_Libretro* lr, double seconds);
 
 // VFS
 

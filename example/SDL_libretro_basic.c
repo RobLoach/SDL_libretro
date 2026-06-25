@@ -7,7 +7,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#define SDL_LIBRETRO_ENABLE_REWIND_DELTA
 #define SDL_LIBRETRO_IMPLEMENTATION
 #include "SDL_libretro.h"
 
@@ -29,7 +28,6 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
@@ -43,13 +41,16 @@ int main(int argc, char* argv[]) {
 
     // Load the game.
     if (!SDL_Libretro_LoadGame(lr, gamePath, renderer)) {
-        SDL_Log("Failed to load game: %s", SDL_GetError());
         SDL_Libretro_Destroy(lr);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
         return 1;
     }
+
+    // Allow Rewind.
+    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
+    SDL_Libretro_SetRewindMemoryDuration(lr, 6.0);
 
     bool running = true;
     while (running && !SDL_Libretro_IsShutdown(lr)) {

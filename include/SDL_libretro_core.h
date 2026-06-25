@@ -77,15 +77,42 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
 }
 
 /**
- * Expand a leading "~" or "~/" in a path to the user's home folder, writing the
- * result into dst and returning it. Anything else (including "~user/...") is
- * copied through unchanged.
+ * Whether a path is already absolute and therefore safe to hand off as-is.
  *
- * Tilde expansion is a shell feature, not a filesystem one: fopen("~/x") looks
- * for a directory literally named "~". Cores that set need_fullpath open content
- * by path themselves, so the frontend has to expand "~" before handing it over.
+ * Recognizes POSIX roots ("/..."), Windows drive paths ("C:\..." / "C:/...") and
+ * leading-separator forms ("\..." UNC/drive-relative). The check is deliberately
+ * permissive: misclassifying an absolute path as relative would corrupt it by
+ * prefixing the working directory, whereas leaving an odd path alone is harmless.
+ *
+ * @internal
  */
-static const char* SDL_Libretro_ExpandTilde(char* dst, size_t dstSize, const char* path) {
+static bool SDL_Libretro_PathIsAbsolute(const char* path) {
+    if (!path || !path[0]) return false;
+    if (path[0] == '/' || path[0] == '\\') return true;
+    // Windows drive-qualified: a letter followed by ':'.
+    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':')
+        return true;
+    return false;
+}
+
+/**
+ * Resolve a user-supplied path into an absolute one, writing the result into dst
+ * and returning it:
+ *   - a leading "~" or "~/" expands to the user's home folder;
+ *   - any other relative path is anchored to the current working directory;
+ *   - an already-absolute path is copied through unchanged.
+ *
+ * Both fixups matter because cores that set need_fullpath open content by path
+ * themselves, and the directory we derive from it (gameInfoExt.dir) is handed to
+ * cores to locate sibling files (BIOS, .bin/.sub, .m3u disc entries). Tilde is a
+ * shell-ism fopen() never expands; a relative path silently breaks the moment the
+ * process working directory changes. Anchoring to the CWD names the same file but
+ * keeps the derived directory valid for the life of the load.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_ResolvePath(char* dst, size_t dstSize, const char* path) {
+    // Expand a leading "~"/"~/" to the home folder (always an absolute result).
     if (path && path[0] == '~' && (path[1] == '\0' || path[1] == '/' || path[1] == '\\')) {
         const char* home = SDL_GetUserFolder(SDL_FOLDER_HOME);
         if (home && *home) {
@@ -96,6 +123,18 @@ static const char* SDL_Libretro_ExpandTilde(char* dst, size_t dstSize, const cha
             return dst;
         }
     }
+
+    // Anchor a relative path to the current working directory.
+    if (path && path[0] && !SDL_Libretro_PathIsAbsolute(path)) {
+        char* cwd = SDL_GetCurrentDirectory(); // owned by us; ends with a path separator
+        if (cwd) {
+            SDL_snprintf(dst, dstSize, "%s%s", cwd, path);
+            SDL_free(cwd);
+            return dst;
+        }
+    }
+
+    // Already absolute (or empty / no home / no CWD available): pass through.
     SDL_strlcpy(dst, path ? path : "", dstSize);
     return dst;
 }
@@ -121,7 +160,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     SDL_memset(&lr->core, 0, sizeof(lr->core));
 
     char expandedCorePath[SDL_LIBRETRO_MAX_PATH];
-    corePath = SDL_Libretro_ExpandTilde(expandedCorePath, sizeof(expandedCorePath), corePath);
+    corePath = SDL_Libretro_ResolvePath(expandedCorePath, sizeof(expandedCorePath), corePath);
 
     lr->core.symbols.handle = SDL_LoadObject(corePath);
     if (!lr->core.symbols.handle) {
@@ -384,14 +423,15 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
     bool persistData = false;
-    char expandedPath[SDL_LIBRETRO_MAX_PATH]; // Function-scoped: gameInfo.path points into it through retro_load_game() below.
+    char expandedPath[SDL_LIBRETRO_MAX_PATH]; // Scratch for the resolved path; only read within this function (copied into contentPath and used for SDL_LoadFile).
 
     // Cleared here so a no-content load leaves GET_GAME_INFO_EXT invalid.
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
     if (gamePath) {
-        // Resolve a leading "~" before any consumer (core or SDL_LoadFile) sees the path.
-        gamePath = SDL_Libretro_ExpandTilde(expandedPath, sizeof(expandedPath), gamePath);
+        // Resolve "~" and anchor relative paths before any consumer (core or
+        // SDL_LoadFile) sees the path, and before we derive contentDir from it.
+        gamePath = SDL_Libretro_ResolvePath(expandedPath, sizeof(expandedPath), gamePath);
 
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
 
@@ -414,7 +454,10 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         bool needFullpath = SDL_Libretro_ContentNeedsFullpath(lr, ext);
         persistData = SDL_Libretro_ContentPersistData(lr, ext);
 
-        gameInfo.path = gamePath;
+        // Point at the persistent copy, not the function-local expandedPath: a
+        // need_fullpath core may retain this pointer to stream content during
+        // retro_run(), long after this stack frame (and expandedPath) is gone.
+        gameInfo.path = lr->core.contentPath;
 
         if (!needFullpath) {
             size_t fileSize = 0;

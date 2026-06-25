@@ -302,6 +302,12 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     SDL_Libretro_ClearRewind(lr);
     SDLTest_AssertCheck(lr->rewindCount == 0, "ClearRewind empties the buffer");
 
+    // Duration-based budget: 1s at 60fps, interval 1, 32-byte state = 60 snapshots.
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(lr, 1.0) == true, "Set rewind budget by duration");
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) == (size_t)60 * sizeof(g_rewindState), "Duration budget equals snapshots * state size");
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(lr, 0.0) == false, "Non-positive duration rejected");
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(NULL, 1.0) == false, "NULL context rejected");
+
     SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
     lr->core.loaded = false; /* let Destroy skip the unset core teardown symbols */
     lr->core.gameLoaded = false;

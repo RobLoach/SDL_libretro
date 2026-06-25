@@ -73,7 +73,7 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, uns
     if (read && write) {
         sdlMode = update ? "r+b" : "w+b";
     } else if (write) {
-        sdlMode = update ? "r+b" : "wb";
+        sdlMode = "wb";
     } else {
         sdlMode = "rb";
     }
@@ -209,13 +209,16 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
         return 0;
     }
 
-    // Shrink: read first `length` bytes, rewrite the file.
-    Uint8* buf = (Uint8*)SDL_malloc((size_t)length);
-    if (!buf) return -1;
+    // Read the first `length` bytes, then rewrite the file. length == 0 (truncate to empty) needs no buffer.
+    Uint8* buf = NULL;
+    if (length > 0) {
+        buf = (Uint8*)SDL_malloc((size_t)length);
+        if (!buf) return -1;
 
-    if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_SET) < 0) { SDL_free(buf); return -1; }
-    size_t got = SDL_ReadIO(stream->io, buf, (size_t)length);
-    if ((int64_t)got != length) { SDL_free(buf); return -1; }
+        if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_SET) < 0) { SDL_free(buf); return -1; }
+        size_t got = SDL_ReadIO(stream->io, buf, (size_t)length);
+        if ((int64_t)got != length) { SDL_free(buf); return -1; }
+    }
 
     // Reopen with write access matching the original handle so subsequent reads/writes keep working.
     bool canWrite = (stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
@@ -223,7 +226,13 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
     SDL_CloseIO(stream->io);
     stream->io = SDL_IOFromFile(stream->path, "wb");
     if (!stream->io) { SDL_free(buf); stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb"); return -1; }
-    SDL_WriteIO(stream->io, buf, (size_t)length);
+    // A short write would leave the file the wrong size; report that as failure.
+    if (length > 0 && (int64_t)SDL_WriteIO(stream->io, buf, (size_t)length) != length) {
+        SDL_free(buf);
+        SDL_CloseIO(stream->io);
+        stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb");
+        return -1;
+    }
     SDL_free(buf);
 
     // Reopen in original mode for continued use.
@@ -256,7 +265,7 @@ static int SDL_Libretro_VFS_Stat64(const char* path, int64_t* size) {
  */
 static int SDL_Libretro_VFS_Stat(const char* path, int32_t* size) {
     if (!path) return 0;
-    int64_t outSize;
+    int64_t outSize = 0;
     int out = SDL_Libretro_VFS_Stat64(path, &outSize);
     if (size != NULL) {
         *size = (int32_t)outSize;
