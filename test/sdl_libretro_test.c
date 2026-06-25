@@ -65,8 +65,8 @@ static int SDLCALL test_NullSafety(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetSpeed(NULL) == 1.0f, "GetSpeed(NULL) 1.0");
     SDLTest_AssertCheck(SDL_Libretro_GetStateSize(NULL) == 0, "GetStateSize(NULL) 0");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(NULL) == 0, "GetOptionCount(NULL) 0");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionKey(NULL, 0) == NULL, "GetOptionKey(NULL) NULL");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionValue(NULL, "foo") == NULL, "GetOptionValue(NULL) NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetOption(NULL, "foo") == NULL, "GetOption(NULL) NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionByIndex(NULL, 0) == NULL, "GetOptionByIndex(NULL) NULL");
 
     return TEST_COMPLETED;
 }
@@ -168,8 +168,8 @@ static int SDLCALL test_Options(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
     SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 0, "Option count 0 on fresh context");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionKey(lr, 0) == NULL, "GetOptionKey(0) NULL on empty");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionValue(lr, "foo") == NULL, "GetOptionValue NULL on empty");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionByIndex(lr, 0) == NULL, "GetOptionByIndex(0) NULL on empty");
+    SDLTest_AssertCheck(SDL_Libretro_GetOption(lr, "foo") == NULL, "GetOption NULL on empty");
     SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == false, "Options not dirty on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "key", "val") == false, "SetOptionValue false on empty");
     SDLTest_AssertCheck(SDL_Libretro_ResetOption(lr, "key") == false, "ResetOption false on empty");
@@ -317,52 +317,55 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
-    // test_core registers test_option_a (visible) and test_option_b (hidden)
+    // test_core registers test_option_a (visible) and test_option_b (hidden), both
+    // under test_category. Both carry desc_categorized; info_categorized is unset.
     SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 2, "Two options registered by test_core");
-    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(lr, "test_option_a") == true, "Option A visible");
-    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(lr, "test_option_b") == false, "Option B hidden via SET_CORE_OPTIONS_DISPLAY");
+
+    const SDL_LibretroOption* a = SDL_Libretro_GetOption(lr, "test_option_a");
+    SDLTest_AssertCheck(a != NULL, "GetOption(test_option_a) non-NULL");
+    SDLTest_AssertCheck(a && a->visible == true, "Option A visible");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->desc, "Option A Category") == 0, "Option A desc uses desc_categorized");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->info, "First test option") == 0, "Option A info falls back to info");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "on") == 0, "Option A default value on");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->category, "test_category") == 0, "Option A category");
+    SDLTest_AssertCheck(a && a->valuesCount == 2, "Option A has 2 values");
+
+    const SDL_LibretroOption* b = SDL_Libretro_GetOption(lr, "test_option_b");
+    SDLTest_AssertCheck(b && b->visible == false, "Option B hidden via SET_CORE_OPTIONS_DISPLAY");
     SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "optionsDirty set after display change");
-    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(lr, NULL) == false, "IsOptionVisible(NULL key) false");
-    SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(NULL, "test_option_a") == false, "IsOptionVisible(NULL lr) false");
 
-    // test_core registers one category (test_category) with both options attached.
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionByIndex(lr, 0) == a, "GetOptionByIndex(0) == GetOption(test_option_a)");
+    SDLTest_AssertCheck(SDL_Libretro_GetOption(lr, "nope") == NULL, "Unknown option NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionByIndex(lr, 5) == NULL, "GetOptionByIndex out-of-range NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetOption(NULL, "test_option_a") == NULL, "GetOption(NULL lr) NULL");
+
+    // Values are part of the option (test_option_a has on|off, no per-value labels).
+    SDLTest_AssertCheck(a && SDL_strcmp(a->values[0].value, "on") == 0, "Value 0 is on");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->values[1].value, "off") == 0, "Value 1 is off");
+    SDLTest_AssertCheck(a && a->values[0].label == NULL, "Value 0 label NULL (none provided)");
+
+    // Categories: one (test_category) with both options attached.
     SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(lr) == 1, "One category registered by test_core");
-    const char* catKey = SDL_Libretro_GetCategoryKey(lr, 0);
-    SDLTest_AssertCheck(catKey && SDL_strcmp(catKey, "test_category") == 0, "Category key is test_category");
-    const char* catLabel = SDL_Libretro_GetCategoryLabel(lr, "test_category");
-    SDLTest_AssertCheck(catLabel && SDL_strcmp(catLabel, "Test Category") == 0, "Category label is Test Category");
-    const char* catInfo = SDL_Libretro_GetCategoryInfo(lr, "test_category");
-    SDLTest_AssertCheck(catInfo && SDL_strcmp(catInfo, "Category for test options") == 0, "Category info matches");
-    SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(NULL) == 0, "GetOptionCategoryCount(NULL) 0");
-    SDLTest_AssertCheck(SDL_Libretro_GetCategoryKey(lr, 5) == NULL, "GetOptionCategoryKey out-of-range NULL");
-    SDLTest_AssertCheck(SDL_Libretro_GetCategoryLabel(lr, "nope") == NULL, "Unknown category label NULL");
-    SDLTest_AssertCheck(SDL_Libretro_GetCategoryInfo(lr, NULL) == NULL, "GetOptionCategoryInfo(NULL key) NULL");
+    const SDL_LibretroCategory* c = SDL_Libretro_GetCategory(lr, "test_category");
+    SDLTest_AssertCheck(c && SDL_strcmp(c->key, "test_category") == 0, "Category key");
+    SDLTest_AssertCheck(c && SDL_strcmp(c->desc, "Test Category") == 0, "Category desc");
+    SDLTest_AssertCheck(c && SDL_strcmp(c->info, "Category for test options") == 0, "Category info");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryByIndex(lr, 0) == c, "GetCategoryByIndex(0) == GetCategory");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(NULL) == 0, "GetCategoryCount(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryByIndex(lr, 5) == NULL, "GetCategoryByIndex out-of-range NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategory(lr, "nope") == NULL, "Unknown category NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategory(NULL, "test_category") == NULL, "GetCategory(NULL lr) NULL");
 
-    // Option metadata accessors (test_option_a: label "Option A", info "First test option").
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionLabel(lr, "test_option_a"), "Option A") == 0, "Option A label");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionInfo(lr, "test_option_a"), "First test option") == 0, "Option A info");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionCategory(lr, "test_option_a"), "test_category") == 0, "Option A category");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionLabel(lr, "nope") == NULL, "Unknown option label NULL");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionCategory(NULL, "test_option_a") == NULL, "GetOptionCategory(NULL lr) NULL");
-
-    // Value enumeration (test_option_a has values on|off, no per-value labels).
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueCount(lr, "test_option_a") == 2, "Option A has 2 values");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValueByIndex(lr, "test_option_a", 0), "on") == 0, "Value 0 is on");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValueByIndex(lr, "test_option_a", 1), "off") == 0, "Value 1 is off");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueByIndex(lr, "test_option_a", 2) == NULL, "Value index out of range NULL");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValueLabelByIndex(lr, "test_option_a", 0), "on") == 0, "Value 0 label falls back to value");
-    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueCount(lr, "nope") == 0, "Unknown option value count 0");
-
-    // SetOptionValue validation against declared values.
+    // SetOptionValue validation against declared values; updates show through the held pointer.
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "Set valid value succeeds");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "off") == 0, "Value updated to off");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Held pointer reflects updated value");
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "bogus") == false, "Set invalid value rejected");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "off") == 0, "Value unchanged after rejected set");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Value unchanged after rejected set");
 
     // ResetAllOptions restores defaults and marks options dirty.
     SDL_Libretro_AreOptionsDirty(lr); // clear the dirty flag set by SetOptionValue
     SDL_Libretro_ResetAllOptions(lr);
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "on") == 0, "ResetAllOptions restores default");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "on") == 0, "ResetAllOptions restores default");
     SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "ResetAllOptions marks options dirty");
 
     SDL_Libretro_Destroy(lr);
@@ -758,7 +761,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),
     LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
-    LIBRETRO_TEST_CASE(test_OptionVisibility, "SET_CORE_OPTIONS_DISPLAY and IsOptionVisible"),
+    LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),

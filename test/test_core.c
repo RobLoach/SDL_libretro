@@ -57,7 +57,7 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
         (struct retro_core_option_v2_definition *)opt_defs };
     cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)&opts);
 
-    // Hide option B; frontend can verify via SDL_Libretro_IsOptionVisible.
+    // Hide option B; frontend can verify via SDL_Libretro_GetOption(...)->visible.
     static const struct retro_core_option_display hide_b = { "test_option_b", false };
     cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, (void *)&hide_b);
 }

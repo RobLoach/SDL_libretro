@@ -162,6 +162,18 @@ static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
     return rate;
 }
 
+/**
+ * Picks the text a categorizing frontend should show. libretro provides a
+ * `*_categorized` variant for use when an option sits inside a category; it falls
+ * back to the base text when there's no category or the variant is empty.
+ */
+static const char* SDL_Libretro_PickCoreOptionText(const char* base, const char* categorized, const char* categoryKey) {
+    if (categoryKey && categoryKey[0] && categorized && categorized[0]) {
+        return categorized;
+    }
+    return base;
+}
+
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return false;
@@ -280,9 +292,9 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!data) return false;
             struct retro_variable* var = (struct retro_variable*)data;
             if (!var->key) return false;
-            const char* value = SDL_Libretro_GetOptionValue(lr, var->key);
-            if (value) {
-                var->value = value;
+            const SDL_LibretroOption* o = SDL_Libretro_GetOption(lr, var->key);
+            if (o) {
+                var->value = o->value;
                 return true;
             }
             return false;
@@ -700,11 +712,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             for (unsigned i = 0; opts->definitions[i].key; i++) {
                 const struct retro_core_option_v2_definition* def = &opts->definitions[i];
                 const char* defaultVal = def->default_value ? def->default_value : "";
+                // Prefer the *_categorized text when the option belongs to a category.
+                const char* desc = SDL_Libretro_PickCoreOptionText(def->desc, def->desc_categorized, def->category_key);
+                const char* info = SDL_Libretro_PickCoreOptionText(def->info, def->info_categorized, def->category_key);
                 SDL_Libretro_InitCoreOption(lr, def->key,
                     defaultVal,
-                    def->desc,
+                    desc,
                     def->values,
-                    def->info,
+                    info,
                     def->category_key);
             }
             return true;
