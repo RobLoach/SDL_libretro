@@ -57,7 +57,8 @@ if(SDL_LIBRETRO_BUILD_TESTS)
     target_link_libraries(sdl_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
     target_compile_definitions(sdl_libretro_test PRIVATE
         TEST_CORE_PATH="$<TARGET_FILE:test_core>"
-        TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt")
+        TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt"
+        TEST_INFO_PATH="${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-core-info/genesis_plus_gx_libretro.info")
     add_test(NAME sdl_libretro_test COMMAND sdl_libretro_test)
 endif()
 

@@ -379,6 +379,52 @@ static int SDLCALL test_LogLevel(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_CoreInfo(void *arg) {
+#ifndef TEST_INFO_PATH
+    SDLTest_AssertCheck(false, "TEST_INFO_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro_CoreInfo info;
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreInfo(NULL, &info) == false, "LoadCoreInfo(NULL path) fails");
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreInfo("nonexistent.info", &info) == false, "LoadCoreInfo missing file fails");
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreInfo(TEST_INFO_PATH, &info) == true, "LoadCoreInfo succeeds");
+    SDLTest_AssertCheck(SDL_strcmp(info.display_name, "Sega - MS/GG/MD/CD (Genesis Plus GX)") == 0,
+        "display_name parsed: %s", info.display_name ? info.display_name : "(null)");
+    SDLTest_AssertCheck(SDL_strcmp(info.corename, "Genesis Plus GX") == 0,
+        "corename parsed: %s", info.corename ? info.corename : "(null)");
+    SDLTest_AssertCheck(SDL_strcmp(info.authors, "Charles McDonald|Eke-Eke") == 0,
+        "authors parsed");
+    SDLTest_AssertCheck(SDL_strcmp(info.license, "Non-commercial") == 0,
+        "license parsed");
+    SDLTest_AssertCheck(SDL_strcmp(info.display_version, "v1.7.4") == 0,
+        "display_version parsed");
+    SDLTest_AssertCheck(SDL_strcmp(info.manufacturer, "Sega") == 0,
+        "manufacturer parsed");
+    SDLTest_AssertCheck(SDL_strcmp(info.systemid, "mega_drive") == 0,
+        "systemid parsed");
+    SDLTest_AssertCheck(SDL_strcmp(info.categories, "Emulator") == 0,
+        "categories parsed");
+    SDLTest_AssertCheck(info.firmware_count == 12, "firmware_count is 12, got %u", info.firmware_count);
+    SDLTest_AssertCheck(info.supports_no_game == false, "supports_no_game is false");
+    SDLTest_AssertCheck(info.savestate == true, "savestate is true");
+    SDLTest_AssertCheck(info.cheats == true, "cheats is true");
+    SDLTest_AssertCheck(info.hw_render == false, "hw_render is false");
+    SDLTest_AssertCheck(info.needs_fullpath == true, "needs_fullpath is true");
+    SDLTest_AssertCheck(info.disk_control == true, "disk_control is true");
+    SDLTest_AssertCheck(info.is_experimental == false, "is_experimental is false");
+
+    SDL_Libretro_FreeCoreInfo(&info);
+    SDLTest_AssertCheck(info.display_name == NULL, "FreeCoreInfo zeroes display_name");
+    SDLTest_AssertCheck(info.corename == NULL, "FreeCoreInfo zeroes corename");
+
+    SDL_Libretro_FreeCoreInfo(NULL);
+
+    return TEST_COMPLETED;
+#endif
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -398,6 +444,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
+    LIBRETRO_TEST_CASE(test_CoreInfo,          "Parse .info file from libretro-core-info"),
     NULL
 };
 
