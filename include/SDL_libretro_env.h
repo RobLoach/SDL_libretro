@@ -162,6 +162,18 @@ static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
     return rate;
 }
 
+/**
+ * Picks the text a categorizing frontend should show. libretro provides a
+ * `*_categorized` variant for use when an option sits inside a category; it falls
+ * back to the base text when there's no category or the variant is empty.
+ */
+static const char* SDL_Libretro_PickCoreOptionText(const char* base, const char* categorized, const char* categoryKey) {
+    if (categoryKey && categoryKey[0] && categorized && categorized[0]) {
+        return categorized;
+    }
+    return base;
+}
+
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return false;
@@ -280,9 +292,9 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!data) return false;
             struct retro_variable* var = (struct retro_variable*)data;
             if (!var->key) return false;
-            const char* value = SDL_Libretro_GetOptionValue(lr, var->key);
-            if (value) {
-                var->value = value;
+            const SDL_LibretroOption* o = SDL_Libretro_GetOption(lr, var->key);
+            if (o) {
+                var->value = o->value;
                 return true;
             }
             return false;
@@ -294,26 +306,54 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             for (; var->key; var++) {
                 char defaultVal[512] = {0};
                 char label[512] = {0};
-                char valuesList[512] = {0};
+                char optsBuf[512] = {0};
+                // v0/v1 variables carry no per-value labels; only value strings.
+                struct retro_core_option_value values[RETRO_NUM_CORE_OPTION_VALUES_MAX] = {0};
                 if (var->value) {
                     const char* semi = SDL_strchr(var->value, ';');
                     if (semi) {
                         size_t labelLen = (size_t)(semi - var->value);
-                        while (labelLen > 0 && var->value[labelLen - 1] == ' ') labelLen--;
-                        if (labelLen >= sizeof(label)) labelLen = sizeof(label) - 1;
+                        while (labelLen > 0 && var->value[labelLen - 1] == ' ') {
+                            labelLen--;
+                        }
+                        if (labelLen >= sizeof(label)) {
+                            labelLen = sizeof(label) - 1;
+                        }
                         SDL_memcpy(label, var->value, labelLen);
 
                         const char* opts = semi + 1;
-                        while (*opts == ' ') opts++;
-                        SDL_strlcpy(valuesList, opts, sizeof(valuesList));
+                        while (*opts == ' ') {
+                            opts++;
+                        }
 
                         const char* pipe = SDL_strchr(opts, '|');
                         size_t len = pipe ? (size_t)(pipe - opts) : SDL_strlen(opts);
-                        if (len >= sizeof(defaultVal)) len = sizeof(defaultVal) - 1;
+                        if (len >= sizeof(defaultVal)) {
+                            len = sizeof(defaultVal) - 1;
+                        }
                         SDL_memcpy(defaultVal, opts, len);
+
+                        // Parse the pipe-separated values into the values array.
+                        // optsBuf is the mutable backing store the pointers reference;
+                        // InitCoreOption deep-copies, so it only needs to live until that call.
+                        SDL_strlcpy(optsBuf, opts, sizeof(optsBuf));
+                        unsigned vcount = 0;
+                        char* tok = optsBuf;
+                        while (tok && *tok && vcount < RETRO_NUM_CORE_OPTION_VALUES_MAX - 1) {
+                            char* nextPipe = SDL_strchr(tok, '|');
+                            if (nextPipe) *nextPipe = '\0';
+                            values[vcount].value = tok;
+                            values[vcount].label = NULL;
+                            vcount++;
+                            tok = nextPipe ? nextPipe + 1 : NULL;
+                        }
                     }
                 }
-                SDL_Libretro_InitCoreOption(lr, var->key, defaultVal, label, valuesList, valuesList, "", "");
+                SDL_Libretro_InitCoreOption(lr, var->key,
+                    defaultVal,
+                    label,
+                    values,
+                    NULL, NULL);
             }
             return true;
         }
@@ -641,32 +681,46 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY: {
-            // TODO: Implement RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY
+            if (!data) return false;
+            const struct retro_core_option_display* opt = (const struct retro_core_option_display*)data;
+            if (!opt->key) return false;
+            for (unsigned i = 0; i < lr->core.optionCount; i++) {
+                if (lr->core.options[i].key && SDL_strcmp(lr->core.options[i].key, opt->key) == 0) {
+                    lr->core.options[i].visible = opt->visible;
+                    lr->core.optionsDirty = true;
+                    return true;
+                }
+            }
             return false;
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
             if (!data) return false;
             const struct retro_core_options_v2* opts = (const struct retro_core_options_v2*)data;
-            if (opts->definitions) {
-                for (unsigned i = 0; opts->definitions[i].key; i++) {
-                    const struct retro_core_option_v2_definition* def = &opts->definitions[i];
-                    const char* defaultVal = def->default_value ? def->default_value : "";
+            if (!opts->definitions) {
+                return true; // There arn't any options.
+            }
 
-                    // Build pipe-separated values list.
-                    char valuesList[512] = {0};
-                    size_t pos = 0;
-                    for (unsigned v = 0; v < RETRO_NUM_CORE_OPTION_VALUES_MAX && def->values[v].value; v++) {
-                        if (v > 0 && pos < sizeof(valuesList) - 1) valuesList[pos++] = '|';
-                        pos += SDL_strlcpy(valuesList + pos, def->values[v].value, sizeof(valuesList) - pos);
-                    }
-
-                    SDL_Libretro_InitCoreOption(lr, def->key, defaultVal,
-                        def->desc ? def->desc : "",
-                        valuesList, valuesList,
-                        def->info ? def->info : "",
-                        def->category_key ? def->category_key : "");
+            // Register the option categories (if any) before the options that reference them.
+            if (opts->categories) {
+                for (unsigned c = 0; opts->categories[c].key; c++) {
+                    SDL_Libretro_InitCoreOptionCategory(lr, opts->categories[c].key,
+                        opts->categories[c].desc, opts->categories[c].info);
                 }
+            }
+
+            for (unsigned i = 0; opts->definitions[i].key; i++) {
+                const struct retro_core_option_v2_definition* def = &opts->definitions[i];
+                const char* defaultVal = def->default_value ? def->default_value : "";
+                // Prefer the *_categorized text when the option belongs to a category.
+                const char* desc = SDL_Libretro_PickCoreOptionText(def->desc, def->desc_categorized, def->category_key);
+                const char* info = SDL_Libretro_PickCoreOptionText(def->info, def->info_categorized, def->category_key);
+                SDL_Libretro_InitCoreOption(lr, def->key,
+                    defaultVal,
+                    desc,
+                    def->values,
+                    info,
+                    def->category_key);
             }
             return true;
         }
@@ -674,7 +728,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
             if (!data) return false;
             const struct retro_core_options_v2_intl* intl = (const struct retro_core_options_v2_intl*)data;
-            /* Frontend language is English, so the US definitions are used directly. The `us` member is already a retro_core_options_v2, so forward it as-is. */
+            // Frontend language is English, so the US definitions are used directly. The `us` member is already a retro_core_options_v2, so forward it as-is.
             if (!intl->us) return false;
             return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, intl->us);
         }
@@ -701,30 +755,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        case 45:
-        case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
-            if (!data) return false;
-            struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
-            if (info->required_interface_version > 4) {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "SDL_libretro: GET_VFS_INTERFACE: unsupported required_interface_version %u",
-                            info->required_interface_version);
-                return false;
-            }
-
-            // Let the core know which version of the VFS we support.
-            info->required_interface_version = 4;
-            info->iface = &lr->vfs_interface;
-            return true;
-        }
-
-        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
-        case 26:
-        case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
-        case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
-            return false;
-
         case 40:
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
             if (!data || !lr->core.texture) return false;
@@ -743,6 +773,75 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             lr->core.softwareFramebufferPixels = pixels;
             return true;
         }
+
+        case 45:
+        case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
+            if (!data) return false;
+            struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
+            if (info->required_interface_version > 4) {
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                            "SDL_libretro: GET_VFS_INTERFACE: unsupported required_interface_version %u",
+                            info->required_interface_version);
+                return false;
+            }
+
+            // Let the core know which version of the VFS we support.
+            info->required_interface_version = 4;
+            info->iface = &lr->vfs_interface;
+            return true;
+        }
+
+        case 77:
+        case RETRO_ENVIRONMENT_GET_DEVICE_POWER: {
+            if (!data) return false;
+            struct retro_device_power* power = (struct retro_device_power*)data;
+            int percent;
+            SDL_PowerState sdl_state = SDL_GetPowerInfo(&power->seconds, &percent);
+            switch (sdl_state) {
+                case SDL_POWERSTATE_ON_BATTERY:
+                    power->state = RETRO_POWERSTATE_DISCHARGING;
+                    break;
+                case SDL_POWERSTATE_CHARGING:
+                    power->state = RETRO_POWERSTATE_CHARGING;
+                    break;
+                case SDL_POWERSTATE_CHARGED:
+                    power->state = RETRO_POWERSTATE_CHARGED;
+                    break;
+                case SDL_POWERSTATE_NO_BATTERY:
+                    power->state = RETRO_POWERSTATE_PLUGGED_IN;
+                    break;
+                default:
+                    return false;
+            }
+            power->percent = (int8_t)percent;
+            return true;
+        }
+
+        case 81:
+        case RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: {
+            if (!data) return false;
+            SDL_AudioSpec spec;
+            if (lr->core.audioStream && SDL_GetAudioStreamFormat(lr->core.audioStream, NULL, &spec) && spec.freq > 0) {
+                // Active Device
+                *(unsigned*)data = (unsigned)spec.freq;
+            } else if (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL) && spec.freq > 0) {
+                // Default Device
+                *(unsigned*)data = (unsigned)spec.freq;
+            } else {
+                // Desired Frequency
+                *(unsigned*)data = SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE;
+            }
+            return true;
+        }
+
+        // Unimplemented
+        case 25:
+        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
+        case 26:
+        case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
+        case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
+        case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
+            return false;
 
         case 41:
         case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:

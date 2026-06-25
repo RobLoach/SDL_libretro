@@ -36,6 +36,30 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
         { NULL, false, false },
     };
     cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void *)overrides);
+
+    // Register two options under one category, then hide the second one to test
+    // SET_CORE_OPTIONS_DISPLAY.
+    static const struct retro_core_option_v2_category opt_cats[] = {
+        { "test_category", "Test Category", "Category for test options" },
+        { NULL, NULL, NULL },
+    };
+    static const struct retro_core_option_v2_definition opt_defs[] = {
+        { "test_option_a", "Option A", "Option A Category",
+          "First test option", NULL, "test_category",
+          { {"on", NULL}, {"off", NULL}, {NULL, NULL} }, "on" },
+        { "test_option_b", "Option B", "Option B Category",
+          "Second test option", NULL, "test_category",
+          { {"yes", NULL}, {"no", NULL}, {NULL, NULL} }, "yes" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static const struct retro_core_options_v2 opts = {
+        (struct retro_core_option_v2_category *)opt_cats,
+        (struct retro_core_option_v2_definition *)opt_defs };
+    cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)&opts);
+
+    // Hide option B; frontend can verify via SDL_Libretro_GetOption(...)->visible.
+    static const struct retro_core_option_display hide_b = { "test_option_b", false };
+    cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, (void *)&hide_b);
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }
