@@ -77,69 +77,6 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
 }
 
 /**
- * Whether a path is already absolute and therefore safe to hand off as-is.
- *
- * Recognizes POSIX roots ("/..."), Windows drive paths ("C:\..." / "C:/...") and
- * leading-separator forms ("\..." UNC/drive-relative). The check is deliberately
- * permissive: misclassifying an absolute path as relative would corrupt it by
- * prefixing the working directory, whereas leaving an odd path alone is harmless.
- *
- * @internal
- */
-static bool SDL_Libretro_PathIsAbsolute(const char* path) {
-    if (!path || !path[0]) return false;
-    if (path[0] == '/' || path[0] == '\\') return true;
-    // Windows drive-qualified: a letter followed by ':'.
-    if (((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) && path[1] == ':')
-        return true;
-    return false;
-}
-
-/**
- * Resolve a user-supplied path into an absolute one, writing the result into dst
- * and returning it:
- *   - a leading "~" or "~/" expands to the user's home folder;
- *   - any other relative path is anchored to the current working directory;
- *   - an already-absolute path is copied through unchanged.
- *
- * Both fixups matter because cores that set need_fullpath open content by path
- * themselves, and the directory we derive from it (gameInfoExt.dir) is handed to
- * cores to locate sibling files (BIOS, .bin/.sub, .m3u disc entries). Tilde is a
- * shell-ism fopen() never expands; a relative path silently breaks the moment the
- * process working directory changes. Anchoring to the CWD names the same file but
- * keeps the derived directory valid for the life of the load.
- *
- * @internal
- */
-static const char* SDL_Libretro_ResolvePath(char* dst, size_t dstSize, const char* path) {
-    // Expand a leading "~"/"~/" to the home folder (always an absolute result).
-    if (path && path[0] == '~' && (path[1] == '\0' || path[1] == '/' || path[1] == '\\')) {
-        const char* home = SDL_GetUserFolder(SDL_FOLDER_HOME);
-        if (home && *home) {
-            // SDL_GetUserFolder() always ends with a path separator, so skip the
-            // one after '~' to avoid a doubled separator in the joined path.
-            const char* rest = (path[1] == '/' || path[1] == '\\') ? path + 2 : path + 1;
-            SDL_snprintf(dst, dstSize, "%s%s", home, rest);
-            return dst;
-        }
-    }
-
-    // Anchor a relative path to the current working directory.
-    if (path && path[0] && !SDL_Libretro_PathIsAbsolute(path)) {
-        char* cwd = SDL_GetCurrentDirectory(); // owned by us; ends with a path separator
-        if (cwd) {
-            SDL_snprintf(dst, dstSize, "%s%s", cwd, path);
-            SDL_free(cwd);
-            return dst;
-        }
-    }
-
-    // Already absolute (or empty / no home / no CWD available): pass through.
-    SDL_strlcpy(dst, path ? path : "", dstSize);
-    return dst;
-}
-
-/**
  * Loads a libretro core.
  */
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
@@ -158,9 +95,6 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     }
 
     SDL_memset(&lr->core, 0, sizeof(lr->core));
-
-    char expandedCorePath[SDL_LIBRETRO_MAX_PATH];
-    corePath = SDL_Libretro_ResolvePath(expandedCorePath, sizeof(expandedCorePath), corePath);
 
     lr->core.symbols.handle = SDL_LoadObject(corePath);
     if (!lr->core.symbols.handle) {
@@ -429,10 +363,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
     if (gamePath) {
-        // Resolve "~" and anchor relative paths before any consumer (core or
-        // SDL_LoadFile) sees the path, and before we derive contentDir from it.
-        gamePath = SDL_Libretro_ResolvePath(expandedPath, sizeof(expandedPath), gamePath);
-
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
 
         // Content base name (no extension) and lower-case extension.

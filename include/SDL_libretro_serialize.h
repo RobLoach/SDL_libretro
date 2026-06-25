@@ -764,26 +764,16 @@ size_t SDL_Libretro_GetRewindMemoryLimit(const SDL_Libretro* lr) {
 /**
  * Set the rewind memory budget by target duration instead of raw bytes.
  *
- * Computes the worst-case bytes needed to retain `seconds` of rewindable
- * gameplay and forwards it to SDL_Libretro_SetRewindMemoryLimit(). The estimate
- * is the number of snapshots that span the duration (the core's frame rate
- * divided by the capture interval, times `seconds`) multiplied by the per-snapshot
- * state size. With delta compression enabled (SDL_LIBRETRO_ENABLE_REWIND_DELTA)
- * snapshots usually store far less than the full state, so this is a conservative
- * upper bound that will typically hold longer than requested.
+ * Computes the worst-case bytes needed to retain `seconds` of rewindable gameplay and forwards it to SDL_Libretro_SetRewindMemoryLimit(). The estimate is the number of snapshots that span the duration (the core's frame rate divided by the capture interval, times `seconds`) multiplied by the per-snapshot state size. With delta compression enabled (SDL_LIBRETRO_ENABLE_REWIND_DELTA) snapshots usually store far less than the full state, so this is a conservative upper bound that will typically hold longer than requested.
  *
- * The snapshot count (`bufferFrames` in SDL_Libretro_SetRewindEnabled()) is an
- * independent limit; if it is smaller than the duration requires, it, not the
- * byte budget, will cap the achievable rewind depth.
+ * The snapshot count (`bufferFrames` in SDL_Libretro_SetRewindEnabled()) is an independent limit; if it is smaller than the duration requires, it, not the byte budget, will cap the achievable rewind depth.
  *
- * Requires the core's serialize size to be known, so a core must be loaded (or
- * rewind already enabled with a game loaded). Roughly the inverse of
- * SDL_Libretro_GetRewindRemaining().
+ * Requires the core's serialize size to be known, so a core must be loaded (or rewind already enabled with a game loaded). Roughly the inverse of SDL_Libretro_GetRewindRemaining().
  *
  * @param lr the libretro context.
  * @param seconds the desired rewind duration in seconds (must be positive).
- * @returns true on success, false if `lr` or `seconds` is invalid or the core's
- *          serialize size is not yet available.
+ * @returns true on success, false if `lr` or `seconds` is invalid or the core's serialize size is not yet available.
+ * @see SDL_Libretro_SetRewindEnabled()
  * @see SDL_Libretro_SetRewindMemoryLimit()
  * @see SDL_Libretro_GetRewindRemaining()
  */
@@ -906,23 +896,17 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     lr->rewindReference = lr->rewindScratch;
     lr->rewindScratch = swap;
 #else
-    // Full-state mode: the slot must hold the previous state verbatim, which is
-    // exactly what `reference` already contains. Rather than memcpy a multi-MB
-    // state into the slot every frame, donate the reference buffer to the slot
-    // and recycle the slot's old (evicted) buffer as the next scratch — a few
-    // pointer assignments instead of a full state-sized copy. The new state in
-    // `scratch` becomes the reference. Both buffers are sized to slotSize, so in
-    // steady state no allocation happens at all.
+    // Full-state mode. The slot must hold the previous state verbatim, which is exactly what `reference` already contains. Rather than memcpy a multi-MB state into the slot every frame, donate the reference buffer to the slot and recycle the slot's old (evicted) buffer as the next scratch, a few pointer assignments instead of a full state-sized copy. The new state in `scratch` becomes the reference. Both buffers are sized to slotSize, so in steady state no allocation happens at all.
     unsigned char* recycled = slot->data; // old state being evicted from this slot (NULL until first wrap)
     size_t recycledCap = slot->capacity;
     if (recycledCap < lr->rewindSlotSize) {
-        // Slot's buffer can't serve as a full-state scratch; grow it before
-        // mutating anything so a failure leaves the ring and buffers untouched.
+        // Slot's buffer can't serve as a full-state scratch; grow it before mutating anything so a failure leaves the ring and buffers untouched.
         unsigned char* grown = (unsigned char*)SDL_realloc(recycled, lr->rewindSlotSize);
         if (!grown) return;
         recycled = grown;
         recycledCap = lr->rewindSlotSize;
     }
+
     lr->rewindBytes += lr->rewindSlotSize - slot->capacity;
     slot->data = lr->rewindReference; // holds the previous state
     slot->length = lr->rewindSlotSize;

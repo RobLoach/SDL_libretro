@@ -253,10 +253,18 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
 static int SDL_Libretro_VFS_Stat64(const char* path, int64_t* size) {
     if (!path) return 0;
     SDL_PathInfo info;
-    if (!SDL_GetPathInfo(path, &info)) return 0;
+    if (!SDL_GetPathInfo(path, &info)) {
+        return 0;
+    }
+
     int flags = RETRO_VFS_STAT_IS_VALID;
-    if (info.type == SDL_PATHTYPE_DIRECTORY) flags |= RETRO_VFS_STAT_IS_DIRECTORY;
-    if (size) *size = info.size;
+    if (info.type == SDL_PATHTYPE_DIRECTORY) {
+        flags |= RETRO_VFS_STAT_IS_DIRECTORY;
+    }
+
+    if (size != NULL) {
+        *size = info.size;
+    }
     return flags;
 }
 
@@ -268,7 +276,15 @@ static int SDL_Libretro_VFS_Stat(const char* path, int32_t* size) {
     int64_t outSize = 0;
     int out = SDL_Libretro_VFS_Stat64(path, &outSize);
     if (size != NULL) {
-        *size = (int32_t)outSize;
+        if (outSize > SDL_MAX_SINT32) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                "[SDL_Libretro] VFS stat size %" SDL_PRIs64 " for '%s' exceeds int32. Clamping to SDL_MAX_SINT32.",
+                outSize, path);
+            *size = SDL_MAX_SINT32;
+        }
+        else {
+            *size = (int32_t)outSize;
+        }
     }
     return out;
 }
