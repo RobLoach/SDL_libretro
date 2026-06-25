@@ -16,10 +16,50 @@ static uint8_t save_ram[64];
 static uint8_t state_data[128];
 static bool game_loaded;
 
+/* Captures what GET_GAME_INFO_EXT returns during retro_load_game so the
+ * frontend test can verify the extended-game-info wiring. Exposed as
+ * SYSTEM_RAM: [0..15] lower-case ext, [16] persistent_data, [17] data != NULL. */
+static uint8_t game_info_probe[32];
+
 RETRO_API void retro_set_environment(retro_environment_t cb) {
     environ_cb = cb;
-    bool no_game = false;
+    bool no_game = true; // retro_load_game(NULL) is handled, so advertise it
     cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
+
+    unsigned perf_level = 2;
+    cb(RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL, &perf_level);
+
+    // Mark "txt" content as loaded into a persistent buffer; the frontend test
+    // checks this round-trips through GET_GAME_INFO_EXT.
+    static const struct retro_system_content_info_override overrides[] = {
+        { "txt", false, true },
+        { NULL, false, false },
+    };
+    cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void *)overrides);
+
+    // Register two options under one category, then hide the second one to test
+    // SET_CORE_OPTIONS_DISPLAY.
+    static const struct retro_core_option_v2_category opt_cats[] = {
+        { "test_category", "Test Category", "Category for test options" },
+        { NULL, NULL, NULL },
+    };
+    static const struct retro_core_option_v2_definition opt_defs[] = {
+        { "test_option_a", "Option A", "Option A Category",
+          "First test option", NULL, "test_category",
+          { {"on", NULL}, {"off", NULL}, {NULL, NULL} }, "on" },
+        { "test_option_b", "Option B", "Option B Category",
+          "Second test option", NULL, "test_category",
+          { {"yes", NULL}, {"no", NULL}, {NULL, NULL} }, "yes" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static const struct retro_core_options_v2 opts = {
+        (struct retro_core_option_v2_category *)opt_cats,
+        (struct retro_core_option_v2_definition *)opt_defs };
+    cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)&opts);
+
+    // Hide option B; frontend can verify via SDL_Libretro_GetOption(...)->visible.
+    static const struct retro_core_option_display hide_b = { "test_option_b", false };
+    cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, (void *)&hide_b);
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }
@@ -105,9 +145,26 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
     if (environ_cb) environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
     game_loaded = true;
 
+    // Publish a one-entry memory map covering save_ram so the frontend's
+    // memory-map accessors have something to read.
+    static const struct retro_memory_descriptor mmap_desc[] = {
+        { RETRO_MEMDESC_SYSTEM_RAM, save_ram, 0, 0x0000, 0, 0, sizeof(save_ram), "WRAM" },
+    };
+    static const struct retro_memory_map mmap = { mmap_desc, 1 };
+    if (environ_cb) environ_cb(RETRO_ENVIRONMENT_SET_MEMORY_MAPS, (void *)&mmap);
+
     if (game && game->data && game->size > 0) {
         size_t n = game->size < sizeof(save_ram) ? game->size : sizeof(save_ram);
         memcpy(save_ram, game->data, n);
+    }
+
+    // Probe the extended game info the frontend published for this content.
+    memset(game_info_probe, 0, sizeof(game_info_probe));
+    const struct retro_game_info_ext *ext = NULL;
+    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_GAME_INFO_EXT, &ext) && ext) {
+        if (ext->ext) strncpy((char *)game_info_probe, ext->ext, 15);
+        game_info_probe[16] = ext->persistent_data ? 1 : 0;
+        game_info_probe[17] = ext->data != NULL ? 1 : 0;
     }
     return true;
 }
@@ -123,10 +180,12 @@ RETRO_API unsigned retro_get_region(void) { return RETRO_REGION_NTSC; }
 
 RETRO_API void *retro_get_memory_data(unsigned id) {
     if (id == RETRO_MEMORY_SAVE_RAM) return save_ram;
+    if (id == RETRO_MEMORY_SYSTEM_RAM) return game_info_probe;
     return NULL;
 }
 
 RETRO_API size_t retro_get_memory_size(unsigned id) {
     if (id == RETRO_MEMORY_SAVE_RAM) return sizeof(save_ram);
+    if (id == RETRO_MEMORY_SYSTEM_RAM) return sizeof(game_info_probe);
     return 0;
 }

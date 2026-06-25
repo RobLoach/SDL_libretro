@@ -1,15 +1,17 @@
+/**
+ * SDL_libretro - core lifecycle implementation
+ *
+ * @file SDL_libretro_core.h
+ */
+
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CORE_IMPL_ONCE)
 #define SDL_LIBRETRO_CORE_IMPL_ONCE
-
-/*
- * SDL_libretro - core lifecycle implementation
- */
 
 #define LOAD_SYM(sym) do { \
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
     SDL_memcpy(&lr->core.symbols.sym, &fp, sizeof(fp)); \
     if (!fp) { \
-        SDL_SetError("SDL_libretro: Failed to load symbol '%s'", #sym); \
+        SDL_SetError("[SDL_Libretro] Failed to load symbol '%s'", #sym); \
         return false; \
     } \
 } while (0)
@@ -17,7 +19,7 @@
 SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro* lr = (SDL_Libretro*)SDL_calloc(1, sizeof(SDL_Libretro));
     if (!lr) {
-        SDL_SetError("SDL_libretro: Failed to allocate context");
+        SDL_SetError("[SDL_Libretro] Failed to allocate context");
         return NULL;
     }
 
@@ -26,6 +28,7 @@ SDL_Libretro* SDL_Libretro_Create(void) {
 
     lr->volume = 1.0f;
     lr->speed = 1.0f;
+    lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
     SDL_strlcpy(lr->username, "SDL_libretro", sizeof(lr->username));
     SDL_strlcpy(lr->coreDirectory, "cores", sizeof(lr->coreDirectory));
     SDL_strlcpy(lr->saveDirectory, "saves", sizeof(lr->saveDirectory));
@@ -52,6 +55,11 @@ SDL_Libretro* SDL_Libretro_Create(void) {
     return lr;
 }
 
+/**
+ * Destroys the given libretro context.
+ *
+ * Will also unload the active game and core if needed.
+ */
 void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     if (!lr) return;
 
@@ -68,14 +76,17 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_free(lr);
 }
 
+/**
+ * Loads a libretro core.
+ */
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     if (!lr || !corePath) {
-        SDL_SetError("SDL_libretro: Invalid arguments");
+        SDL_SetError("[SDL_Libretro] Invalid arguments");
         return false;
     }
 
     if (SDL_Libretro_active && SDL_Libretro_active != lr) {
-        SDL_SetError("SDL_libretro: Another context already has a core loaded");
+        SDL_SetError("[SDL_Libretro] Another context already has a core loaded");
         return false;
     }
 
@@ -87,13 +98,22 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
 
     lr->core.symbols.handle = SDL_LoadObject(corePath);
     if (!lr->core.symbols.handle) {
-        SDL_SetError("SDL_libretro: Failed to load core '%s': %s", corePath, SDL_GetError());
+        SDL_SetError("[SDL_Libretro] Failed to load core '%s': %s", corePath, SDL_GetError());
+        return false;
+    }
+
+    // Verify core API version.
+    LOAD_SYM(retro_api_version);
+    lr->core.apiVersion = lr->core.symbols.retro_api_version();
+    if (lr->core.apiVersion != 1) {
+        SDL_UnloadObject(lr->core.symbols.handle);
+        SDL_SetError("[SDL_Libretro] Unsupported Core API Version: %d", (int)lr->core.apiVersion);
+        SDL_memset(&lr->core, 0, sizeof(lr->core));
         return false;
     }
 
     LOAD_SYM(retro_init);
     LOAD_SYM(retro_deinit);
-    LOAD_SYM(retro_api_version);
     LOAD_SYM(retro_set_environment);
     LOAD_SYM(retro_set_video_refresh);
     LOAD_SYM(retro_set_audio_sample);
@@ -129,53 +149,53 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     SDL_strlcpy(lr->core.libraryVersion, sysinfo.library_version ? sysinfo.library_version : "", sizeof(lr->core.libraryVersion));
     SDL_strlcpy(lr->core.validExtensions, sysinfo.valid_extensions ? sysinfo.valid_extensions : "", sizeof(lr->core.validExtensions));
     lr->core.needFullpath = sysinfo.need_fullpath;
-    lr->core.blockExtract = sysinfo.block_extract;
+
+    // Default the content name to the core's reported name.
+    SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
 
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
-    lr->core.apiVersion = lr->core.symbols.retro_api_version();
-
-    SDL_Log("SDL_libretro: Loaded core '%s' v%s (API %u)",
-        lr->core.libraryName, lr->core.libraryVersion, lr->core.apiVersion);
+    SDL_Log("[SDL_Libretro] Core loaded: %s %s",
+        lr->core.libraryName, lr->core.libraryVersion);
 
     return true;
 }
 
+/**
+ * Unloads the actively loaded core.
+ *
+ * Will also unload the game if it's still loaded.
+ *
+ * @see SD_Libretro_UnloadGame()
+ */
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
     SDL_Libretro_UnloadGame(lr);
 
     lr->core.symbols.retro_deinit();
-
     if (lr->core.symbols.handle) {
         SDL_UnloadObject(lr->core.symbols.handle);
     }
 
     SDL_Libretro_CloseMicrophone(lr);
     SDL_Libretro_FreeCoreOptions(lr);
-
     if (lr->core.inputDescriptors) {
         SDL_free(lr->core.inputDescriptors);
     }
     if (lr->core.controllerInfo) {
         SDL_free(lr->core.controllerInfo);
     }
-    if (lr->core.memoryMapDescriptors) {
-        SDL_free(lr->core.memoryMapDescriptors);
-    }
-    if (lr->core.persistentGameData) {
-        SDL_free(lr->core.persistentGameData);
-    }
+    SDL_Libretro_FreeMemoryMap(lr);
+    SDL_Libretro_FreeContentInfoOverrides(lr);
 
     SDL_memset(&lr->core, 0, sizeof(lr->core));
-
     if (SDL_Libretro_active == lr) {
         SDL_Libretro_active = NULL;
     }
 
-    SDL_Log("SDL_libretro: Core unloaded");
+    SDL_Log("[SDL_Libretro] Core unloaded");
 }
 
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
@@ -185,15 +205,13 @@ bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
 /**
  * Copy the file name portion of a path into a caller-provided buffer.
  *
- * The leading directory components and (optionally) the trailing extension
- * are stripped. Useful for deriving save/state file names from a content path.
+ * The leading directory components and (optionally) the trailing extension are stripped. Useful for deriving save/state file names from a content path.
  *
- * \param dst the destination buffer to fill (always null-terminated).
- * \param dstSize the size of `dst` in bytes.
- * \param path the source path, may be NULL.
- * \param withExtension if true, keep the file extension; if false, strip it.
- * \returns the length of the resulting string in `dst`, excluding the null
- *          terminator (0 on invalid arguments).
+ * @param dst the destination buffer to fill (always null-terminated).
+ * @param dstSize the size of `dst` in bytes.
+ * @param path the source path, may be NULL.
+ * @param withExtension if true, keep the file extension; if false, strip it.
+ * @returns the length of the resulting string in `dst`, excluding the null terminator (0 on invalid arguments).
  */
 size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, bool withExtension) {
     if (!dst || dstSize == 0) return 0;
@@ -215,10 +233,123 @@ size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, boo
     return SDL_strlen(dst);
 }
 
+/**
+ * Build a path in the save directory for the currently loaded content.
+ *
+ * Produces "<saveDirectory>/<contentName><extension>" (or just "<contentName><extension>" when no save directory is set). Handy for deriving SRAM (".srm"), RTC (".rtc"), or save-state file names without hardcoding them.
+ *
+ * @param lr the libretro context.
+ * @param extension the extension to append, including the dot (NULL or "" for none).
+ * @param dst the destination buffer (always null-terminated when dstSize > 0).
+ * @param dstSize the size of `dst` in bytes.
+ * @returns the length of the resulting string, or 0 if no content is loaded or on invalid arguments.
+ */
+size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, char* dst, size_t dstSize) {
+    if (!dst || dstSize == 0) return 0;
+    dst[0] = '\0';
+    if (!lr || lr->core.contentName[0] == '\0') return 0;
+    if (!extension) extension = "";
+    if (lr->saveDirectory[0] != '\0') {
+        SDL_snprintf(dst, dstSize, "%s/%s%s", lr->saveDirectory, lr->core.contentName, extension);
+    } else {
+        SDL_snprintf(dst, dstSize, "%s%s", lr->core.contentName, extension);
+    }
+    return SDL_strlen(dst);
+}
+
+/**
+ * Free the stored content-info overrides, including the deep-copied extension strings, and reset the count.
+ *
+ * @internal
+ */
+static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr) {
+    if (lr->core.contentInfoOverrides) {
+        for (unsigned i = 0; i < lr->core.contentInfoOverrideCount; i++) {
+            SDL_free((void*)lr->core.contentInfoOverrides[i].extensions);
+        }
+        SDL_free(lr->core.contentInfoOverrides);
+        lr->core.contentInfoOverrides = NULL;
+    }
+    lr->core.contentInfoOverrideCount = 0;
+}
+
+/**
+ * Gets the content-info override whose extension list matches `ext`.
+ *
+ * Cores register overrides via RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE to change need_fullpath / persistent_data for specific content extensions.
+ *
+ * @returns the matching override index, or -1 if none matches.
+ * @internal
+ */
+static int SDL_Libretro_GetContentInfoOverride(const SDL_Libretro* lr, const char* ext) {
+    if (!lr || !ext || ext[0] == '\0') return -1;
+    for (unsigned i = 0; i < lr->core.contentInfoOverrideCount; i++) {
+        if (SDL_Libretro_ExtensionInList(ext, lr->core.contentInfoOverrides[i].extensions)) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+/**
+ * Whether the core needs the full content path (rather than a loaded data buffer) for the given extension. Defaults to the core's system-info value, overridden per-extension by RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_ContentNeedsFullpath(const SDL_Libretro* lr, const char* ext) {
+    int i = SDL_Libretro_GetContentInfoOverride(lr, ext);
+    return i >= 0 ? lr->core.contentInfoOverrides[i].need_fullpath : lr->core.needFullpath;
+}
+
+/**
+ * Whether the loaded content buffer must persist until the core is unloaded for the given extension. Only content-info overrides enable this; plain system info has no such concept, so it defaults to false.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_ContentPersistData(const SDL_Libretro* lr, const char* ext) {
+    int i = SDL_Libretro_GetContentInfoOverride(lr, ext);
+    return i >= 0 ? lr->core.contentInfoOverrides[i].persistent_data : false;
+}
+
+/**
+ * Reset the loaded-content identity to the no-content state.
+ *
+ * Clear the content path/dir/ext, restore the content name to the core's library-name default (so GetSavePath keeps working), free any persistent content buffer, and invalidate gameInfoExt.
+ *
+ * @internal
+ */
+static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
+    lr->core.contentPath[0] = '\0';
+    lr->core.contentDir[0] = '\0';
+    lr->core.contentExt[0] = '\0';
+    SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
+
+    if (lr->core.gameInfoExt.persistent_data) {
+        SDL_free((void*)lr->core.gameInfoExt.data);
+    }
+    SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
+}
+
+/**
+ * Loads a game at the given path.
+ *
+ * @see SDL_Libretro_UnloadGame()
+ */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
     if (!lr || !lr->core.loaded || !renderer) {
-        SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
+        SDL_SetError("[SDL_Libretro] Core not loaded or invalid renderer");
         return false;
+    }
+
+    // A core that didn't opt into no-content (SET_SUPPORT_NO_GAME) can't run without a game.
+    if (!gamePath && !lr->core.supportNoGame) {
+        SDL_SetError("[SDL_Libretro] This core requires content");
+        return false;
+    }
+
+    // Switching content: unload any game that's already running first.
+    if (lr->core.gameLoaded) {
+        SDL_Libretro_UnloadGame(lr);
     }
 
     lr->core.renderer = renderer;
@@ -226,27 +357,62 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
+    bool persistData = false;
+    char expandedPath[SDL_LIBRETRO_MAX_PATH]; // Scratch for the resolved path; only read within this function (copied into contentPath and used for SDL_LoadFile).
+
+    // Cleared here so a no-content load leaves GET_GAME_INFO_EXT invalid.
+    SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
     if (gamePath) {
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
 
-        // Get the Content Name (base name without extension).
+        // Content base name (no extension) and lower-case extension.
         SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), gamePath, false);
+        const char* ext = SDL_Libretro_GetContentExtension(lr);
+        SDL_strlcpy(lr->core.contentExt, ext, sizeof(lr->core.contentExt));
+        for (char* c = lr->core.contentExt; *c; c++)
+            *c = (char)SDL_tolower((unsigned char)*c);
 
-        gameInfo.path = gamePath;
+        // Directory containing the content file.
+        SDL_strlcpy(lr->core.contentDir, gamePath, sizeof(lr->core.contentDir));
+        char* sep = SDL_strrchr(lr->core.contentDir, '/');
+        if (!sep) sep = SDL_strrchr(lr->core.contentDir, '\\');
+        if (sep)
+            *sep = '\0';
+        else
+            lr->core.contentDir[0] = '\0';
 
-        if (!lr->core.needFullpath) {
+        bool needFullpath = SDL_Libretro_ContentNeedsFullpath(lr, ext);
+        persistData = SDL_Libretro_ContentPersistData(lr, ext);
+
+        // Point at the persistent copy, not the function-local expandedPath: a
+        // need_fullpath core may retain this pointer to stream content during
+        // retro_run(), long after this stack frame (and expandedPath) is gone.
+        gameInfo.path = lr->core.contentPath;
+
+        if (!needFullpath) {
             size_t fileSize = 0;
             fileData = SDL_LoadFile(gamePath, &fileSize);
             if (!fileData) {
-                SDL_SetError("SDL_libretro: Failed to load game file '%s'", gamePath);
+                SDL_SetError("[SDL_Libretro] Failed to load game file '%s'", gamePath);
+                SDL_Libretro_ResetContentState(lr);
                 return false;
             }
             gameInfo.data = fileData;
             gameInfo.size = fileSize;
         }
+
+        // Update the game info.
+        lr->core.gameInfoExt.full_path       = lr->core.contentPath;
+        lr->core.gameInfoExt.dir             = lr->core.contentDir;
+        lr->core.gameInfoExt.name            = lr->core.contentName;
+        lr->core.gameInfoExt.ext             = lr->core.contentExt;
+        lr->core.gameInfoExt.data            = gameInfo.data;
+        lr->core.gameInfoExt.size            = gameInfo.size;
+        lr->core.gameInfoExt.persistent_data = persistData;
     }
 
+    // Set the callbacks.
     lr->core.symbols.retro_set_video_refresh(SDL_Libretro_VideoRefresh);
     lr->core.symbols.retro_set_audio_sample(SDL_Libretro_AudioSample);
     lr->core.symbols.retro_set_audio_sample_batch(SDL_Libretro_AudioSampleBatch);
@@ -255,15 +421,22 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     bool result = lr->core.symbols.retro_load_game(gamePath ? &gameInfo : NULL);
 
-    if (fileData) {
+    // The gameInfoExt.data owns the content buffer. Persistent content keeps it until unload, otherwise the data is only valid for the duration of the load, so free it now and clear the (now dangling) pointer.
+    if (fileData && !(persistData && result)) {
         SDL_free(fileData);
+        lr->core.gameInfoExt.data = NULL;
+        lr->core.gameInfoExt.size = 0;
     }
 
     if (!result) {
-        SDL_SetError("SDL_libretro: Core rejected the game");
+        SDL_Libretro_ResetContentState(lr);
+        SDL_SetError("[SDL_Libretro] Core failed to load the game");
         return false;
     }
 
+    lr->core.gameLoaded = true;
+
+    // Grab the Audio/Video data.
     struct retro_system_av_info avInfo = {0};
     lr->core.symbols.retro_get_system_av_info(&avInfo);
     lr->core.width = avInfo.geometry.base_width;
@@ -272,18 +445,19 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     lr->core.sampleRate = avInfo.timing.sample_rate;
     lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
 
+    // Initialize the Video.
     if (!SDL_Libretro_InitVideo(lr)) {
-        lr->core.symbols.retro_unload_game();
+        SDL_Libretro_UnloadGame(lr);
         return false;
     }
 
     // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
     if (!SDL_Libretro_InitAudio(lr)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "SDL_libretro: Audio unavailable: %s", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio unavailable: %s", SDL_GetError());
     }
 
-    SDL_Log("SDL_libretro: Game loaded (%ux%u @ %.2f fps, %.0f Hz)",
-        lr->core.width, lr->core.height, lr->core.fps, lr->core.sampleRate);
+    SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
+        lr->core.width, lr->core.height, lr->core.fps);
 
     // Allocate rewind buffer now that serialize size is known.
     if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
@@ -293,23 +467,29 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     return true;
 }
 
+/**
+ * Unloads the actively loaded game.
+ *
+ * @see SD_Libretro_UnloadCore()
+ */
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return;
+    if (!lr || !lr->core.gameLoaded) return;
 
-    // Call retro_unload_game() prior to closing the audio and video.
-    if (lr->core.contentPath[0] != '\0') {
-        lr->core.symbols.retro_unload_game();
-        lr->core.contentPath[0] = '\0';
-        lr->core.contentName[0] = '\0';
-    }
+    // Unload the game before closing audio and video.
+    lr->core.symbols.retro_unload_game();
+    lr->core.gameLoaded = false;
+    SDL_Libretro_ResetContentState(lr);
 
     SDL_Libretro_RewindFree(lr);
     SDL_Libretro_CloseAudio(lr);
     SDL_Libretro_CloseVideo(lr);
+    SDL_Log("[SDL_Libretro] Game unloaded");
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
-    return lr && lr->core.loaded && lr->core.renderer != NULL;
+    return lr &&
+        lr->core.gameLoaded &&
+        lr->core.renderer != NULL;
 }
 
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
@@ -317,15 +497,14 @@ bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
 }
 
 bool SDL_Libretro_Reset(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) {
-        SDL_SetError("SDL_libretro: No core loaded");
+    if (!lr || !lr->core.gameLoaded) {
+        SDL_SetError("[SDL_Libretro] No game loaded");
         return false;
     }
     lr->core.symbols.retro_reset();
 
-    // A reset is a timeline discontinuity: drop rewind history so a subsequent
-    // rewind can't walk back across it into the pre-reset timeline.
-    if (lr->rewindEnabled) SDL_Libretro_ClearRewind(lr);
+    // Clear any rewind states.
+    SDL_Libretro_ClearRewind(lr);
 
     // Drop the audio queued from before the reset so it doesn't continue into the reset.
     if (lr->core.audioStream) {
@@ -350,8 +529,7 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
         lr->core.runloop_frame_time.callback(delta);
     }
 
-    // Report audio buffer occupancy so the core can frame-skip if an underrun
-    // looms. Per the libretro spec this fires right before retro_run().
+    // Report audio buffer occupancy so the core can frame-skip if an underrun looms. Per the libretro spec this fires right before retro_run().
     SDL_Libretro_ReportAudioBufferStatus(lr);
 
     // Run the frame.
@@ -367,7 +545,7 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
 }
 
 void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return;
+    if (!lr || !lr->core.gameLoaded) return;
 
     // Pending Video Driver Reinit
     if (lr->core.videoReinitPending) {
@@ -381,7 +559,7 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         SDL_Libretro_InitAudio(lr);
     }
 
-    // Paused: do nothing when speed is zero.
+    // Paused: Do nothing when speed is zero.
     if (lr->speed == 0.0f) return;
 
     // Rewind mode: step backwards when speed is negative.
@@ -393,12 +571,14 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9;
         lr->lastTickNS = nowNS;
         double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
+        // Each stored snapshot spans captureInterval real frames (a snapshot is taken every Nth frame), so a single rewind step undoes that many frames of game time. Scale the per-step wall-clock cost by the interval; otherwise speed -1 would rewind captureInterval times faster than speed +1 plays forward.
+        unsigned interval = lr->rewindCaptureInterval > 0 ? lr->rewindCaptureInterval : 1;
+        double stepPeriod = framePeriod * (double)interval;
         lr->speedAccumulator += frameTime * (double)(-lr->speed);
-        // Mute audio and neutralize input for the throwaway re-runs that produce
-        // the displayed frames while scrubbing backward.
+        // Mute audio and neutralize input for the throwaway re-runs that produce the displayed frames while scrubbing backward.
         lr->rewindActive = true;
-        while (lr->speedAccumulator >= framePeriod) {
-            lr->speedAccumulator -= framePeriod;
+        while (lr->speedAccumulator >= stepPeriod) {
+            lr->speedAccumulator -= stepPeriod;
             if (!SDL_Libretro_RewindStepState(lr)) break;
             lr->core.symbols.retro_run();
         }
@@ -406,8 +586,7 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         return;
     }
 
-    // Keep audio consumption locked to speed + nudge the queue toward its target
-    // fill. Done here, above all three return paths below, so it runs every frame.
+    // Keep audio consumption locked to speed + nudge the queue toward its target fill. Done here, above all three return paths below, so it runs every frame.
     SDL_Libretro_UpdateDRC(lr, lr->speed);
 
     // Wall-clock delta since the previous RunFrame.
@@ -457,11 +636,15 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     }
 }
 
-bool SDL_Libretro_ShouldClose(const SDL_Libretro* lr) {
+bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
-/* Directory setters */
+// Directory setters
+
+/**
+ * Sets the associated libretro core directory, where the default set of cores will be loaded from.
+ */
 bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
     SDL_strlcpy(lr->coreDirectory, path ? path : "", sizeof(lr->coreDirectory));
@@ -492,7 +675,9 @@ bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username) {
     return true;
 }
 
-/* Volume / Speed */
+/**
+ * Set the audio volume when playing sounds.
+ */
 void SDL_Libretro_SetVolume(SDL_Libretro* lr, float volume) {
     if (!lr) return;
     lr->volume = SDL_clamp(volume, 0.0f, 1.0f);
@@ -533,7 +718,13 @@ float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
     return lr ? lr->speed : 1.0f;
 }
 
-/* Log level */
+/**
+ * Sets the threshold for logs to be posted.
+ *
+ * Default is RETRO_LOG_DEBUG.
+ *
+ * @see RETRO_LOG_DEBUG
+ */
 void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level) {
     if (!lr) return;
     lr->logLevel = SDL_clamp(level, RETRO_LOG_DEBUG, RETRO_LOG_ERROR);
@@ -543,20 +734,74 @@ int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
     return lr ? lr->logLevel : RETRO_LOG_DEBUG;
 }
 
-/* Metadata */
+/**
+ * Retrieve the name of the libretro core that's actively loaded.
+ */
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.libraryName : "";
 }
 
+/**
+ * Retrieves the version of the libretro core that's actively loaded.
+ */
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.libraryVersion : "";
 }
 
+/**
+ * Gets the default set of valid extensions associated with the core, seperated by a "|".
+ */
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.validExtensions : "";
 }
 
-/* OSD */
+/**
+ * Get the performance level the core requested via SET_PERFORMANCE_LEVEL.
+ *
+ * @param lr the libretro context.
+ * @returns the requested performance level, or 0 if none/invalid.
+ *
+ * @see RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL
+ */
+unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr) {
+    return lr ? lr->core.performanceLevel : 0;
+}
+
+/**
+ * Get the extension of the loaded content, as it appears in the path.
+ *
+ * Returns the text after the last '.' of the content path, in its original case (e.g. "SFC" for "game.SFC"), or "" when no content is loaded or the file has no extension. Note this is the raw-case extension; the lower-cased form handed to cores via GET_GAME_INFO_EXT (gameInfoExt.ext) may differ.
+ *
+ * @param lr the libretro context.
+ * @returns the content extension (no leading dot), or "" if none.
+ */
+const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr) {
+    if (!lr || lr->core.contentPath[0] == '\0') return "";
+    const char* dot = SDL_strrchr(lr->core.contentPath, '.');
+    return dot ? dot + 1 : "";
+}
+
+static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) {
+    if (!ext || !pipeList) return false;
+    size_t extLen = SDL_strlen(ext);
+    const char* p = pipeList;
+    while (*p) {
+        const char* sep = SDL_strchr(p, '|');
+        size_t segLen = sep ? (size_t)(sep - p) : SDL_strlen(p);
+        if (segLen == extLen && SDL_strncasecmp(p, ext, extLen) == 0) return true;
+        if (!sep) break;
+        p = sep + 1;
+    }
+    return false;
+}
+
+/**
+ * Displays the given message within the libretro context.
+ *
+ * @param lr The libretro context.
+ * @param msg The message to display, or NULL/empty to clear the message.
+ * @param duration The amount of time to display the message, in seconds.
+ */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
     if (!lr) return;
 

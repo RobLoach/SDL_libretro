@@ -1,3 +1,7 @@
 build/
 .cache/
 compile_commands.json
+*.sav
+/docs
+node_modules
+package-lock.json

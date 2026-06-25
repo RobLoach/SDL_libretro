@@ -1,9 +1,11 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
-#define SDL_LIBRETRO_VIDEO_IMPL_ONCE
-
-/*
- * SDL_libretro - video subsystem
+/**
+ * SDL_libretro - Video System
+ *
+ * @file SDL_libretro_video.h
  */
+
+ #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
+#define SDL_LIBRETRO_VIDEO_IMPL_ONCE
 
 /**
  * Maps a libretro pixel format over to an SDL_PixelFormat.
@@ -20,6 +22,23 @@ static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt
 }
 
 /**
+ * Releases any in-flight software-framebuffer texture lock.
+ *
+ * Safe to call when no lock is held. Called before re-locking and before the texture is destroyed/recreated, so a core that acquires a buffer can't leave the texture locked or `softwareFramebufferPixels` dangling.
+ *
+ * @internal
+ */
+static void SDL_Libretro_ReleaseSoftwareFramebuffer(SDL_Libretro* lr) {
+    if (!lr->core.softwareFramebufferPixels) {
+        return;
+    }
+    if (lr->core.texture) {
+        SDL_UnlockTexture(lr->core.texture);
+    }
+    lr->core.softwareFramebufferPixels = NULL;
+}
+
+/**
  * Initialize the libretro video system.
  *
  * @internal
@@ -27,27 +46,33 @@ static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     if (!lr || !lr->core.renderer) return false;
 
-    if (lr->core.texture) {
-        SDL_DestroyTexture(lr->core.texture);
-        lr->core.texture = NULL;
-    }
+    // Make sure we're starting a clean video context.
+    SDL_Libretro_CloseVideo(lr);
 
+    // If there is no desired width/height, select an arbitrary one.
     if (lr->core.width == 0 || lr->core.height == 0) {
         lr->core.width = 320;
         lr->core.height = 240;
     }
 
-    SDL_PixelFormat fmt = SDL_Libretro_GetTextureFormat(lr->core.pixelFormat);
-    lr->core.texture = SDL_CreateTexture(lr->core.renderer, fmt,
-        SDL_TEXTUREACCESS_STREAMING, lr->core.width, lr->core.height);
+    // Build the Texture.
+    lr->core.texture = SDL_CreateTexture(lr->core.renderer,
+        SDL_Libretro_GetTextureFormat(lr->core.pixelFormat),
+        SDL_TEXTUREACCESS_STREAMING,
+        lr->core.width, lr->core.height);
 
     if (!lr->core.texture) {
-        SDL_SetError("SDL_libretro: Failed to create texture: %s", SDL_GetError());
+        SDL_SetError("[SDL_Libretro] Failed to create texture: %s", SDL_GetError());
         return false;
     }
-
-    SDL_SetTextureScaleMode(lr->core.texture, SDL_SCALEMODE_NEAREST);
     lr->core.videoReinitPending = false;
+
+    // Scale Mode
+    #if SDL_VERSION_ATLEAST(3, 4, 0)
+    if (lr->core.textureScaleMode == SDL_SCALEMODE_NEAREST)
+        lr->core.textureScaleMode = SDL_SCALEMODE_PIXELART; // SDL >= 3.4
+    #endif
+    SDL_SetTextureScaleMode(lr->core.texture, lr->core.textureScaleMode);
     return true;
 }
 
@@ -60,6 +85,7 @@ static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
     if (!lr) return;
 
     if (lr->core.texture) {
+        SDL_Libretro_ReleaseSoftwareFramebuffer(lr);
         SDL_DestroyTexture(lr->core.texture);
         lr->core.texture = NULL;
     }
@@ -67,14 +93,29 @@ static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
 
 static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || !data) return;
+    if (!lr) return;
+
+    // Software framebuffer (RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER)
+    if (lr->core.softwareFramebufferPixels) {
+        void* swfb = lr->core.softwareFramebufferPixels;
+        SDL_Libretro_ReleaseSoftwareFramebuffer(lr);
+        if (data == swfb) return;
+    }
+
+    if (!data) return;
+
+    // A hardware-rendered core signals its frame via this sentinel rather than a real pointer; we're software-only, so there's nothing to copy.
+    if (data == RETRO_HW_FRAME_BUFFER_VALID) return;
 
     // Rebuild the texture when the core's frame dimensions change.
     if (width != lr->core.width || height != lr->core.height) {
         lr->core.width = width;
         lr->core.height = height;
-        SDL_Libretro_InitVideo(lr);
+        if (!SDL_Libretro_InitVideo(lr)) return;
     }
+
+    // Make sure the texture is workable.
+    if (!lr->core.texture) return;
 
     // Copy straight into the texture's backing memory to avoid the extra staging copy SDL_UpdateTexture() makes.
     void* pixels = NULL;
@@ -87,8 +128,13 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     const Uint8* src = (const Uint8*)data;
     Uint8* dst = (Uint8*)pixels;
     size_t rowBytes = pitch < (size_t)lockPitch ? pitch : (size_t)lockPitch;
-    for (size_t y = 0; y < height; y++) {
-        SDL_memcpy(dst + y * lockPitch, src + y * pitch, rowBytes);
+    if (pitch == (size_t)lockPitch) {
+        // The strides match, so we can do a straight copy.
+        SDL_memcpy(dst, src, rowBytes * height);
+    } else {
+        for (size_t y = 0; y < height; y++) {
+            SDL_memcpy(dst + y * lockPitch, src + y * pitch, rowBytes);
+        }
     }
 
     SDL_UnlockTexture(lr->core.texture);
@@ -123,6 +169,12 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
     return out;
 }
 
+/**
+ * Render the libretro context, using the provided scale method in the loaded renderer.
+ *
+ * @param lr The libretro context.
+ * @param dstRect The desintation rectangle, or NULL to fit within the full width and height of the renderer.
+ */
 bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
     if (!lr || !lr->core.texture || !lr->core.renderer) return false;
 
@@ -138,6 +190,7 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
         dst.h = (float)h;
     }
 
+    // Aspect Ratio
     float srcAspect = lr->core.aspectRatio;
     if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
         srcAspect = (float)lr->core.width / (float)lr->core.height;
@@ -155,6 +208,22 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
             dst.x += (dst.w - newW) * 0.5f;
             dst.w = newW;
         }
+    }
+
+    // Integer Scaling
+    if (lr->scaleMode == SDL_LIBRETRO_SCALE_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
+        float coreW = (float)lr->core.width;
+        float coreH = (float)lr->core.height;
+        int scaleX = (int)(dst.w / coreW);
+        int scaleY = (int)(dst.h / coreH);
+        int scale = scaleX < scaleY ? scaleX : scaleY;
+        if (scale < 1) scale = 1;
+        float intW = coreW * (float)scale;
+        float intH = coreH * (float)scale;
+        dst.x += (dst.w - intW) * 0.5f;
+        dst.y += (dst.h - intH) * 0.5f;
+        dst.w = intW;
+        dst.h = intH;
     }
 
     lr->core.renderDstRect = dst;
@@ -181,6 +250,14 @@ double SDL_Libretro_GetFPS(const SDL_Libretro* lr) {
 
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr) {
     return lr ? lr->core.rotation * 90 : 0;
+}
+
+void SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_LibretroScaleMode mode) {
+    if (lr) lr->scaleMode = mode;
+}
+
+SDL_LibretroScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr) {
+    return lr ? lr->scaleMode : SDL_LIBRETRO_SCALE_ASPECT;
 }
 
 #endif /* SDL_LIBRETRO_VIDEO_IMPL_ONCE */

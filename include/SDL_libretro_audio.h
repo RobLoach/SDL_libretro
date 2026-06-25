@@ -1,12 +1,13 @@
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_AUDIO_IMPL_ONCE)
-#define SDL_LIBRETRO_AUDIO_IMPL_ONCE
-
-/*
+/**
  * SDL_libretro - audio subsystem
  *
- * Uses SDL3's push model. The device stream is opened with a NULL callback
- * and samples are pushed directly via SDL_PutAudioStreamData().
+ * Uses SDL3's push model. The device stream is opened with a NULL callback and samples are pushed directly via SDL_PutAudioStreamData().
+ *
+ * @file SDL_libretro_audio.h
  */
+
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_AUDIO_IMPL_ONCE)
+#define SDL_LIBRETRO_AUDIO_IMPL_ONCE
 
 #ifndef SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS
 /**
@@ -45,7 +46,7 @@ static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const float* samples, int 
         // Dropping is expected back-pressure when ramping up, so this can be debug noise.
         if (lr->core.audioDropWarnCount < 10) {
             SDL_LogDebug(SDL_LOG_CATEGORY_AUDIO,
-                "SDL_libretro: Audio queue full (%d bytes queued), dropping %d bytes",
+                "[SDL_Libretro] Audio queue full with %d bytes queued, dropping %d bytes",
                 queued, bytes);
             lr->core.audioDropWarnCount++;
         }
@@ -181,7 +182,7 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr) {
 
 bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) {
-        SDL_SetError("SDL_libretro: No core loaded");
+        SDL_SetError("[SDL_Libretro] No core loaded");
         return false;
     }
 
@@ -202,7 +203,7 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
         (void*)lr);
 
     if (!lr->core.audioStream) {
-        SDL_SetError("SDL_libretro: Failed to open audio device: %s", SDL_GetError());
+        SDL_SetError("[SDL_Libretro] Failed to open audio device: %s", SDL_GetError());
         return false;
     }
 
@@ -225,8 +226,7 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
         lr->core.audio_callback.set_state(true);
     }
 
-    SDL_Log("SDL_libretro: Audio initialized (%.0f Hz, push model, %u ms latency threshold)",
-        sampleRate, latencyMs);
+    SDL_Log("[SDL_Libretro] Audio initialized [%d Channels @ %d Hz]", spec.channels, spec.freq);
 
     return true;
 }
