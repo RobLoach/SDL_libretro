@@ -804,7 +804,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        /* Unimplemented - return false */
         case 77:
         case RETRO_ENVIRONMENT_GET_DEVICE_POWER: {
             if (!data) return false;
