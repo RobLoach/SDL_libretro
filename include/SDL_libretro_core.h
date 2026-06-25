@@ -77,6 +77,30 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
 }
 
 /**
+ * Expand a leading "~" or "~/" in a path to the user's home folder, writing the
+ * result into dst and returning it. Anything else (including "~user/...") is
+ * copied through unchanged.
+ *
+ * Tilde expansion is a shell feature, not a filesystem one: fopen("~/x") looks
+ * for a directory literally named "~". Cores that set need_fullpath open content
+ * by path themselves, so the frontend has to expand "~" before handing it over.
+ */
+static const char* SDL_Libretro_ExpandTilde(char* dst, size_t dstSize, const char* path) {
+    if (path && path[0] == '~' && (path[1] == '\0' || path[1] == '/' || path[1] == '\\')) {
+        const char* home = SDL_GetUserFolder(SDL_FOLDER_HOME);
+        if (home && *home) {
+            // SDL_GetUserFolder() always ends with a path separator, so skip the
+            // one after '~' to avoid a doubled separator in the joined path.
+            const char* rest = (path[1] == '/' || path[1] == '\\') ? path + 2 : path + 1;
+            SDL_snprintf(dst, dstSize, "%s%s", home, rest);
+            return dst;
+        }
+    }
+    SDL_strlcpy(dst, path ? path : "", dstSize);
+    return dst;
+}
+
+/**
  * Loads a libretro core.
  */
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
@@ -95,6 +119,9 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     }
 
     SDL_memset(&lr->core, 0, sizeof(lr->core));
+
+    char expandedCorePath[SDL_LIBRETRO_MAX_PATH];
+    corePath = SDL_Libretro_ExpandTilde(expandedCorePath, sizeof(expandedCorePath), corePath);
 
     lr->core.symbols.handle = SDL_LoadObject(corePath);
     if (!lr->core.symbols.handle) {
@@ -357,11 +384,15 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
     bool persistData = false;
+    char expandedPath[SDL_LIBRETRO_MAX_PATH]; // Function-scoped: gameInfo.path points into it through retro_load_game() below.
 
     // Cleared here so a no-content load leaves GET_GAME_INFO_EXT invalid.
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
     if (gamePath) {
+        // Resolve a leading "~" before any consumer (core or SDL_LoadFile) sees the path.
+        gamePath = SDL_Libretro_ExpandTilde(expandedPath, sizeof(expandedPath), gamePath);
+
         SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
 
         // Content base name (no extension) and lower-case extension.
