@@ -205,7 +205,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SHUTDOWN: {
-            SDL_Log("[SDL_Libretro] SHUTDOWN requested");
+            SDL_Log("[SDL_Libretro] Shutdown requested");
             lr->core.shutdown = true;
             return true;
         }

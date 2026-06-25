@@ -95,10 +95,7 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
-    // Software framebuffer (RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER):
-    // the core rendered straight into the locked texture, so unlock it. When the
-    // core handed back our own pointer we're already done (zero copy); otherwise
-    // fall through and copy whatever buffer it passed instead.
+    // Software framebuffer (RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER)
     if (lr->core.softwareFramebufferPixels) {
         void* swfb = lr->core.softwareFramebufferPixels;
         SDL_Libretro_ReleaseSoftwareFramebuffer(lr);
@@ -107,12 +104,18 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
 
     if (!data) return;
 
+    // A hardware-rendered core signals its frame via this sentinel rather than a real pointer; we're software-only, so there's nothing to copy.
+    if (data == RETRO_HW_FRAME_BUFFER_VALID) return;
+
     // Rebuild the texture when the core's frame dimensions change.
     if (width != lr->core.width || height != lr->core.height) {
         lr->core.width = width;
         lr->core.height = height;
-        SDL_Libretro_InitVideo(lr);
+        if (!SDL_Libretro_InitVideo(lr)) return;
     }
+
+    // Make sure the texture is workable.
+    if (!lr->core.texture) return;
 
     // Copy straight into the texture's backing memory to avoid the extra staging copy SDL_UpdateTexture() makes.
     void* pixels = NULL;
@@ -125,8 +128,13 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     const Uint8* src = (const Uint8*)data;
     Uint8* dst = (Uint8*)pixels;
     size_t rowBytes = pitch < (size_t)lockPitch ? pitch : (size_t)lockPitch;
-    for (size_t y = 0; y < height; y++) {
-        SDL_memcpy(dst + y * lockPitch, src + y * pitch, rowBytes);
+    if (pitch == (size_t)lockPitch) {
+        // The strides match, so we can do a straight copy.
+        SDL_memcpy(dst, src, rowBytes * height);
+    } else {
+        for (size_t y = 0; y < height; y++) {
+            SDL_memcpy(dst + y * lockPitch, src + y * pitch, rowBytes);
+        }
     }
 
     SDL_UnlockTexture(lr->core.texture);
