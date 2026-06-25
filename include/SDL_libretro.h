@@ -282,18 +282,6 @@ typedef struct SDL_LibretroCoreSymbols {
     size_t (*retro_get_memory_size)(unsigned);
 } SDL_LibretroCoreSymbols;
 
-typedef struct SDL_LibretroCoreOption {
-    char* key;
-    char* value;
-    char* defaultValue;
-    char* label;
-    char* valuesList;
-    char* displayList;
-    char* tooltip;
-    char* categoryKey;
-    bool visible;
-} SDL_LibretroCoreOption;
-
 typedef struct SDL_LibretroMicrophone {
     SDL_AudioStream* stream;
     unsigned rate;
