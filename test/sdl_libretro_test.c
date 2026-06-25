@@ -325,6 +325,46 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(lr, NULL) == false, "IsOptionVisible(NULL key) false");
     SDLTest_AssertCheck(SDL_Libretro_IsOptionVisible(NULL, "test_option_a") == false, "IsOptionVisible(NULL lr) false");
 
+    // test_core registers one category (test_category) with both options attached.
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(lr) == 1, "One category registered by test_core");
+    const char* catKey = SDL_Libretro_GetCategoryKey(lr, 0);
+    SDLTest_AssertCheck(catKey && SDL_strcmp(catKey, "test_category") == 0, "Category key is test_category");
+    const char* catLabel = SDL_Libretro_GetCategoryLabel(lr, "test_category");
+    SDLTest_AssertCheck(catLabel && SDL_strcmp(catLabel, "Test Category") == 0, "Category label is Test Category");
+    const char* catInfo = SDL_Libretro_GetCategoryInfo(lr, "test_category");
+    SDLTest_AssertCheck(catInfo && SDL_strcmp(catInfo, "Category for test options") == 0, "Category info matches");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(NULL) == 0, "GetOptionCategoryCount(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryKey(lr, 5) == NULL, "GetOptionCategoryKey out-of-range NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryLabel(lr, "nope") == NULL, "Unknown category label NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryInfo(lr, NULL) == NULL, "GetOptionCategoryInfo(NULL key) NULL");
+
+    // Option metadata accessors (test_option_a: label "Option A", info "First test option").
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionLabel(lr, "test_option_a"), "Option A") == 0, "Option A label");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionInfo(lr, "test_option_a"), "First test option") == 0, "Option A info");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionCategory(lr, "test_option_a"), "test_category") == 0, "Option A category");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionLabel(lr, "nope") == NULL, "Unknown option label NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCategory(NULL, "test_option_a") == NULL, "GetOptionCategory(NULL lr) NULL");
+
+    // Value enumeration (test_option_a has values on|off, no per-value labels).
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueCount(lr, "test_option_a") == 2, "Option A has 2 values");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValueByIndex(lr, "test_option_a", 0), "on") == 0, "Value 0 is on");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValueByIndex(lr, "test_option_a", 1), "off") == 0, "Value 1 is off");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueByIndex(lr, "test_option_a", 2) == NULL, "Value index out of range NULL");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValueLabelByIndex(lr, "test_option_a", 0), "on") == 0, "Value 0 label falls back to value");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueCount(lr, "nope") == 0, "Unknown option value count 0");
+
+    // SetOptionValue validation against declared values.
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "Set valid value succeeds");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "off") == 0, "Value updated to off");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "bogus") == false, "Set invalid value rejected");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "off") == 0, "Value unchanged after rejected set");
+
+    // ResetAllOptions restores defaults and marks options dirty.
+    SDL_Libretro_AreOptionsDirty(lr); // clear the dirty flag set by SetOptionValue
+    SDL_Libretro_ResetAllOptions(lr);
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "on") == 0, "ResetAllOptions restores default");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "ResetAllOptions marks options dirty");
+
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 #endif

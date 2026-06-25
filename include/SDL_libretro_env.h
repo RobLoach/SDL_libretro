@@ -294,7 +294,9 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             for (; var->key; var++) {
                 char defaultVal[512] = {0};
                 char label[512] = {0};
-                char valuesList[512] = {0};
+                char optsBuf[512] = {0};
+                // v0/v1 variables carry no per-value labels; only value strings.
+                struct retro_core_option_value values[RETRO_NUM_CORE_OPTION_VALUES_MAX] = {0};
                 if (var->value) {
                     const char* semi = SDL_strchr(var->value, ';');
                     if (semi) {
@@ -311,7 +313,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                         while (*opts == ' ') {
                             opts++;
                         }
-                        SDL_strlcpy(valuesList, opts, sizeof(valuesList));
 
                         const char* pipe = SDL_strchr(opts, '|');
                         size_t len = pipe ? (size_t)(pipe - opts) : SDL_strlen(opts);
@@ -319,12 +320,27 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                             len = sizeof(defaultVal) - 1;
                         }
                         SDL_memcpy(defaultVal, opts, len);
+
+                        // Parse the pipe-separated values into the values array.
+                        // optsBuf is the mutable backing store the pointers reference;
+                        // InitCoreOption deep-copies, so it only needs to live until that call.
+                        SDL_strlcpy(optsBuf, opts, sizeof(optsBuf));
+                        unsigned vcount = 0;
+                        char* tok = optsBuf;
+                        while (tok && *tok && vcount < RETRO_NUM_CORE_OPTION_VALUES_MAX - 1) {
+                            char* nextPipe = SDL_strchr(tok, '|');
+                            if (nextPipe) *nextPipe = '\0';
+                            values[vcount].value = tok;
+                            values[vcount].label = NULL;
+                            vcount++;
+                            tok = nextPipe ? nextPipe + 1 : NULL;
+                        }
                     }
                 }
                 SDL_Libretro_InitCoreOption(lr, var->key,
                     defaultVal,
                     label,
-                    valuesList, valuesList,
+                    values,
                     NULL, NULL);
             }
             return true;
@@ -673,23 +689,21 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 return true; // There arn't any options.
             }
 
+            // Register the option categories (if any) before the options that reference them.
+            if (opts->categories) {
+                for (unsigned c = 0; opts->categories[c].key; c++) {
+                    SDL_Libretro_InitCoreOptionCategory(lr, opts->categories[c].key,
+                        opts->categories[c].desc, opts->categories[c].info);
+                }
+            }
+
             for (unsigned i = 0; opts->definitions[i].key; i++) {
-                // Build pipe-separated values list.
-                char valuesList[1024] = {0};
                 const struct retro_core_option_v2_definition* def = &opts->definitions[i];
                 const char* defaultVal = def->default_value ? def->default_value : "";
-                size_t pos = 0;
-                for (unsigned v = 0; v < RETRO_NUM_CORE_OPTION_VALUES_MAX && def->values[v].value; v++) {
-                    if (v > 0 && pos < sizeof(valuesList) - 1) {
-                        valuesList[pos++] = '|';
-                    }
-                    pos += SDL_strlcpy(valuesList + pos, def->values[v].value, sizeof(valuesList) - pos);
-                }
-
                 SDL_Libretro_InitCoreOption(lr, def->key,
                     defaultVal,
                     def->desc,
-                    valuesList, valuesList,
+                    def->values,
                     def->info,
                     def->category_key);
             }

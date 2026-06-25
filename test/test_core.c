@@ -37,17 +37,24 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
     };
     cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void *)overrides);
 
-    // Register two options, then hide the second one to test SET_CORE_OPTIONS_DISPLAY.
+    // Register two options under one category, then hide the second one to test
+    // SET_CORE_OPTIONS_DISPLAY.
+    static const struct retro_core_option_v2_category opt_cats[] = {
+        { "test_category", "Test Category", "Category for test options" },
+        { NULL, NULL, NULL },
+    };
     static const struct retro_core_option_v2_definition opt_defs[] = {
         { "test_option_a", "Option A", "Option A Category",
-          "First test option", NULL, NULL,
+          "First test option", NULL, "test_category",
           { {"on", NULL}, {"off", NULL}, {NULL, NULL} }, "on" },
         { "test_option_b", "Option B", "Option B Category",
-          "Second test option", NULL, NULL,
+          "Second test option", NULL, "test_category",
           { {"yes", NULL}, {"no", NULL}, {NULL, NULL} }, "yes" },
         { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
     };
-    static const struct retro_core_options_v2 opts = { NULL, (struct retro_core_option_v2_definition *)opt_defs };
+    static const struct retro_core_options_v2 opts = {
+        (struct retro_core_option_v2_category *)opt_cats,
+        (struct retro_core_option_v2_definition *)opt_defs };
     cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)&opts);
 
     // Hide option B; frontend can verify via SDL_Libretro_IsOptionVisible.

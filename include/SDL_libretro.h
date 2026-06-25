@@ -149,6 +149,16 @@ bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key);
 void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr);
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr);
 bool SDL_Libretro_IsOptionVisible(const SDL_Libretro* lr, const char* key);
+const char* SDL_Libretro_GetOptionLabel(const SDL_Libretro* lr, const char* key);
+const char* SDL_Libretro_GetOptionInfo(const SDL_Libretro* lr, const char* key);
+const char* SDL_Libretro_GetOptionCategory(const SDL_Libretro* lr, const char* key);
+unsigned SDL_Libretro_GetOptionValueCount(const SDL_Libretro* lr, const char* key);
+const char* SDL_Libretro_GetOptionValueByIndex(const SDL_Libretro* lr, const char* key, unsigned index);
+const char* SDL_Libretro_GetOptionValueLabelByIndex(const SDL_Libretro* lr, const char* key, unsigned index);
+unsigned SDL_Libretro_GetCategoryCount(const SDL_Libretro* lr);
+const char* SDL_Libretro_GetCategoryKey(const SDL_Libretro* lr, unsigned index);
+const char* SDL_Libretro_GetCategoryLabel(const SDL_Libretro* lr, const char* key);
+const char* SDL_Libretro_GetCategoryInfo(const SDL_Libretro* lr, const char* key);
 
 // Cheats
 
@@ -243,9 +253,9 @@ typedef struct SDL_LibretroCoreOption {
     char* value;
     char* defaultValue;
     char* label;
-    char* valuesList;
-    char* displayList;
-    char* tooltip;
+    struct retro_core_option_value values[RETRO_NUM_CORE_OPTION_VALUES_MAX];
+    unsigned valuesCount; /** The number of entries in values. */
+    char* info;
     char* categoryKey;
     bool visible;
 } SDL_LibretroCoreOption;
@@ -302,10 +312,13 @@ typedef struct SDL_LibretroCoreData {
     retro_usec_t runloop_frame_time_last;
 
     // Core Options
-    SDL_LibretroCoreOption* options;
-    unsigned optionCount;
+    SDL_LibretroCoreOption* options; /** The options that have set by the core. */
+    unsigned optionCount; /** The number of options. */
     unsigned optionCapacity;
     bool optionsDirty;
+    struct retro_core_option_v2_category* optionCategories; /** Categories registered by the core; strings owned by the context. */
+    unsigned optionCategoryCount;
+    unsigned optionCategoryCapacity;
 
     // Input Descriptors
     struct retro_input_descriptor* inputDescriptors;
@@ -403,6 +416,8 @@ struct SDL_Libretro {
 
     /* Per-core state */
     SDL_LibretroCoreData core;
+
+    void* userData; /** Generic data available to the implementation. */
 };
 
 /**
@@ -445,8 +460,10 @@ static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
 static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList);
 
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
-    const char* label, const char* valuesList, const char* displayList,
-    const char* tooltip, const char* categoryKey);
+    const char* label, const struct retro_core_option_value* values,
+    const char* info, const char* categoryKey);
+static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key,
+    const char* label, const char* info);
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
