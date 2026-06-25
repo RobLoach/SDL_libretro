@@ -69,14 +69,16 @@ static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
 
 static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || !data) return;
+    if (!lr) return;
 
-    // If the core rendered into a software framebuffer we already locked, just unlock.
-    if (lr->core.softwareFramebufferPixels && data == lr->core.softwareFramebufferPixels) {
+    if (lr->core.softwareFramebufferPixels) {
+        void* swfb = lr->core.softwareFramebufferPixels;
         SDL_UnlockTexture(lr->core.texture);
         lr->core.softwareFramebufferPixels = NULL;
-        return;
+        if (data == swfb) return;
     }
+
+    if (!data) return;
 
     // Rebuild the texture when the core's frame dimensions change.
     if (width != lr->core.width || height != lr->core.height) {

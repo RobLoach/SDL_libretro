@@ -718,14 +718,18 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        /* Unimplemented - return false */
-        case 25:
+        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
+        case 26:
+        case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
+        case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
+        case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
+            return false;
+
+        case 40:
         case RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER: {
             if (!data || !lr->core.texture) return false;
             struct retro_framebuffer* fb = (struct retro_framebuffer*)data;
-            // Only serve if dimensions match what the core expects.
             if (fb->width != lr->core.width || fb->height != lr->core.height) return false;
-            // Only write-access is needed; refuse read-back requests.
             if (fb->access_flags & RETRO_MEMORY_ACCESS_READ) return false;
 
             void* pixels = NULL;
@@ -740,12 +744,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
-        case 26:
-        case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
-        case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
-        case 40:
         case 41:
         case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:
         case 42:
