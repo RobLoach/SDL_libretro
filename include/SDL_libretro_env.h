@@ -776,29 +776,25 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_DEVICE_POWER: {
             if (!data) return false;
             struct retro_device_power* power = (struct retro_device_power*)data;
-            int sdl_seconds = -1, sdl_percent = -1;
-            SDL_PowerState sdl_state = SDL_GetPowerInfo(&sdl_seconds, &sdl_percent);
+            int percent;
+            SDL_PowerState sdl_state = SDL_GetPowerInfo(&power->seconds, &percent);
             switch (sdl_state) {
                 case SDL_POWERSTATE_ON_BATTERY:
                     power->state = RETRO_POWERSTATE_DISCHARGING;
-                    power->seconds = sdl_seconds >= 0 ? sdl_seconds : RETRO_POWERSTATE_NO_ESTIMATE;
                     break;
                 case SDL_POWERSTATE_CHARGING:
                     power->state = RETRO_POWERSTATE_CHARGING;
-                    power->seconds = RETRO_POWERSTATE_NO_ESTIMATE;
                     break;
                 case SDL_POWERSTATE_CHARGED:
                     power->state = RETRO_POWERSTATE_CHARGED;
-                    power->seconds = RETRO_POWERSTATE_NO_ESTIMATE;
                     break;
                 case SDL_POWERSTATE_NO_BATTERY:
                     power->state = RETRO_POWERSTATE_PLUGGED_IN;
-                    power->seconds = RETRO_POWERSTATE_NO_ESTIMATE;
                     break;
                 default:
                     return false;
             }
-            power->percent = (int8_t)(sdl_percent >= 0 ? sdl_percent : RETRO_POWERSTATE_NO_ESTIMATE);
+            power->percent = (int8_t)percent;
             return true;
         }
 
