@@ -19,7 +19,7 @@ int main(int argc, char* argv[]) {
     const char* corePath = argv[1];
     const char* gamePath = argc > 2 ? argv[2] : NULL;
 
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS);
 
     SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
@@ -28,7 +28,6 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
@@ -42,7 +41,6 @@ int main(int argc, char* argv[]) {
 
     // Load the game.
     if (!SDL_Libretro_LoadGame(lr, gamePath, renderer)) {
-        SDL_Log("Failed to load game: %s", SDL_GetError());
         SDL_Libretro_Destroy(lr);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
@@ -50,8 +48,12 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Allow Rewind.
+    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
+    SDL_Libretro_SetRewindMemoryDuration(lr, 6.0);
+
     bool running = true;
-    while (running && !SDL_Libretro_ShouldClose(lr)) {
+    while (running && !SDL_Libretro_IsShutdown(lr)) {
         // Check any events.
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -101,13 +103,11 @@ int main(int argc, char* argv[]) {
             // Save State
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F2) {
                 SDL_Libretro_SaveState(lr, "save.sav");
-                SDL_Libretro_SetMessage(lr, "State Saved", 3.0);
             }
 
             // Load State
             else if (event.type == SDL_EVENT_KEY_UP && event.key.key == SDLK_F4) {
                 SDL_Libretro_LoadState(lr, "save.sav");
-                SDL_Libretro_SetMessage(lr, "State Loaded", 3.0);
             }
 
             // Pass all events to SDL_Libretro.
@@ -127,14 +127,6 @@ int main(int argc, char* argv[]) {
         if (message) {
             SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
             SDL_RenderDebugText(renderer, 19.0f, 19.0f, message);
-        }
-        else if (SDL_Libretro_IsRewinding(lr)) {
-            // Display how much rewind time is left if they're rewinding.
-            float remaining = SDL_Libretro_GetRewindRemaining(lr);
-            char buf[64];
-            SDL_snprintf(buf, sizeof(buf), "REWIND: %.1fs remaining", remaining);
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-            SDL_RenderDebugText(renderer, 19.0f, 39.0f, buf);
         }
 
         SDL_RenderPresent(renderer);

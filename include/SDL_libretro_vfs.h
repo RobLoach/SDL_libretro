@@ -1,5 +1,25 @@
+/**
+ * SDL_libretro - SDL3 Virtual File System interface for libretro
+ *
+ * @file SDL_libretro_vfs.h
+ */
+
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VFS_IMPL_ONCE)
 #define SDL_LIBRETRO_VFS_IMPL_ONCE
+
+
+#ifdef __DOXYGEN
+/**
+ * Allows disabling the SDL3 libretro Virtual File System.
+ *
+ * Use this if you're implementing your own VFS.
+ *
+ * @see SDL_Libretro_SetVFS
+ */
+#define SDL_LIBRETRO_DISABLE_VFS
+#endif
+
+#ifndef SDL_LIBRETRO_DISABLE_VFS
 
 /*
  * SDL_libretro - libretro VFS interface backed by SDL_IOStream
@@ -7,12 +27,18 @@
  * Provides GET_VFS_INTERFACE v1–v4.
  */
 
+/**
+ * @internal
+ */
 struct retro_vfs_file_handle {
     SDL_IOStream* io;
     char* path;
     unsigned mode;
 };
 
+/**
+ * @internal
+ */
 struct retro_vfs_dir_handle {
     char* dir;
     char** names;
@@ -21,10 +47,16 @@ struct retro_vfs_dir_handle {
     size_t index;
 };
 
+/**
+ * @internal
+ */
 static const char* SDL_Libretro_VFS_GetPath(struct retro_vfs_file_handle* stream) {
     return stream ? stream->path : NULL;
 }
 
+/**
+ * @internal
+ */
 static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, unsigned mode, unsigned hints) {
     (void)hints;
     if (!path) return NULL;
@@ -41,7 +73,7 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, uns
     if (read && write) {
         sdlMode = update ? "r+b" : "w+b";
     } else if (write) {
-        sdlMode = update ? "r+b" : "wb";
+        sdlMode = "wb";
     } else {
         sdlMode = "rb";
     }
@@ -57,6 +89,9 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, uns
     return h;
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Close(struct retro_vfs_file_handle* stream) {
     if (!stream) return -1;
     int ret = SDL_CloseIO(stream->io) ? 0 : -1;
@@ -65,17 +100,26 @@ static int SDL_Libretro_VFS_Close(struct retro_vfs_file_handle* stream) {
     return ret;
 }
 
+/**
+ * @internal
+ */
 static int64_t SDL_Libretro_VFS_Size(struct retro_vfs_file_handle* stream) {
     if (!stream) return -1;
     int64_t sz = SDL_GetIOSize(stream->io);
     return sz < 0 ? -1 : sz;
 }
 
+/**
+ * @internal
+ */
 static int64_t SDL_Libretro_VFS_Tell(struct retro_vfs_file_handle* stream) {
     if (!stream) return -1;
     return SDL_TellIO(stream->io);
 }
 
+/**
+ * @internal
+ */
 static int64_t SDL_Libretro_VFS_Seek(struct retro_vfs_file_handle* stream, int64_t offset, int seek_position) {
     if (!stream) return -1;
     SDL_IOWhence whence;
@@ -88,6 +132,9 @@ static int64_t SDL_Libretro_VFS_Seek(struct retro_vfs_file_handle* stream, int64
     return SDL_SeekIO(stream->io, offset, whence);
 }
 
+/**
+ * @internal
+ */
 static int64_t SDL_Libretro_VFS_Read(struct retro_vfs_file_handle* stream, void* s, uint64_t len) {
     if (!stream || !s) return -1;
     size_t n = SDL_ReadIO(stream->io, s, (size_t)len);
@@ -95,6 +142,9 @@ static int64_t SDL_Libretro_VFS_Read(struct retro_vfs_file_handle* stream, void*
     return (int64_t)n;
 }
 
+/**
+ * @internal
+ */
 static int64_t SDL_Libretro_VFS_Write(struct retro_vfs_file_handle* stream, const void* s, uint64_t len) {
     if (!stream || !s) return -1;
     size_t n = SDL_WriteIO(stream->io, s, (size_t)len);
@@ -102,15 +152,24 @@ static int64_t SDL_Libretro_VFS_Write(struct retro_vfs_file_handle* stream, cons
     return (int64_t)n;
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Flush(struct retro_vfs_file_handle* stream) {
     if (!stream) return -1;
     return SDL_FlushIO(stream->io) ? 0 : -1;
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Remove(const char* path) {
     return (path && SDL_RemovePath(path)) ? 0 : -1;
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
     return (old_path && new_path && SDL_RenamePath(old_path, new_path)) ? 0 : -1;
 }
@@ -122,6 +181,7 @@ static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
  * @param length The target size of the file in bytes. Must be non-negative.
  *
  * @return 0 on success. On error, -1 is returned.
+ * @internal
  */
 static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, int64_t length) {
     if (!stream || length < 0) return -1;
@@ -149,13 +209,16 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
         return 0;
     }
 
-    // Shrink: read first `length` bytes, rewrite the file.
-    Uint8* buf = (Uint8*)SDL_malloc((size_t)length);
-    if (!buf) return -1;
+    // Read the first `length` bytes, then rewrite the file. length == 0 (truncate to empty) needs no buffer.
+    Uint8* buf = NULL;
+    if (length > 0) {
+        buf = (Uint8*)SDL_malloc((size_t)length);
+        if (!buf) return -1;
 
-    if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_SET) < 0) { SDL_free(buf); return -1; }
-    size_t got = SDL_ReadIO(stream->io, buf, (size_t)length);
-    if ((int64_t)got != length) { SDL_free(buf); return -1; }
+        if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_SET) < 0) { SDL_free(buf); return -1; }
+        size_t got = SDL_ReadIO(stream->io, buf, (size_t)length);
+        if ((int64_t)got != length) { SDL_free(buf); return -1; }
+    }
 
     // Reopen with write access matching the original handle so subsequent reads/writes keep working.
     bool canWrite = (stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
@@ -163,7 +226,13 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
     SDL_CloseIO(stream->io);
     stream->io = SDL_IOFromFile(stream->path, "wb");
     if (!stream->io) { SDL_free(buf); stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb"); return -1; }
-    SDL_WriteIO(stream->io, buf, (size_t)length);
+    // A short write would leave the file the wrong size; report that as failure.
+    if (length > 0 && (int64_t)SDL_WriteIO(stream->io, buf, (size_t)length) != length) {
+        SDL_free(buf);
+        SDL_CloseIO(stream->io);
+        stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb");
+        return -1;
+    }
     SDL_free(buf);
 
     // Reopen in original mode for continued use.
@@ -178,26 +247,51 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
     return 0;
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Stat64(const char* path, int64_t* size) {
     if (!path) return 0;
     SDL_PathInfo info;
-    if (!SDL_GetPathInfo(path, &info)) return 0;
+    if (!SDL_GetPathInfo(path, &info)) {
+        return 0;
+    }
+
     int flags = RETRO_VFS_STAT_IS_VALID;
-    if (info.type == SDL_PATHTYPE_DIRECTORY) flags |= RETRO_VFS_STAT_IS_DIRECTORY;
-    if (size) *size = info.size;
+    if (info.type == SDL_PATHTYPE_DIRECTORY) {
+        flags |= RETRO_VFS_STAT_IS_DIRECTORY;
+    }
+
+    if (size != NULL) {
+        *size = info.size;
+    }
     return flags;
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Stat(const char* path, int32_t* size) {
     if (!path) return 0;
-    int64_t outSize;
+    int64_t outSize = 0;
     int out = SDL_Libretro_VFS_Stat64(path, &outSize);
     if (size != NULL) {
-        *size = (int32_t)outSize;
+        if (outSize > SDL_MAX_SINT32) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+                "[SDL_Libretro] VFS stat size %" SDL_PRIs64 " for '%s' exceeds int32. Clamping to SDL_MAX_SINT32.",
+                outSize, path);
+            *size = SDL_MAX_SINT32;
+        }
+        else {
+            *size = (int32_t)outSize;
+        }
     }
     return out;
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Mkdir(const char* dir) {
     if (!dir) return -1;
     SDL_PathInfo info;
@@ -205,6 +299,9 @@ static int SDL_Libretro_VFS_Mkdir(const char* dir) {
     return SDL_CreateDirectory(dir) ? 0 : -1;
 }
 
+/**
+ * @internal
+ */
 typedef struct {
     char** names;
     bool* isDir;
@@ -214,6 +311,9 @@ typedef struct {
     bool includeHidden;
 } SDL_Libretro_DirCollect;
 
+/**
+ * @internal
+ */
 static SDL_EnumerationResult SDL_Libretro_DirCallback(void* userdata, const char* dirname, const char* fname) {
     (void)dirname;
     SDL_Libretro_DirCollect* ctx = (SDL_Libretro_DirCollect*)userdata;
@@ -242,6 +342,9 @@ static SDL_EnumerationResult SDL_Libretro_DirCallback(void* userdata, const char
     return SDL_ENUM_CONTINUE;
 }
 
+/**
+ * @internal
+ */
 static struct retro_vfs_dir_handle* SDL_Libretro_VFS_Opendir(const char* dir, bool include_hidden) {
     if (!dir) return NULL;
 
@@ -273,6 +376,9 @@ static struct retro_vfs_dir_handle* SDL_Libretro_VFS_Opendir(const char* dir, bo
     return h;
 }
 
+/**
+ * @internal
+ */
 static bool SDL_Libretro_VFS_Readdir(struct retro_vfs_dir_handle* dirstream) {
     if (!dirstream) return false;
     size_t next = (dirstream->index == (size_t)-1) ? 0 : dirstream->index + 1;
@@ -281,16 +387,25 @@ static bool SDL_Libretro_VFS_Readdir(struct retro_vfs_dir_handle* dirstream) {
     return true;
 }
 
+/**
+ * @internal
+ */
 static const char* SDL_Libretro_VFS_DirentGetName(struct retro_vfs_dir_handle* dirstream) {
     if (!dirstream || dirstream->index >= dirstream->count) return NULL;
     return dirstream->names[dirstream->index];
 }
 
+/**
+ * @internal
+ */
 static bool SDL_Libretro_VFS_DirentIsDir(struct retro_vfs_dir_handle* dirstream) {
     if (!dirstream || dirstream->index >= dirstream->count) return false;
     return dirstream->isDir[dirstream->index];
 }
 
+/**
+ * @internal
+ */
 static int SDL_Libretro_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
     if (!dirstream) return -1;
     for (size_t i = 0; i < dirstream->count; i++) SDL_free(dirstream->names[i]);
@@ -305,6 +420,8 @@ static int SDL_Libretro_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
  * Set the Virtual File System for libretro.
  *
  * @param vfs_interface A void* pointing to `struct retro_vfs_interface`. When set to NULL, will set the SDL3's File System.
+ *
+ * @see retro_vfs_interface
  */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
     if (!lr) return;
@@ -335,5 +452,7 @@ void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
     lr->vfs_interface.closedir = vfs->closedir != NULL ? vfs->closedir : &SDL_Libretro_VFS_Closedir;
     lr->vfs_interface.stat_64 = vfs->stat_64 != NULL ? vfs->stat_64 : &SDL_Libretro_VFS_Stat64;
 }
+
+#endif /* !SDL_LIBRETRO_DISABLE_VFS */
 
 #endif /* SDL_LIBRETRO_VFS_IMPL_ONCE */

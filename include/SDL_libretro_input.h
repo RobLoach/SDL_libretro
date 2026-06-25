@@ -1,9 +1,10 @@
+/**
+ * SDL_libretro - input subsystem
+ * @file SDL_libretro_input.h
+ */
+
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_INPUT_IMPL_ONCE)
 #define SDL_LIBRETRO_INPUT_IMPL_ONCE
-
-/*
- * SDL_libretro - input subsystem
- */
 
 /**
  * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
@@ -419,12 +420,16 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
             if (index > 0) return 0;
 
             switch (id) {
-                case RETRO_DEVICE_ID_POINTER_X:
+                case RETRO_DEVICE_ID_POINTER_X: {
                     if (r.w <= 0) return 0;
-                    return (int16_t)(((mx - r.x) / r.w * 2.0f - 1.0f) * 0x7FFF);
-                case RETRO_DEVICE_ID_POINTER_Y:
+                    float v = (mx - r.x) / r.w * 2.0f - 1.0f;
+                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                }
+                case RETRO_DEVICE_ID_POINTER_Y: {
                     if (r.h <= 0) return 0;
-                    return (int16_t)(((my - r.y) / r.h * 2.0f - 1.0f) * 0x7FFF);
+                    float v = (my - r.y) / r.h * 2.0f - 1.0f;
+                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                }
                 case RETRO_DEVICE_ID_POINTER_PRESSED: {
                     Uint32 state = SDL_GetMouseState(NULL, NULL);
                     return (state & SDL_BUTTON_LMASK) ? 1 : 0;
@@ -473,8 +478,9 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
                 for (unsigned i = 0; i < 16; i++) {
                     if (!lr->gamepads[i]) {
                         lr->gamepads[i] = gp;
+                        const char* name = SDL_GetGamepadName(gp);
                         if (i + 1 > lr->gamepadCount) lr->gamepadCount = i + 1;
-                        SDL_Log("SDL_libretro: Gamepad added to port %u", i);
+                        SDL_Log("[SDL_Libretro] Gamepad added: #%u %s", i + 1, name ? name : "");
                         break;
                     }
                 }
@@ -485,9 +491,10 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
             SDL_JoystickID jid = event->gdevice.which;
             for (unsigned i = 0; i < 16; i++) {
                 if (lr->gamepads[i] && SDL_GetGamepadID(lr->gamepads[i]) == jid) {
+                    const char* name = SDL_GetGamepadName(lr->gamepads[i]);
+                    SDL_Log("[SDL_Libretro] Gamepad removed: #%u %s", i + 1, name ? name : "");
                     SDL_CloseGamepad(lr->gamepads[i]);
                     lr->gamepads[i] = NULL;
-                    SDL_Log("SDL_libretro: Gamepad removed from port %u", i);
                     break;
                 }
             }
@@ -525,6 +532,21 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
     return true;
 }
 
+/**
+ * Get the device type assigned to a controller port.
+ *
+ * Returns the RETRO_DEVICE_* type last set via SDL_Libretro_SetPortDevice(),
+ * or RETRO_DEVICE_NONE if none was set or the arguments are invalid.
+ *
+ * @param lr the libretro context.
+ * @param port the controller port, in [0, 16).
+ * @returns the assigned RETRO_DEVICE_* type, or RETRO_DEVICE_NONE.
+ */
+unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port) {
+    if (!lr || port >= 16) return RETRO_DEVICE_NONE;
+    return lr->core.portDeviceMap[port];
+}
+
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode) {
     if (!lr || retroButton < 0 || retroButton > RETRO_DEVICE_ID_JOYPAD_R3) return;
     lr->keyboardPlayer1[retroButton] = scancode;
@@ -549,10 +571,11 @@ unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
 }
 
 /**
- * @brief Retrieve an input descriptor by index.
+ * Retrieve an input descriptor by index.
  *
  * This function can be used to enumerate all available input descriptors by calling it with incrementing index values starting at 0 until no descriptor is returned or an error is indicated.
  *
+ * @param lr The libretro context.
  * @param[in] index Zero-based index of the input descriptor to retrieve. The value should start at 0 and be incremented to enumerate successive descriptors.
  * @param[out] port Zero-based port number to query (e.g., controller port).
  * @param[out] device Device identifier within the port (if applicable).
@@ -561,8 +584,7 @@ unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
  *
  * @return 0 on success, a negative error code on failure.
  *
- * @note The contents written to @p out_desc are owned by the caller after the
- *       call returns and may be modified or freed as appropriate by the caller.
+ * @note The contents written to @p out_desc are owned by the caller after the call returns and may be modified or freed as appropriate by the caller.
  *
  * @see retro_input_descriptor
  */
