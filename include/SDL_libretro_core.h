@@ -11,7 +11,7 @@
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
     SDL_memcpy(&lr->core.symbols.sym, &fp, sizeof(fp)); \
     if (!fp) { \
-        SDL_SetError("SDL_libretro: Failed to load symbol '%s'", #sym); \
+        SDL_SetError("[SDL_Libretro] Failed to load symbol '%s'", #sym); \
         return false; \
     } \
 } while (0)
@@ -19,7 +19,7 @@
 SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro* lr = (SDL_Libretro*)SDL_calloc(1, sizeof(SDL_Libretro));
     if (!lr) {
-        SDL_SetError("SDL_libretro: Failed to allocate context");
+        SDL_SetError("[SDL_Libretro] Failed to allocate context");
         return NULL;
     }
 
@@ -81,12 +81,12 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
  */
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     if (!lr || !corePath) {
-        SDL_SetError("SDL_libretro: Invalid arguments");
+        SDL_SetError("[SDL_Libretro] Invalid arguments");
         return false;
     }
 
     if (SDL_Libretro_active && SDL_Libretro_active != lr) {
-        SDL_SetError("SDL_libretro: Another context already has a core loaded");
+        SDL_SetError("[SDL_Libretro] Another context already has a core loaded");
         return false;
     }
 
@@ -98,7 +98,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
 
     lr->core.symbols.handle = SDL_LoadObject(corePath);
     if (!lr->core.symbols.handle) {
-        SDL_SetError("SDL_libretro: Failed to load core '%s': %s", corePath, SDL_GetError());
+        SDL_SetError("[SDL_Libretro] Failed to load core '%s': %s", corePath, SDL_GetError());
         return false;
     }
 
@@ -107,7 +107,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     lr->core.apiVersion = lr->core.symbols.retro_api_version();
     if (lr->core.apiVersion != 1) {
         SDL_UnloadObject(lr->core.symbols.handle);
-        SDL_SetError("SDL_libretro: Unsupported Core API Version: %d", (int)lr->core.apiVersion);
+        SDL_SetError("[SDL_Libretro] Unsupported Core API Version: %d", (int)lr->core.apiVersion);
         SDL_memset(&lr->core, 0, sizeof(lr->core));
         return false;
     }
@@ -156,8 +156,8 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
-    SDL_Log("SDL_libretro: Loaded core '%s' v%s (API %u)",
-        lr->core.libraryName, lr->core.libraryVersion, lr->core.apiVersion);
+    SDL_Log("[SDL_Libretro] Core loaded: %s %s",
+        lr->core.libraryName, lr->core.libraryVersion);
 
     return true;
 }
@@ -194,7 +194,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
         SDL_Libretro_active = NULL;
     }
 
-    SDL_Log("SDL_libretro: Core unloaded");
+    SDL_Log("[SDL_Libretro] Core unloaded");
 }
 
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
@@ -336,13 +336,13 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
  */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
     if (!lr || !lr->core.loaded || !renderer) {
-        SDL_SetError("SDL_libretro: Core not loaded or invalid renderer");
+        SDL_SetError("[SDL_Libretro] Core not loaded or invalid renderer");
         return false;
     }
 
     // A core that didn't opt into no-content (SET_SUPPORT_NO_GAME) can't run without a game.
     if (!gamePath && !lr->core.supportNoGame) {
-        SDL_SetError("SDL_libretro: This core requires content");
+        SDL_SetError("[SDL_Libretro] This core requires content");
         return false;
     }
 
@@ -389,7 +389,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
             size_t fileSize = 0;
             fileData = SDL_LoadFile(gamePath, &fileSize);
             if (!fileData) {
-                SDL_SetError("SDL_libretro: Failed to load game file '%s'", gamePath);
+                SDL_SetError("[SDL_Libretro] Failed to load game file '%s'", gamePath);
                 SDL_Libretro_ResetContentState(lr);
                 return false;
             }
@@ -425,7 +425,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     if (!result) {
         SDL_Libretro_ResetContentState(lr);
-        SDL_SetError("SDL_libretro: Core failed to load the game");
+        SDL_SetError("[SDL_Libretro] Core failed to load the game");
         return false;
     }
 
@@ -448,11 +448,11 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
 
     // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
     if (!SDL_Libretro_InitAudio(lr)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "SDL_libretro: Audio unavailable: %s", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio unavailable: %s", SDL_GetError());
     }
 
-    SDL_Log("SDL_libretro: Content loaded: %s [%ux%u@%.2ffps, %.0f Hz]", lr->core.contentName,
-        lr->core.width, lr->core.height, lr->core.fps, lr->core.sampleRate);
+    SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
+        lr->core.width, lr->core.height, lr->core.fps);
 
     // Allocate rewind buffer now that serialize size is known.
     if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
@@ -478,7 +478,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     SDL_Libretro_RewindFree(lr);
     SDL_Libretro_CloseAudio(lr);
     SDL_Libretro_CloseVideo(lr);
-    SDL_Log("SDL_libretro: Game unloaded");
+    SDL_Log("[SDL_Libretro] Game unloaded");
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
@@ -493,7 +493,7 @@ bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
 
 bool SDL_Libretro_Reset(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded) {
-        SDL_SetError("SDL_libretro: No game loaded");
+        SDL_SetError("[SDL_Libretro] No game loaded");
         return false;
     }
     lr->core.symbols.retro_reset();

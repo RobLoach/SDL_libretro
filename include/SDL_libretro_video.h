@@ -22,6 +22,22 @@ static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt
 }
 
 /**
+ * Releases any in-flight software-framebuffer texture lock.
+ *
+ * Safe to call when no lock is held. Called before re-locking and before the texture is destroyed/recreated, so a core that acquires a buffer can't leave the texture locked or `softwareFramebufferPixels` dangling.
+ *
+ * @internal
+ */
+static void SDL_Libretro_ReleaseSoftwareFramebuffer(SDL_Libretro* lr) {
+    if (lr->core.softwareFramebufferPixels) {
+        if (lr->core.texture) {
+            SDL_UnlockTexture(lr->core.texture);
+        }
+        lr->core.softwareFramebufferPixels = NULL;
+    }
+}
+
+/**
  * Initialize the libretro video system.
  *
  * @internal
@@ -29,27 +45,33 @@ static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     if (!lr || !lr->core.renderer) return false;
 
-    if (lr->core.texture) {
-        SDL_DestroyTexture(lr->core.texture);
-        lr->core.texture = NULL;
-    }
+    // Make sure we're starting a clean video context.
+    SDL_Libretro_CloseVideo(lr);
 
+    // If there is no desired width/height, select an arbitrary one.
     if (lr->core.width == 0 || lr->core.height == 0) {
         lr->core.width = 320;
         lr->core.height = 240;
     }
 
-    SDL_PixelFormat fmt = SDL_Libretro_GetTextureFormat(lr->core.pixelFormat);
-    lr->core.texture = SDL_CreateTexture(lr->core.renderer, fmt,
-        SDL_TEXTUREACCESS_STREAMING, lr->core.width, lr->core.height);
+    // Build the Texture.
+    lr->core.texture = SDL_CreateTexture(lr->core.renderer,
+        SDL_Libretro_GetTextureFormat(lr->core.pixelFormat),
+        SDL_TEXTUREACCESS_STREAMING,
+        lr->core.width, lr->core.height);
 
     if (!lr->core.texture) {
-        SDL_SetError("SDL_libretro: Failed to create texture: %s", SDL_GetError());
+        SDL_SetError("[SDL_Libretro] Failed to create texture: %s", SDL_GetError());
         return false;
     }
-
-    SDL_SetTextureScaleMode(lr->core.texture, SDL_SCALEMODE_NEAREST);
     lr->core.videoReinitPending = false;
+
+    // Scale Mode
+    #if SDL_VERSION_ATLEAST(3, 4, 0)
+    if (lr->core.textureScaleMode == SDL_SCALEMODE_NEAREST)
+        lr->core.textureScaleMode = SDL_SCALEMODE_PIXELART; // SDL >= 3.4
+    #endif
+    SDL_SetTextureScaleMode(lr->core.texture, lr->core.textureScaleMode);
     return true;
 }
 
@@ -62,6 +84,7 @@ static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
     if (!lr) return;
 
     if (lr->core.texture) {
+        SDL_Libretro_ReleaseSoftwareFramebuffer(lr);
         SDL_DestroyTexture(lr->core.texture);
         lr->core.texture = NULL;
     }
@@ -71,10 +94,13 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
+    // Software framebuffer (RETRO_ENVIRONMENT_GET_CURRENT_SOFTWARE_FRAMEBUFFER):
+    // the core rendered straight into the locked texture, so unlock it. When the
+    // core handed back our own pointer we're already done (zero copy); otherwise
+    // fall through and copy whatever buffer it passed instead.
     if (lr->core.softwareFramebufferPixels) {
         void* swfb = lr->core.softwareFramebufferPixels;
-        SDL_UnlockTexture(lr->core.texture);
-        lr->core.softwareFramebufferPixels = NULL;
+        SDL_Libretro_ReleaseSoftwareFramebuffer(lr);
         if (data == swfb) return;
     }
 

@@ -25,11 +25,11 @@ static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...
     if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
 
     switch (level) {
-        case RETRO_LOG_DEBUG: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "CORE: %s", buf); break;
-        case RETRO_LOG_INFO:  SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "CORE: %s", buf); break;
-        case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "CORE: %s", buf); break;
-        case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "CORE: %s", buf); break;
-        default:              SDL_Log("CORE: %s", buf); break;
+        case RETRO_LOG_DEBUG: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
+        case RETRO_LOG_INFO:  SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
+        case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
+        case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
+        default:              SDL_Log("[SDL_Libretro] %s", buf); break;
     }
 }
 
@@ -182,7 +182,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_ROTATION: {
             if (!data) return false;
             lr->core.rotation = (int)*(const unsigned*)data;
-            SDL_Log("SDL_libretro: SET_ROTATION: %d (%d deg)", lr->core.rotation, lr->core.rotation * 90);
+            SDL_Log("[SDL_Libretro] SET_ROTATION: %d (%d deg)", lr->core.rotation, lr->core.rotation * 90);
             return true;
         }
 
@@ -205,7 +205,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SHUTDOWN: {
-            SDL_Log("SDL_libretro: SHUTDOWN requested");
+            SDL_Log("[SDL_Libretro] SHUTDOWN requested");
             lr->core.shutdown = true;
             return true;
         }
@@ -284,7 +284,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_HW_RENDER: {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_libretro: SET_HW_RENDER not supported");
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] SET_HW_RENDER not supported");
             return false;
         }
 
@@ -760,7 +760,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!data || !lr->core.texture) return false;
             struct retro_framebuffer* fb = (struct retro_framebuffer*)data;
             if (fb->width != lr->core.width || fb->height != lr->core.height) return false;
+            // The lock is write-only (discards prior contents), so a core asking to read back can't use it.
             if (fb->access_flags & RETRO_MEMORY_ACCESS_READ) return false;
+
+            // Drop any lock still held from an earlier acquire this frame (or a frame that never reached video_cb) before re-locking.
+            SDL_Libretro_ReleaseSoftwareFramebuffer(lr);
 
             void* pixels = NULL;
             int pitch = 0;
@@ -780,7 +784,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
             if (info->required_interface_version > 4) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "SDL_libretro: GET_VFS_INTERFACE: unsupported required_interface_version %u",
+                            "[SDL_Libretro] GET_VFS_INTERFACE: unsupported required_interface_version %u",
                             info->required_interface_version);
                 return false;
             }
@@ -856,7 +860,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return false;
 
         default: {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "SDL_libretro: Unhandled environment callback: %u", cmd);
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unhandled environment callback: %u", cmd);
             return false;
         }
     }

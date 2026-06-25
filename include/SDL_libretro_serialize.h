@@ -57,11 +57,11 @@ size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
 bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
     if (!lr || !lr->core.gameLoaded || !dst) {
-        SDL_SetError("SDL_libretro: Invalid SaveState_IO arguments");
+        SDL_SetError("[SDL_Libretro] Invalid SaveState_IO arguments");
     } else {
         size_t size = lr->core.symbols.retro_serialize_size();
         if (size == 0) {
-            SDL_SetError("SDL_libretro: Core does not support save states");
+            SDL_SetError("[SDL_Libretro] Core does not support save states");
         } else {
             void* data = SDL_malloc(size);
             if (data) {
@@ -78,7 +78,7 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
 
 bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
     if (!lr || !lr->core.gameLoaded || !file) {
-        SDL_SetError("SDL_libretro: Invalid SaveState arguments");
+        SDL_SetError("[SDL_Libretro] Invalid SaveState arguments");
         return false;
     }
 
@@ -89,7 +89,7 @@ bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
 
 bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
     if (!lr || !lr->core.gameLoaded || !src) {
-        SDL_SetError("SDL_libretro: Invalid LoadState_IO arguments");
+        SDL_SetError("[SDL_Libretro] Invalid LoadState_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
         return false;
     }
@@ -105,7 +105,7 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
 
 bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
     if (!lr || !lr->core.gameLoaded || !file) {
-        SDL_SetError("SDL_libretro: Invalid LoadState arguments");
+        SDL_SetError("[SDL_Libretro] Invalid LoadState arguments");
         return false;
     }
     SDL_IOStream* io = SDL_IOFromFile(file, "rb");
@@ -152,13 +152,13 @@ void* SDL_Libretro_GetMemoryData(const SDL_Libretro* lr, unsigned memoryType, si
  */
 bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const void* data, size_t size) {
     if (!lr || !data) {
-        SDL_SetError("SDL_libretro: Invalid SetMemoryData arguments");
+        SDL_SetError("[SDL_Libretro] Invalid SetMemoryData arguments");
         return false;
     }
     size_t capacity = 0;
     void* dst = SDL_Libretro_GetMemoryData(lr, memoryType, &capacity);
     if (!dst || capacity == 0) {
-        SDL_SetError("SDL_libretro: Memory type %u unavailable", memoryType);
+        SDL_SetError("[SDL_Libretro] Memory type %u unavailable", memoryType);
         return false;
     }
     size_t copySize = size < capacity ? size : capacity;
@@ -316,7 +316,7 @@ static const char* SDL_Libretro_GetMemoryTypeName(unsigned memoryType) {
 bool SDL_Libretro_SaveMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
     if (!lr || !lr->core.gameLoaded || !dst) {
-        SDL_SetError("SDL_libretro: Invalid SaveMemory_IO arguments");
+        SDL_SetError("[SDL_Libretro] Invalid SaveMemory_IO arguments");
     } else {
         size_t size = 0;
         void* mem = SDL_Libretro_GetMemoryData(lr, memoryType, &size);
@@ -343,7 +343,7 @@ bool SDL_Libretro_SaveMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStr
  */
 bool SDL_Libretro_SaveMemory(SDL_Libretro* lr, unsigned memoryType, const char* file) {
     if (!lr || !lr->core.gameLoaded || !file) {
-        SDL_SetError("SDL_libretro: Invalid SaveMemory arguments");
+        SDL_SetError("[SDL_Libretro] Invalid SaveMemory arguments");
         return false;
     }
 
@@ -356,7 +356,7 @@ bool SDL_Libretro_SaveMemory(SDL_Libretro* lr, unsigned memoryType, const char* 
     if (!io) return false;
     bool ok = SDL_Libretro_SaveMemory_IO(lr, memoryType, io, true);
     if (ok) {
-        SDL_Log("SDL_libretro: %s saved to %s (%zu bytes)",
+        SDL_Log("[SDL_Libretro] %s saved to %s (%zu bytes)",
             SDL_Libretro_GetMemoryTypeName(memoryType), file, size);
     }
     return ok;
@@ -378,7 +378,7 @@ bool SDL_Libretro_SaveMemory(SDL_Libretro* lr, unsigned memoryType, const char* 
  */
 bool SDL_Libretro_LoadMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStream* src, bool closeio) {
     if (!lr || !lr->core.gameLoaded || !src) {
-        SDL_SetError("SDL_libretro: Invalid LoadMemory_IO arguments");
+        SDL_SetError("[SDL_Libretro] Invalid LoadMemory_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
         return false;
     }
@@ -386,7 +386,7 @@ bool SDL_Libretro_LoadMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStr
     // Bail before reading the stream when there's nowhere to put the data.
     size_t capacity = 0;
     if (!SDL_Libretro_GetMemoryData(lr, memoryType, &capacity) || capacity == 0) {
-        SDL_SetError("SDL_libretro: Core has no %s", SDL_Libretro_GetMemoryTypeName(memoryType));
+        SDL_SetError("[SDL_Libretro] Core has no %s", SDL_Libretro_GetMemoryTypeName(memoryType));
         if (closeio) SDL_CloseIO(src);
         return false;
     }
@@ -398,7 +398,7 @@ bool SDL_Libretro_LoadMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStr
     // A size mismatch is the usual cause of a save that loads only partially.
     if (fileSize != capacity) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "SDL_libretro: %s size mismatch (file %zu bytes, region %zu bytes); loading %zu",
+            "[SDL_Libretro] %s size mismatch (file %zu bytes, region %zu bytes); loading %zu",
             SDL_Libretro_GetMemoryTypeName(memoryType), fileSize, capacity,
             fileSize < capacity ? fileSize : capacity);
     }
@@ -421,14 +421,14 @@ bool SDL_Libretro_LoadMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStr
  */
 bool SDL_Libretro_LoadMemory(SDL_Libretro* lr, unsigned memoryType, const char* file) {
     if (!lr || !lr->core.gameLoaded || !file) {
-        SDL_SetError("SDL_libretro: Invalid LoadMemory arguments");
+        SDL_SetError("[SDL_Libretro] Invalid LoadMemory arguments");
         return false;
     }
     SDL_IOStream* io = SDL_IOFromFile(file, "rb");
     if (!io) return false;
     bool ok = SDL_Libretro_LoadMemory_IO(lr, memoryType, io, true);
     if (ok) {
-        SDL_Log("SDL_libretro: %s loaded from %s",
+        SDL_Log("[SDL_Libretro] %s loaded from %s",
             SDL_Libretro_GetMemoryTypeName(memoryType), file);
     }
     return ok;
@@ -644,7 +644,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     // Figure out how large the state needs to be.
     size_t slotSize = lr->core.symbols.retro_serialize_size();
     if (slotSize == 0) {
-        SDL_SetError("SDL_libretro: Core does not support serialization");
+        SDL_SetError("[SDL_Libretro] Core does not support serialization");
         lr->rewindEnabled = false;
         return false;
     }
@@ -652,7 +652,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     // Cores that flag their state as incomplete warn the frontend not to rely on it for frame-sensitive features (netplay, rerecording).
     if (lr->core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_INCOMPLETE) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "SDL_libretro: Core reports incomplete serialization, so rewind may be unreliable");
+            "[SDL_Libretro] Core reports incomplete serialization, so rewind may be unreliable");
     }
 
     // Initialize the rewind slots.
@@ -671,7 +671,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
         SDL_free(scratch);
         SDL_free(encScratch);
         SDL_free(entries);
-        SDL_SetError("SDL_libretro: Failed to allocate rewind buffers");
+        SDL_SetError("[SDL_Libretro] Failed to allocate rewind buffers");
         lr->rewindEnabled = false;
         return false;
     }
@@ -928,7 +928,7 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
  */
 bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded || !lr->rewindEnabled) {
-        SDL_SetError("SDL_libretro: Rewind is not enabled");
+        SDL_SetError("[SDL_Libretro] Rewind is not enabled");
         return false;
     }
     if (!SDL_Libretro_RewindStepState(lr)) return false;

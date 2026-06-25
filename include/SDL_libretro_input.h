@@ -6,6 +6,8 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_INPUT_IMPL_ONCE)
 #define SDL_LIBRETRO_INPUT_IMPL_ONCE
 
+#include <SDL3/SDL.h>
+
 /**
  * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
  *
@@ -478,8 +480,9 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
                 for (unsigned i = 0; i < 16; i++) {
                     if (!lr->gamepads[i]) {
                         lr->gamepads[i] = gp;
+                        const char* name = SDL_GetGamepadName(gp);
                         if (i + 1 > lr->gamepadCount) lr->gamepadCount = i + 1;
-                        SDL_Log("SDL_libretro: Gamepad added to port %u", i);
+                        SDL_Log("[SDL_Libretro] Gamepad added: #%u %s", i + 1, name ? name : "");
                         break;
                     }
                 }
@@ -490,9 +493,10 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
             SDL_JoystickID jid = event->gdevice.which;
             for (unsigned i = 0; i < 16; i++) {
                 if (lr->gamepads[i] && SDL_GetGamepadID(lr->gamepads[i]) == jid) {
+                    const char* name = SDL_GetGamepadName(lr->gamepads[i]);
+                    SDL_Log("[SDL_Libretro] Gamepad removed: #%u %s", i + 1, name ? name : "");
                     SDL_CloseGamepad(lr->gamepads[i]);
                     lr->gamepads[i] = NULL;
-                    SDL_Log("SDL_libretro: Gamepad removed from port %u", i);
                     break;
                 }
             }
