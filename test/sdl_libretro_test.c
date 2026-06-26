@@ -379,6 +379,36 @@ static int SDLCALL test_OptionVisibility(void *arg) {
 #endif
 }
 
+static int SDLCALL test_UpdateOptionVisibility(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDLTest_AssertCheck(SDL_Libretro_UpdateOptionVisibility(NULL) == false, "UpdateOptionVisibility(NULL) false");
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_UpdateOptionVisibility(lr) == false, "UpdateOptionVisibility false without core");
+
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    const SDL_LibretroOption* a = SDL_Libretro_GetOption(lr, "test_option_a");
+    SDLTest_AssertCheck(a && a->visible == true, "Option A initially visible");
+
+    // Set option B to "no", which should cause the callback to hide option A.
+    SDL_Libretro_SetOptionValue(lr, "test_option_b", "no");
+    SDLTest_AssertCheck(SDL_Libretro_UpdateOptionVisibility(lr) == true, "UpdateOptionVisibility returns true");
+    SDLTest_AssertCheck(a && a->visible == false, "Option A hidden after update (B is no)");
+
+    // Set option B back to "yes", option A should become visible again.
+    SDL_Libretro_SetOptionValue(lr, "test_option_b", "yes");
+    SDL_Libretro_UpdateOptionVisibility(lr);
+    SDLTest_AssertCheck(a && a->visible == true, "Option A visible after update (B is yes)");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LoadCore(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -768,6 +798,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
+    LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
