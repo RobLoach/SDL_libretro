@@ -733,6 +733,12 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, intl->us);
         }
 
+        case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: {
+            if (!data) return false;
+            *(unsigned*)data = 1;
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
             const struct retro_message_ext* msg = (const struct retro_message_ext*)data;
             if (!msg || !msg->msg) return false;
