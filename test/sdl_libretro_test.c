@@ -379,6 +379,46 @@ static int SDLCALL test_OptionVisibility(void *arg) {
 #endif
 }
 
+static int SDLCALL test_Subsystems(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // NULL and fresh-context safety.
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystemCount(NULL) == 0, "GetSubsystemCount(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystem(NULL, 0) == NULL, "GetSubsystem(NULL) NULL");
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystemCount(lr) == 0, "GetSubsystemCount 0 on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystem(lr, 0) == NULL, "GetSubsystem(0) NULL on fresh context");
+
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystemCount(lr) == 1, "One subsystem registered by test_core");
+
+    const SDL_LibretroSubsystemInfo* ss = SDL_Libretro_GetSubsystem(lr, 0);
+    SDLTest_AssertCheck(ss != NULL, "GetSubsystem(0) non-NULL");
+    SDLTest_AssertCheck(ss && SDL_strcmp(ss->desc, "Super Game Boy") == 0, "Subsystem desc");
+    SDLTest_AssertCheck(ss && SDL_strcmp(ss->ident, "sgb") == 0, "Subsystem ident");
+    SDLTest_AssertCheck(ss && ss->id == 1, "Subsystem id is 1");
+    SDLTest_AssertCheck(ss && ss->numRoms == 2, "Subsystem has 2 ROM slots");
+
+    if (ss && ss->roms && ss->numRoms >= 2) {
+        SDLTest_AssertCheck(SDL_strcmp(ss->roms[0].desc, "Game Boy ROM") == 0, "ROM 0 desc");
+        SDLTest_AssertCheck(SDL_strcmp(ss->roms[0].validExtensions, "gb|gbc") == 0, "ROM 0 extensions");
+        SDLTest_AssertCheck(ss->roms[0].needFullpath == false, "ROM 0 needFullpath false");
+        SDLTest_AssertCheck(ss->roms[0].required == true, "ROM 0 required");
+        SDLTest_AssertCheck(SDL_strcmp(ss->roms[1].desc, "Super Game Boy BIOS") == 0, "ROM 1 desc");
+        SDLTest_AssertCheck(ss->roms[1].needFullpath == true, "ROM 1 needFullpath true");
+    }
+
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystem(lr, 1) == NULL, "GetSubsystem out-of-range NULL");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LoadCore(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -768,6 +808,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
     LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
+    LIBRETRO_TEST_CASE(test_Subsystems,       "Subsystem info registration and query"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),

@@ -550,6 +550,42 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: {
+            if (!data) return false;
+            const struct retro_subsystem_info* info = (const struct retro_subsystem_info*)data;
+            SDL_Libretro_FreeSubsystems(lr);
+            unsigned count = 0;
+            while (info[count].desc) count++;
+            if (count > 0) {
+                lr->core.subsystems = (SDL_LibretroSubsystemInfo*)SDL_calloc(count, sizeof(SDL_LibretroSubsystemInfo));
+                if (lr->core.subsystems) {
+                    lr->core.subsystemCount = count;
+                    for (unsigned i = 0; i < count; i++) {
+                        lr->core.subsystems[i].desc = SDL_strdup(info[i].desc ? info[i].desc : "");
+                        lr->core.subsystems[i].ident = SDL_strdup(info[i].ident ? info[i].ident : "");
+                        lr->core.subsystems[i].id = info[i].id;
+                        lr->core.subsystems[i].numRoms = info[i].num_roms;
+                        if (info[i].num_roms > 0 && info[i].roms) {
+                            lr->core.subsystems[i].roms = (SDL_LibretroSubsystemRomInfo*)SDL_calloc(
+                                info[i].num_roms, sizeof(SDL_LibretroSubsystemRomInfo));
+                            if (lr->core.subsystems[i].roms) {
+                                for (unsigned r = 0; r < info[i].num_roms; r++) {
+                                    lr->core.subsystems[i].roms[r].desc = SDL_strdup(
+                                        info[i].roms[r].desc ? info[i].roms[r].desc : "");
+                                    lr->core.subsystems[i].roms[r].validExtensions = SDL_strdup(
+                                        info[i].roms[r].valid_extensions ? info[i].roms[r].valid_extensions : "");
+                                    lr->core.subsystems[i].roms[r].needFullpath = info[i].roms[r].need_fullpath;
+                                    lr->core.subsystems[i].roms[r].blockExtract = info[i].roms[r].block_extract;
+                                    lr->core.subsystems[i].roms[r].required = info[i].roms[r].required;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
             const struct retro_controller_info* info = (const struct retro_controller_info*)data;
             if (!info) return false;

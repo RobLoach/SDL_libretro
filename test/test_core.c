@@ -37,6 +37,20 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
     };
     cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void *)overrides);
 
+    // Register a dummy subsystem for testing SET_SUBSYSTEM_INFO.
+    static const struct retro_subsystem_memory_info sgb_mem[] = {
+        { "srm", 0x100 },
+    };
+    static const struct retro_subsystem_rom_info sgb_roms[] = {
+        { "Game Boy ROM", "gb|gbc", false, false, true, sgb_mem, 1 },
+        { "Super Game Boy BIOS", "sfc|smc", true, false, true, NULL, 0 },
+    };
+    static const struct retro_subsystem_info subsystems[] = {
+        { "Super Game Boy", "sgb", sgb_roms, 2, 1 },
+        { NULL, NULL, NULL, 0, 0 },
+    };
+    cb(RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO, (void *)subsystems);
+
     // Register two options under one category, then hide the second one to test
     // SET_CORE_OPTIONS_DISPLAY.
     static const struct retro_core_option_v2_category opt_cats[] = {

@@ -193,6 +193,29 @@ unsigned SDL_Libretro_GetCategoryCount(const SDL_Libretro* lr);
 const SDL_LibretroCategory* SDL_Libretro_GetCategory(const SDL_Libretro* lr, const char* key);
 const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* lr, unsigned index);
 
+// Subsystems
+
+typedef struct SDL_LibretroSubsystemRomInfo {
+    const char* desc;
+    const char* validExtensions;
+    bool needFullpath;
+    bool blockExtract;
+    bool required;
+} SDL_LibretroSubsystemRomInfo;
+
+typedef struct SDL_LibretroSubsystemInfo {
+    const char* desc;
+    const char* ident;
+    unsigned id;
+    unsigned numRoms;
+    SDL_LibretroSubsystemRomInfo* roms;
+} SDL_LibretroSubsystemInfo;
+
+unsigned SDL_Libretro_GetSubsystemCount(const SDL_Libretro* lr);
+const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystem(const SDL_Libretro* lr, unsigned index);
+bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId,
+    const char** paths, unsigned numPaths, SDL_Renderer* renderer);
+
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code);
@@ -367,6 +390,10 @@ typedef struct SDL_LibretroCoreData {
     struct retro_system_content_info_override* contentInfoOverrides; /** Deep-copied; owned by the context. */
     unsigned contentInfoOverrideCount; /** The number of content info overrides. @see contentInfoOverrides */
 
+    // Subsystems
+    SDL_LibretroSubsystemInfo* subsystems;
+    unsigned subsystemCount;
+
     // Rumble
     float rumbleStrong[SDL_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_RUMBLE_PORTS];
@@ -498,6 +525,7 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
 static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
+static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr);
 
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"
