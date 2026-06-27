@@ -300,6 +300,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return false;
         }
 
+        case RETRO_ENVIRONMENT_SET_VARIABLE: {
+            if (!data) return true;
+            const struct retro_variable* var = (const struct retro_variable*)data;
+            if (!var->key || !var->value) return false;
+            return SDL_Libretro_SetOptionValue(lr, var->key, var->value);
+        }
+
         case RETRO_ENVIRONMENT_SET_VARIABLES: {
             if (!data) return false;
             const struct retro_variable* var = (const struct retro_variable*)data;
