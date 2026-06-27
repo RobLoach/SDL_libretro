@@ -21,6 +21,16 @@ static bool game_loaded;
  * SYSTEM_RAM: [0..15] lower-case ext, [16] persistent_data, [17] data != NULL. */
 static uint8_t game_info_probe[32];
 
+static bool RETRO_CALLCONV test_update_display_callback(void) {
+    if (!environ_cb) return false;
+    struct retro_variable var = { "test_option_b", NULL };
+    environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var);
+    bool hide_a = (var.value && strcmp(var.value, "no") == 0);
+    struct retro_core_option_display disp = { "test_option_a", !hide_a };
+    environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &disp);
+    return true;
+}
+
 RETRO_API void retro_set_environment(retro_environment_t cb) {
     environ_cb = cb;
     bool no_game = true; // retro_load_game(NULL) is handled, so advertise it
@@ -60,6 +70,12 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
     // Hide option B; frontend can verify via SDL_Libretro_GetOption(...)->visible.
     static const struct retro_core_option_display hide_b = { "test_option_b", false };
     cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, (void *)&hide_b);
+
+    // Register an update-display callback that hides option A when option B is "no".
+    static const struct retro_core_options_update_display_callback update_cb = {
+        test_update_display_callback
+    };
+    cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK, (void *)&update_cb);
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }

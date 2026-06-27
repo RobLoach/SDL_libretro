@@ -189,6 +189,7 @@ const char* SDL_Libretro_GetOptionValue(SDL_Libretro* lr, const char* key);
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key);
 void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr);
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr);
+bool SDL_Libretro_UpdateOptionVisibility(SDL_Libretro* lr);
 unsigned SDL_Libretro_GetCategoryCount(const SDL_Libretro* lr);
 const SDL_LibretroCategory* SDL_Libretro_GetCategory(const SDL_Libretro* lr, const char* key);
 const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* lr, unsigned index);
@@ -345,6 +346,7 @@ typedef struct SDL_LibretroCoreData {
     unsigned optionCount; /** The number of options. */
     unsigned optionCapacity;
     bool optionsDirty;
+    retro_core_options_update_display_callback_t optionsUpdateDisplayCallback;
     SDL_LibretroCategory* optionCategories; /** Categories registered by the core; strings owned by the context. */
     unsigned optionCategoryCount;
     unsigned optionCategoryCapacity;
