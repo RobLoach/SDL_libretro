@@ -283,6 +283,16 @@ typedef struct SDL_LibretroCoreSymbols {
     size_t (*retro_get_memory_size)(unsigned);
 } SDL_LibretroCoreSymbols;
 
+/**
+ * @see SDL_Libretro_MicOpen()
+ */
+typedef struct SDL_LibretroMicrophone {
+    SDL_AudioStream* stream;
+    unsigned rate; /** The sample rate. */
+    bool active;
+    SDL_Libretro* lr; /** A pointer back to the libretro data, used to dereference itself in case the core doesn't close for us. */
+} SDL_LibretroMicrophone;
+
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
@@ -294,9 +304,9 @@ typedef struct SDL_LibretroCoreData {
     double sampleRate;
     float aspectRatio;
     char corePath[SDL_LIBRETRO_MAX_PATH];
-    char libraryName[200];
-    char libraryVersion[200];
-    char validExtensions[200];
+    char libraryName[128];
+    char libraryVersion[128];
+    char validExtensions[128];
     bool needFullpath;
     bool supportNoGame;
     unsigned apiVersion;
@@ -361,7 +371,7 @@ typedef struct SDL_LibretroCoreData {
     char contentPath[SDL_LIBRETRO_MAX_PATH]; /** The path to the content that's being loaded. */
     char contentName[SDL_LIBRETRO_MAX_PATH]; /** The human-readable content name. */
     char contentDir[SDL_LIBRETRO_MAX_PATH]; /** Directory of the content file; backs gameInfoExt.dir. */
-    char contentExt[16]; /** Lower-case content extension; backs gameInfoExt.ext. */
+    char contentExt[8]; /** Lower-case content extension; backs gameInfoExt.ext. */
 
     struct retro_game_info_ext gameInfoExt; /** Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
 
@@ -372,6 +382,9 @@ typedef struct SDL_LibretroCoreData {
     // Rumble
     float rumbleStrong[SDL_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_RUMBLE_PORTS];
+
+    // Microphone
+    SDL_LibretroMicrophone* microphone;
 
     // Disk control
     struct retro_disk_control_ext_callback disk_control;
@@ -412,7 +425,7 @@ struct SDL_Libretro {
     char coreAssetsDirectory[SDL_LIBRETRO_MAX_PATH];
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
-    char username[128];
+    char username[64];
 
     // Logging
     int logLevel;
@@ -478,6 +491,14 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
+
+static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t* params);
+static void SDL_Libretro_MicClose(retro_microphone_t* microphone);
+static bool SDL_Libretro_MicGetParams(const retro_microphone_t* microphone, retro_microphone_params_t* params);
+static bool SDL_Libretro_MicSetState(retro_microphone_t* microphone, bool state);
+static bool SDL_Libretro_MicGetState(const retro_microphone_t* microphone);
+static int SDL_Libretro_MicRead(retro_microphone_t* microphone, int16_t* samples, size_t num_samples);
+static void SDL_Libretro_CloseMicrophone(SDL_Libretro* lr);
 
 #ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
 static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap);

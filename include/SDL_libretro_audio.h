@@ -329,4 +329,118 @@ static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
     lr->core.singleSampleCount = 0;
 }
 
+// Microphone
+
+#ifndef SDL_LIBRETRO_MIC_DEFAULT_RATE
+/**
+ * The default sample rate for recording microphone input.
+ *
+ * @see SDL_Libretro_MicOpen()
+ */
+#define SDL_LIBRETRO_MIC_DEFAULT_RATE 44100
+#endif
+
+static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t* params) {
+    SDL_Libretro* lr = SDL_Libretro_active;
+    if (!lr) return NULL;
+
+    if (lr->core.microphone) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_libretro] Microphone already open");
+        return (retro_microphone_t*)lr->core.microphone;
+    }
+
+    unsigned rate = (params && params->rate > 0) ? params->rate : SDL_LIBRETRO_MIC_DEFAULT_RATE;
+
+    SDL_AudioSpec spec;
+    spec.freq = (int)rate;
+    spec.format = SDL_AUDIO_S16;
+    spec.channels = 1;
+
+    SDL_AudioStream* stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &spec, NULL, (void*)lr);
+    if (!stream) {
+        SDL_LogError(SDL_LOG_CATEGORY_AUDIO, "SDL_libretro: Failed to open microphone: %s", SDL_GetError());
+        return NULL;
+    }
+
+    SDL_LibretroMicrophone* mic = (SDL_LibretroMicrophone*)SDL_calloc(1, sizeof(*mic));
+    if (!mic) {
+        SDL_DestroyAudioStream(stream);
+        SDL_OutOfMemory();
+        return NULL;
+    }
+
+    mic->stream = stream;
+    mic->rate = rate;
+    mic->active = false;
+    mic->lr = lr;
+    lr->core.microphone = mic;
+
+    SDL_Log("SDL_libretro: Microphone opened (%u Hz)", rate);
+    return (retro_microphone_t*)mic;
+}
+
+static void SDL_Libretro_MicClose(retro_microphone_t* microphone) {
+    SDL_LibretroMicrophone* mic = (SDL_LibretroMicrophone*)microphone;
+    if (!mic) return;
+
+    // Dereference from the core if it's actively referencing itself.
+    if (mic->lr && mic->lr->core.microphone == mic) {
+        mic->lr->core.microphone = NULL;
+    }
+
+    // Destroy the stream.
+    if (mic->stream) {
+        SDL_DestroyAudioStream(mic->stream);
+        mic->stream = NULL;
+    }
+    SDL_free(mic);
+}
+
+static bool SDL_Libretro_MicGetParams(const retro_microphone_t* microphone, retro_microphone_params_t* params) {
+    const SDL_LibretroMicrophone* mic = (const SDL_LibretroMicrophone*)microphone;
+    if (!mic || !params) return false;
+    params->rate = mic->rate;
+    return true;
+}
+
+static bool SDL_Libretro_MicSetState(retro_microphone_t* microphone, bool state) {
+    SDL_LibretroMicrophone* mic = (SDL_LibretroMicrophone*)microphone;
+    if (!mic || !mic->stream) return false;
+
+    bool ok;
+    if (state) {
+        ok = SDL_ResumeAudioStreamDevice(mic->stream);
+    }
+    else {
+        ok = SDL_PauseAudioStreamDevice(mic->stream);
+    }
+
+    // If the state changed successfully, update it accordingly.
+    if (ok) {
+        mic->active = state;
+    }
+    return ok;
+}
+
+static bool SDL_Libretro_MicGetState(const retro_microphone_t* microphone) {
+    const SDL_LibretroMicrophone* mic = (const SDL_LibretroMicrophone*)microphone;
+    if (!mic) return false;
+    return mic->active;
+}
+
+static int SDL_Libretro_MicRead(retro_microphone_t* microphone, int16_t* samples, size_t num_samples) {
+    SDL_LibretroMicrophone* mic = (SDL_LibretroMicrophone*)microphone;
+    if (!mic || !mic->stream || !samples || num_samples == 0) return 0;
+
+    int bytes = SDL_GetAudioStreamData(mic->stream, samples, (int)(num_samples * sizeof(int16_t)));
+    if (bytes < 0) return 0;
+    return bytes / (int)sizeof(int16_t);
+}
+
+static void SDL_Libretro_CloseMicrophone(SDL_Libretro* lr) {
+    if (!lr || !lr->core.microphone) return;
+    SDL_Libretro_MicClose((retro_microphone_t*)lr->core.microphone);
+    lr->core.microphone = NULL;
+}
+
 #endif /* SDL_LIBRETRO_AUDIO_IMPL_ONCE */

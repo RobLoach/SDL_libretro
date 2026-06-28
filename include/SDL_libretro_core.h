@@ -179,6 +179,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
         SDL_UnloadObject(lr->core.symbols.handle);
     }
 
+    SDL_Libretro_CloseMicrophone(lr);
     SDL_Libretro_FreeCoreOptions(lr);
     if (lr->core.inputDescriptors) {
         SDL_free(lr->core.inputDescriptors);
