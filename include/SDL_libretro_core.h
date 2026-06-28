@@ -179,6 +179,8 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
         SDL_UnloadObject(lr->core.symbols.handle);
     }
 
+    SDL_Libretro_CloseSensors(lr);
+    SDL_Libretro_CloseMicrophone(lr);
     SDL_Libretro_FreeCoreOptions(lr);
     if (lr->core.inputDescriptors) {
         SDL_free(lr->core.inputDescriptors);
@@ -495,8 +497,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     return true;
 }
 
-bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId,
-    const char** paths, unsigned numPaths, SDL_Renderer* renderer) {
+bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths, SDL_Renderer* renderer) {
     if (!lr || !lr->core.loaded || !renderer || !paths || numPaths == 0) {
         SDL_SetError("[SDL_Libretro] Invalid arguments for LoadGameSpecial");
         return false;
