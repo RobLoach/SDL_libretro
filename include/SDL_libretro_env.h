@@ -489,6 +489,15 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 25:
+        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE: {
+            if (!data) return false;
+            struct retro_sensor_interface* sensor = (struct retro_sensor_interface*)data;
+            sensor->set_sensor_state = SDL_Libretro_SetSensorState;
+            sensor->get_sensor_input = SDL_Libretro_GetSensorInput;
+            return true;
+        }
+
         case 47:
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
             if (!data) return false;
@@ -877,8 +886,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         // Unimplemented
-        case 25:
-        case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE:
         case 26:
         case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
         case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:

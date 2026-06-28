@@ -253,6 +253,7 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
 #define SDL_LIBRETRO_MAX_PATH 4096
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
+#define SDL_LIBRETRO_SENSOR_PORTS 4
 
 typedef struct SDL_LibretroCoreSymbols {
     SDL_SharedObject* handle;
@@ -383,6 +384,12 @@ typedef struct SDL_LibretroCoreData {
     float rumbleStrong[SDL_LIBRETRO_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_RUMBLE_PORTS];
 
+    // Sensors
+    SDL_Sensor* sensorAccel[SDL_LIBRETRO_SENSOR_PORTS];
+    SDL_Sensor* sensorGyro[SDL_LIBRETRO_SENSOR_PORTS];
+    float sensorAccelData[SDL_LIBRETRO_SENSOR_PORTS][3];
+    float sensorGyroData[SDL_LIBRETRO_SENSOR_PORTS][3];
+
     // Microphone
     SDL_LibretroMicrophone* microphone;
 
@@ -492,6 +499,12 @@ static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
 
+// Sensors
+static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action action, unsigned rate);
+static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id);
+static void SDL_Libretro_CloseSensors(SDL_Libretro* lr);
+
+// Microphone
 static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t* params);
 static void SDL_Libretro_MicClose(retro_microphone_t* microphone);
 static bool SDL_Libretro_MicGetParams(const retro_microphone_t* microphone, retro_microphone_params_t* params);
