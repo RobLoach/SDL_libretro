@@ -300,6 +300,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return false;
         }
 
+        case RETRO_ENVIRONMENT_SET_VARIABLE: {
+            if (!data) return true;
+            const struct retro_variable* var = (const struct retro_variable*)data;
+            if (!var->key || !var->value) return false;
+            return SDL_Libretro_SetOptionValue(lr, var->key, var->value);
+        }
+
         case RETRO_ENVIRONMENT_SET_VARIABLES: {
             if (!data) return false;
             const struct retro_variable* var = (const struct retro_variable*)data;
@@ -742,6 +749,23 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, intl->us);
         }
 
+        case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: {
+            if (!data) return false;
+            *(unsigned*)data = 1;
+            return true;
+        }
+        
+        case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: {
+            if (!data) {
+                lr->core.optionsUpdateDisplayCallback = NULL;
+                return true;
+            }
+            const struct retro_core_options_update_display_callback* cb =
+                (const struct retro_core_options_update_display_callback*)data;
+            lr->core.optionsUpdateDisplayCallback = cb->callback;
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
             const struct retro_message_ext* msg = (const struct retro_message_ext*)data;
             if (!msg || !msg->msg) return false;
@@ -801,6 +825,20 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             // Let the core know which version of the VFS we support.
             info->required_interface_version = 4;
             info->iface = &lr->vfs_interface;
+            return true;
+        }
+
+        case 75:
+        case RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE: {
+            if (!data) return false;
+            struct retro_microphone_interface* mic = (struct retro_microphone_interface*)data;
+            mic->interface_version = RETRO_MICROPHONE_INTERFACE_VERSION;
+            mic->open_mic = SDL_Libretro_MicOpen;
+            mic->close_mic = SDL_Libretro_MicClose;
+            mic->get_params = SDL_Libretro_MicGetParams;
+            mic->set_mic_state = SDL_Libretro_MicSetState;
+            mic->get_mic_state = SDL_Libretro_MicGetState;
+            mic->read_mic = SDL_Libretro_MicRead;
             return true;
         }
 

@@ -228,6 +228,11 @@ bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr) {
     return dirty;
 }
 
+bool SDL_Libretro_UpdateOptionVisibility(SDL_Libretro* lr) {
+    if (!lr || !lr->core.optionsUpdateDisplayCallback) return false;
+    return lr->core.optionsUpdateDisplayCallback();
+}
+
 /**
  * Get the number of option categories registered by the core.
  */
