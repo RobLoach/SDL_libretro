@@ -668,7 +668,7 @@ static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
         return lr->core.sensorAccelData[port][id - RETRO_SENSOR_ACCELEROMETER_X];
     }
 
-    // Gyroscope.
+    // Gyroscope
     if (id >= RETRO_SENSOR_GYROSCOPE_X && id <= RETRO_SENSOR_GYROSCOPE_Z && lr->core.sensorGyro[port]) {
         float data[3];
         if (SDL_GetSensorData(lr->core.sensorGyro[port], data, 3)) {
@@ -679,21 +679,32 @@ static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
         return lr->core.sensorGyroData[port][id - RETRO_SENSOR_GYROSCOPE_X];
     }
 
-    // SDL3 does not currently support luminance sensors.
+    // Luminance: SDL3 does not currently support luminance sensors.
 
     return 0.0f;
 }
 
 static void SDL_Libretro_CloseSensors(SDL_Libretro* lr) {
+    if (!lr) return;
+
     for (unsigned i = 0; i < SDL_LIBRETRO_SENSOR_PORTS; i++) {
+        // Accelerometer
         if (lr->core.sensorAccel[i]) {
             SDL_CloseSensor(lr->core.sensorAccel[i]);
             lr->core.sensorAccel[i] = NULL;
         }
+        lr->core.sensorAccelData[i][0] = 0.0f;
+        lr->core.sensorAccelData[i][1] = 0.0f;
+        lr->core.sensorAccelData[i][2] = 0.0f;
+
+        // Gyroscope
         if (lr->core.sensorGyro[i]) {
             SDL_CloseSensor(lr->core.sensorGyro[i]);
             lr->core.sensorGyro[i] = NULL;
         }
+        lr->core.sensorGyroData[i][0] = 0.0f;
+        lr->core.sensorGyroData[i][1] = 0.0f;
+        lr->core.sensorGyroData[i][2] = 0.0f;
     }
 }
 
