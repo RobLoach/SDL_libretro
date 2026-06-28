@@ -282,10 +282,14 @@ typedef struct SDL_LibretroCoreSymbols {
     size_t (*retro_get_memory_size)(unsigned);
 } SDL_LibretroCoreSymbols;
 
+/**
+ * @see SDL_Libretro_MicOpen()
+ */
 typedef struct SDL_LibretroMicrophone {
     SDL_AudioStream* stream;
-    unsigned rate;
+    unsigned rate; /** The sample rate. */
     bool active;
+    SDL_Libretro* lr; /** A pointer back to the libretro data, used to dereference itself in case the core doesn't close for us. */
 } SDL_LibretroMicrophone;
 
 typedef struct SDL_LibretroCoreData {
@@ -299,9 +303,9 @@ typedef struct SDL_LibretroCoreData {
     double sampleRate;
     float aspectRatio;
     char corePath[SDL_LIBRETRO_MAX_PATH];
-    char libraryName[200];
-    char libraryVersion[200];
-    char validExtensions[200];
+    char libraryName[128];
+    char libraryVersion[128];
+    char validExtensions[128];
     bool needFullpath;
     bool supportNoGame;
     unsigned apiVersion;
@@ -365,7 +369,7 @@ typedef struct SDL_LibretroCoreData {
     char contentPath[SDL_LIBRETRO_MAX_PATH]; /** The path to the content that's being loaded. */
     char contentName[SDL_LIBRETRO_MAX_PATH]; /** The human-readable content name. */
     char contentDir[SDL_LIBRETRO_MAX_PATH]; /** Directory of the content file; backs gameInfoExt.dir. */
-    char contentExt[16]; /** Lower-case content extension; backs gameInfoExt.ext. */
+    char contentExt[8]; /** Lower-case content extension; backs gameInfoExt.ext. */
 
     struct retro_game_info_ext gameInfoExt; /** Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
 
@@ -419,7 +423,7 @@ struct SDL_Libretro {
     char coreAssetsDirectory[SDL_LIBRETRO_MAX_PATH];
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
-    char username[128];
+    char username[64];
 
     // Logging
     int logLevel;
