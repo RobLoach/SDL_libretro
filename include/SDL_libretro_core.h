@@ -796,45 +796,80 @@ static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) 
     return false;
 }
 
-/**
- * Displays the given message within the libretro context.
- *
- * @param lr The libretro context.
- * @param msg The message to display, or NULL/empty to clear the message.
- * @param duration The amount of time to display the message, in seconds.
- */
-void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
-    if (!lr) return;
+static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress) {
+    if (!lr || !msg || msg[0] == '\0') return;
 
-    // Allow clearing the message.
-    if (msg == NULL || msg[0] == '\0') {
-        lr->osdEndTimeMs = 0;
-        lr->osdMessage[0] = '\0';
-        return;
+    Uint64 endMs = SDL_GetTicks() + (Uint64)(durationSec * 1000.0);
+    int slot = -1;
+
+    if (lr->osdQueueCount < SDL_LIBRETRO_OSD_QUEUE_SIZE) {
+        slot = lr->osdQueueCount++;
+    } else {
+        unsigned lowestPri = UINT_MAX;
+        Uint64 earliestEnd = UINT64_MAX;
+        for (int i = 0; i < SDL_LIBRETRO_OSD_QUEUE_SIZE; i++) {
+            if (lr->osdQueue[i].priority < lowestPri ||
+                (lr->osdQueue[i].priority == lowestPri && lr->osdQueue[i].endTimeMs < earliestEnd)) {
+                lowestPri = lr->osdQueue[i].priority;
+                earliestEnd = lr->osdQueue[i].endTimeMs;
+                slot = i;
+            }
+        }
     }
 
-    SDL_strlcpy(lr->osdMessage, msg, sizeof(lr->osdMessage));
-    lr->osdEndTimeMs = SDL_GetTicks() + (Uint64)(duration * 1000.0);
+    SDL_strlcpy(lr->osdQueue[slot].msg, msg, sizeof(lr->osdQueue[slot].msg));
+    lr->osdQueue[slot].endTimeMs = endMs;
+    lr->osdQueue[slot].priority = priority;
+    lr->osdQueue[slot].type = type;
+    lr->osdQueue[slot].progress = progress;
+    lr->osdTopIndex = -1;
 }
 
-/**
- * Retrieves the active on-screen message.
- *
- * @return A string for the message to display. NULL if there there is no message to display.
- */
+static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
+    Uint64 now = SDL_GetTicks();
+    int best = -1;
+    unsigned bestPri = 0;
+    int dst = 0;
+
+    for (int i = 0; i < lr->osdQueueCount; i++) {
+        if (now > lr->osdQueue[i].endTimeMs) continue;
+        if (dst != i) lr->osdQueue[dst] = lr->osdQueue[i];
+        if (best == -1 || lr->osdQueue[dst].priority > bestPri) {
+            bestPri = lr->osdQueue[dst].priority;
+            best = dst;
+        }
+        dst++;
+    }
+    lr->osdQueueCount = dst;
+    lr->osdTopIndex = best;
+    return best;
+}
+
+void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
+    if (!lr) return;
+    if (!msg || msg[0] == '\0') {
+        lr->osdQueueCount = 0;
+        lr->osdTopIndex = -1;
+        return;
+    }
+    SDL_Libretro_OsdPush(lr, msg, duration, 0, RETRO_MESSAGE_TYPE_NOTIFICATION, -1);
+}
+
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
-    if (!lr || lr->osdMessage[0] == '\0' || lr->osdEndTimeMs == 0) {
-        return NULL;
-    }
+    if (!lr || lr->osdQueueCount == 0) return NULL;
+    int top = SDL_Libretro_OsdFindTop(lr);
+    if (top < 0) return NULL;
+    return lr->osdQueue[top].msg;
+}
 
-    // Timeout the message if needed.
-    if (SDL_GetTicks() > lr->osdEndTimeMs) {
-        lr->osdMessage[0] = '\0';
-        lr->osdEndTimeMs = 0;
-        return NULL;
-    }
+int SDL_Libretro_GetMessageProgress(const SDL_Libretro* lr) {
+    if (!lr || lr->osdTopIndex < 0 || lr->osdTopIndex >= lr->osdQueueCount) return -1;
+    return lr->osdQueue[lr->osdTopIndex].progress;
+}
 
-    return lr->osdMessage;
+int SDL_Libretro_GetMessageType(const SDL_Libretro* lr) {
+    if (!lr || lr->osdTopIndex < 0 || lr->osdTopIndex >= lr->osdQueueCount) return 0;
+    return (int)lr->osdQueue[lr->osdTopIndex].type;
 }
 
 #undef LOAD_SYM
