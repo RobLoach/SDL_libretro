@@ -73,6 +73,11 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
         }
     }
 
+    for (int i = 0; i < lr->osdQueueCount; i++) {
+        SDL_free(lr->osdQueue[i].msg);
+    }
+    SDL_free(lr->osdQueue);
+
     SDL_free(lr);
 }
 
@@ -800,24 +805,28 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
     if (!lr || !msg || msg[0] == '\0') return;
 
     Uint64 endMs = SDL_GetTicks() + (Uint64)(durationSec * 1000.0);
-    int slot = -1;
 
-    if (lr->osdQueueCount < SDL_LIBRETRO_OSD_QUEUE_SIZE) {
-        slot = lr->osdQueueCount++;
-    } else {
-        unsigned lowestPri = UINT_MAX;
-        Uint64 earliestEnd = UINT64_MAX;
-        for (int i = 0; i < SDL_LIBRETRO_OSD_QUEUE_SIZE; i++) {
-            if (lr->osdQueue[i].priority < lowestPri ||
-                (lr->osdQueue[i].priority == lowestPri && lr->osdQueue[i].endTimeMs < earliestEnd)) {
-                lowestPri = lr->osdQueue[i].priority;
-                earliestEnd = lr->osdQueue[i].endTimeMs;
-                slot = i;
-            }
+    for (int i = 0; i < lr->osdQueueCount; i++) {
+        if (lr->osdQueue[i].msg && SDL_strcmp(lr->osdQueue[i].msg, msg) == 0) {
+            lr->osdQueue[i].endTimeMs = endMs;
+            lr->osdQueue[i].priority = priority;
+            lr->osdQueue[i].type = type;
+            lr->osdQueue[i].progress = progress;
+            lr->osdTopIndex = -1;
+            return;
         }
     }
 
-    SDL_strlcpy(lr->osdQueue[slot].msg, msg, sizeof(lr->osdQueue[slot].msg));
+    if (lr->osdQueueCount >= lr->osdQueueCapacity) {
+        int newCap = lr->osdQueueCapacity ? lr->osdQueueCapacity * 2 : SDL_LIBRETRO_OSD_INITIAL_CAPACITY;
+        SDL_LibretroOsdEntry* newQueue = (SDL_LibretroOsdEntry*)SDL_realloc(lr->osdQueue, (size_t)newCap * sizeof(SDL_LibretroOsdEntry));
+        if (!newQueue) return;
+        lr->osdQueue = newQueue;
+        lr->osdQueueCapacity = newCap;
+    }
+
+    int slot = lr->osdQueueCount++;
+    lr->osdQueue[slot].msg = SDL_strdup(msg);
     lr->osdQueue[slot].endTimeMs = endMs;
     lr->osdQueue[slot].priority = priority;
     lr->osdQueue[slot].type = type;
@@ -832,7 +841,11 @@ static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
     int dst = 0;
 
     for (int i = 0; i < lr->osdQueueCount; i++) {
-        if (now > lr->osdQueue[i].endTimeMs) continue;
+        if (now > lr->osdQueue[i].endTimeMs) {
+            SDL_free(lr->osdQueue[i].msg);
+            lr->osdQueue[i].msg = NULL;
+            continue;
+        }
         if (dst != i) lr->osdQueue[dst] = lr->osdQueue[i];
         if (best == -1 || lr->osdQueue[dst].priority > bestPri) {
             bestPri = lr->osdQueue[dst].priority;
@@ -848,6 +861,9 @@ static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
     if (!lr) return;
     if (!msg || msg[0] == '\0') {
+        for (int i = 0; i < lr->osdQueueCount; i++) {
+            SDL_free(lr->osdQueue[i].msg);
+        }
         lr->osdQueueCount = 0;
         lr->osdTopIndex = -1;
         return;

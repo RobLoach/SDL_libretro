@@ -256,10 +256,10 @@ int SDL_Libretro_GetMessageType(const SDL_Libretro* lr);
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
 #define SDL_LIBRETRO_SENSOR_PORTS 4
-#define SDL_LIBRETRO_OSD_QUEUE_SIZE 8
+#define SDL_LIBRETRO_OSD_INITIAL_CAPACITY 8
 
 typedef struct SDL_LibretroOsdEntry {
-    char msg[256];
+    char* msg;
     Uint64 endTimeMs;
     unsigned priority;
     enum retro_message_type type;
@@ -449,8 +449,9 @@ struct SDL_Libretro {
     int logLevel;
 
     // On-Screen Display Message Queue
-    SDL_LibretroOsdEntry osdQueue[SDL_LIBRETRO_OSD_QUEUE_SIZE];
+    SDL_LibretroOsdEntry* osdQueue;
     int osdQueueCount;
+    int osdQueueCapacity;
     int osdTopIndex;
 
     // Virtual File System
