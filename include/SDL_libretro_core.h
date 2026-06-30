@@ -73,10 +73,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
         }
     }
 
-    for (int i = 0; i < lr->osdQueueCount; i++) {
-        SDL_free(lr->osdQueue[i].msg);
-    }
-    SDL_free(lr->osdQueue);
+    SDL_Libretro_FreeMessages(lr);
 
     SDL_free(lr);
 }
@@ -364,7 +361,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
     bool persistData = false;
-    char expandedPath[SDL_LIBRETRO_MAX_PATH]; // Scratch for the resolved path; only read within this function (copied into contentPath and used for SDL_LoadFile).
 
     // Cleared here so a no-content load leaves GET_GAME_INFO_EXT invalid.
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
@@ -391,9 +387,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         bool needFullpath = SDL_Libretro_ContentNeedsFullpath(lr, ext);
         persistData = SDL_Libretro_ContentPersistData(lr, ext);
 
-        // Point at the persistent copy, not the function-local expandedPath: a
-        // need_fullpath core may retain this pointer to stream content during
-        // retro_run(), long after this stack frame (and expandedPath) is gone.
         gameInfo.path = lr->core.contentPath;
 
         if (!needFullpath) {
@@ -799,105 +792,6 @@ static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) 
         p = sep + 1;
     }
     return false;
-}
-
-static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress) {
-    if (!lr || !msg || msg[0] == '\0') return;
-
-    Uint64 endMs = SDL_GetTicks() + (Uint64)(durationSec * 1000.0);
-
-    for (int i = 0; i < lr->osdQueueCount; i++) {
-        if (lr->osdQueue[i].msg && SDL_strcmp(lr->osdQueue[i].msg, msg) == 0) {
-            lr->osdQueue[i].endTimeMs = endMs;
-            lr->osdQueue[i].priority = priority;
-            lr->osdQueue[i].type = type;
-            lr->osdQueue[i].progress = progress;
-            lr->osdTopIndex = -1;
-            return;
-        }
-    }
-
-    Uint64 now = SDL_GetTicks();
-    int slot = -1;
-    for (int i = 0; i < lr->osdQueueCount; i++) {
-        if (now > lr->osdQueue[i].endTimeMs) {
-            SDL_free(lr->osdQueue[i].msg);
-            lr->osdQueue[i].msg = NULL;
-            slot = i;
-            break;
-        }
-    }
-
-    if (slot < 0) {
-        if (lr->osdQueueCount >= lr->osdQueueCapacity) {
-            int newCap = lr->osdQueueCapacity ? lr->osdQueueCapacity * 2 : SDL_LIBRETRO_OSD_INITIAL_CAPACITY;
-            SDL_LibretroOsdEntry* newQueue = (SDL_LibretroOsdEntry*)SDL_realloc(lr->osdQueue, (size_t)newCap * sizeof(SDL_LibretroOsdEntry));
-            if (!newQueue) return;
-            lr->osdQueue = newQueue;
-            lr->osdQueueCapacity = newCap;
-        }
-        slot = lr->osdQueueCount++;
-    }
-    lr->osdQueue[slot].msg = SDL_strdup(msg);
-    lr->osdQueue[slot].endTimeMs = endMs;
-    lr->osdQueue[slot].priority = priority;
-    lr->osdQueue[slot].type = type;
-    lr->osdQueue[slot].progress = progress;
-    lr->osdTopIndex = -1;
-}
-
-static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
-    Uint64 now = SDL_GetTicks();
-    int best = -1;
-    unsigned bestPri = 0;
-    int dst = 0;
-
-    for (int i = 0; i < lr->osdQueueCount; i++) {
-        if (now > lr->osdQueue[i].endTimeMs) {
-            SDL_free(lr->osdQueue[i].msg);
-            lr->osdQueue[i].msg = NULL;
-            continue;
-        }
-        if (dst != i) lr->osdQueue[dst] = lr->osdQueue[i];
-        if (best == -1 || lr->osdQueue[dst].priority > bestPri) {
-            bestPri = lr->osdQueue[dst].priority;
-            best = dst;
-        }
-        dst++;
-    }
-    lr->osdQueueCount = dst;
-    lr->osdTopIndex = best;
-    return best;
-}
-
-void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
-    if (!lr) return;
-    if (!msg || msg[0] == '\0') {
-        for (int i = 0; i < lr->osdQueueCount; i++) {
-            SDL_free(lr->osdQueue[i].msg);
-        }
-        lr->osdQueueCount = 0;
-        lr->osdTopIndex = -1;
-        return;
-    }
-    SDL_Libretro_OsdPush(lr, msg, duration, 0, RETRO_MESSAGE_TYPE_NOTIFICATION, -1);
-}
-
-const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
-    if (!lr || lr->osdQueueCount == 0) return NULL;
-    int top = SDL_Libretro_OsdFindTop(lr);
-    if (top < 0) return NULL;
-    return lr->osdQueue[top].msg;
-}
-
-int SDL_Libretro_GetMessageProgress(const SDL_Libretro* lr) {
-    if (!lr || lr->osdTopIndex < 0 || lr->osdTopIndex >= lr->osdQueueCount) return -1;
-    return lr->osdQueue[lr->osdTopIndex].progress;
-}
-
-int SDL_Libretro_GetMessageType(const SDL_Libretro* lr) {
-    if (!lr || lr->osdTopIndex < 0 || lr->osdTopIndex >= lr->osdQueueCount) return 0;
-    return (int)lr->osdQueue[lr->osdTopIndex].type;
 }
 
 #undef LOAD_SYM

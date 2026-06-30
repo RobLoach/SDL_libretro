@@ -505,6 +505,7 @@ static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
 
 static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress);
+static void SDL_Libretro_FreeMessages(SDL_Libretro* lr);
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
 static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
@@ -555,6 +556,7 @@ static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 #include "SDL_libretro_options.h"
 #include "SDL_libretro_serialize.h"
 #include "SDL_libretro_vfs.h"
+#include "SDL_libretro_messages.h"
 #include "SDL_libretro_env.h"
 #include "SDL_libretro_core.h"
 
