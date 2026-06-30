@@ -769,8 +769,20 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
             const struct retro_message_ext* msg = (const struct retro_message_ext*)data;
             if (!msg || !msg->msg) return false;
-            double seconds = msg->duration / (lr->core.fps > 0 ? lr->core.fps : 60.0);
-            SDL_Libretro_SetMessage(lr, msg->msg, seconds);
+            double seconds = msg->duration / 1000.0;
+
+            if (msg->target == RETRO_MESSAGE_TARGET_LOG || msg->target == RETRO_MESSAGE_TARGET_ALL) {
+                switch (msg->level) {
+                    case RETRO_LOG_DEBUG: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    default:              SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                }
+            }
+
+            if (msg->target != RETRO_MESSAGE_TARGET_LOG) {
+                SDL_Libretro_OsdPush(lr, msg->msg, seconds, msg->priority, msg->type, msg->progress);
+            }
             return true;
         }
 

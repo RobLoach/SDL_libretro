@@ -236,6 +236,11 @@ int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr);
 
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration);
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
+int SDL_Libretro_GetMessageProgress(SDL_Libretro* lr);
+int SDL_Libretro_GetMessageType(SDL_Libretro* lr);
+unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr);
+bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
+    const char** msg, int* progress, int* type);
 
 #ifdef __cplusplus
 }
@@ -254,6 +259,15 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
 #define SDL_LIBRETRO_SENSOR_PORTS 4
+#define SDL_LIBRETRO_OSD_INITIAL_CAPACITY 8
+
+typedef struct SDL_LibretroOsdEntry {
+    char* msg;
+    Uint64 endTimeMs;
+    unsigned priority;
+    enum retro_message_type type;
+    int8_t progress;
+} SDL_LibretroOsdEntry;
 
 typedef struct SDL_LibretroCoreSymbols {
     SDL_SharedObject* handle;
@@ -437,9 +451,10 @@ struct SDL_Libretro {
     // Logging
     int logLevel;
 
-    // On-Screen Display Message
-    char osdMessage[256]; /** The current On-Screen Display message. */
-    Uint64 osdEndTimeMs; /** The time at which the OSD should finish. */
+    // On-Screen Display Message Queue
+    SDL_LibretroOsdEntry* osdQueue;
+    int osdQueueCount;
+    int osdQueueCapacity;
 
     // Virtual File System
     struct retro_vfs_interface vfs_interface;
@@ -491,6 +506,8 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr);
 static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
 
+static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress);
+static void SDL_Libretro_FreeMessages(SDL_Libretro* lr);
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
 static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
@@ -541,6 +558,7 @@ static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 #include "SDL_libretro_options.h"
 #include "SDL_libretro_serialize.h"
 #include "SDL_libretro_vfs.h"
+#include "SDL_libretro_messages.h"
 #include "SDL_libretro_env.h"
 #include "SDL_libretro_core.h"
 

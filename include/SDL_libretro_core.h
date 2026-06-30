@@ -73,6 +73,8 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
         }
     }
 
+    SDL_Libretro_FreeMessages(lr);
+
     SDL_free(lr);
 }
 
@@ -359,7 +361,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
     bool persistData = false;
-    char expandedPath[SDL_LIBRETRO_MAX_PATH]; // Scratch for the resolved path; only read within this function (copied into contentPath and used for SDL_LoadFile).
 
     // Cleared here so a no-content load leaves GET_GAME_INFO_EXT invalid.
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
@@ -386,9 +387,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         bool needFullpath = SDL_Libretro_ContentNeedsFullpath(lr, ext);
         persistData = SDL_Libretro_ContentPersistData(lr, ext);
 
-        // Point at the persistent copy, not the function-local expandedPath: a
-        // need_fullpath core may retain this pointer to stream content during
-        // retro_run(), long after this stack frame (and expandedPath) is gone.
         gameInfo.path = lr->core.contentPath;
 
         if (!needFullpath) {
@@ -794,47 +792,6 @@ static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) 
         p = sep + 1;
     }
     return false;
-}
-
-/**
- * Displays the given message within the libretro context.
- *
- * @param lr The libretro context.
- * @param msg The message to display, or NULL/empty to clear the message.
- * @param duration The amount of time to display the message, in seconds.
- */
-void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
-    if (!lr) return;
-
-    // Allow clearing the message.
-    if (msg == NULL || msg[0] == '\0') {
-        lr->osdEndTimeMs = 0;
-        lr->osdMessage[0] = '\0';
-        return;
-    }
-
-    SDL_strlcpy(lr->osdMessage, msg, sizeof(lr->osdMessage));
-    lr->osdEndTimeMs = SDL_GetTicks() + (Uint64)(duration * 1000.0);
-}
-
-/**
- * Retrieves the active on-screen message.
- *
- * @return A string for the message to display. NULL if there there is no message to display.
- */
-const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
-    if (!lr || lr->osdMessage[0] == '\0' || lr->osdEndTimeMs == 0) {
-        return NULL;
-    }
-
-    // Timeout the message if needed.
-    if (SDL_GetTicks() > lr->osdEndTimeMs) {
-        lr->osdMessage[0] = '\0';
-        lr->osdEndTimeMs = 0;
-        return NULL;
-    }
-
-    return lr->osdMessage;
 }
 
 #undef LOAD_SYM
