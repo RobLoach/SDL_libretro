@@ -116,4 +116,21 @@ int SDL_Libretro_GetMessageType(SDL_Libretro* lr) {
     return (int)lr->osdQueue[top].type;
 }
 
+unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr) {
+    if (!lr || lr->osdQueueCount == 0) return 0;
+    SDL_Libretro_OsdFindTop(lr);
+    return (unsigned)lr->osdQueueCount;
+}
+
+bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
+    const char** msg, int* progress, int* type) {
+    if (!lr) return false;
+    SDL_Libretro_OsdFindTop(lr);
+    if (index >= (unsigned)lr->osdQueueCount) return false;
+    if (msg) *msg = lr->osdQueue[index].msg;
+    if (progress) *progress = lr->osdQueue[index].progress;
+    if (type) *type = (int)lr->osdQueue[index].type;
+    return true;
+}
+
 #endif /* SDL_LIBRETRO_MESSAGES_IMPL_ONCE */

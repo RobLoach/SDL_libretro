@@ -238,6 +238,9 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
 int SDL_Libretro_GetMessageProgress(SDL_Libretro* lr);
 int SDL_Libretro_GetMessageType(SDL_Libretro* lr);
+unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr);
+bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
+    const char** msg, int* progress, int* type);
 
 #ifdef __cplusplus
 }
