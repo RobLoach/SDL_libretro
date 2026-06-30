@@ -74,7 +74,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     }
 
     SDL_Libretro_FreeMessages(lr);
-    SDL_Libretro_SaveConfig(lr);
+    SDL_Libretro_UnloadConfig(lr);
 
     SDL_free(lr);
 }

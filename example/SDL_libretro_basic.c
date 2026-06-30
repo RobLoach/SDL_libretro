@@ -7,9 +7,6 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#define SDL_INI_IMPLEMENTATION
-#include "SDL_ini.h"
-
 #define SDL_LIBRETRO_IMPLEMENTATION
 #include "SDL_libretro.h"
 
@@ -31,7 +28,7 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_SetConfig(lr, "SDL_libretro.cfg");
+    SDL_Libretro_LoadDefaultConfig(lr);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {

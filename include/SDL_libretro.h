@@ -38,6 +38,13 @@
 
 #include <SDL3/SDL.h>
 
+#ifndef SDL_LIBRETRO_NO_CONFIG
+#ifdef SDL_LIBRETRO_IMPLEMENTATION
+#define SDL_INI_IMPLEMENTATION
+#endif
+#include "SDL_ini.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -62,6 +69,14 @@ bool SDL_Libretro_SetSystemDirectory(SDL_Libretro* lr, const char* path);
 bool SDL_Libretro_SetCoreAssetsDirectory(SDL_Libretro* lr, const char* path);
 bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username);
 const char* SDL_Libretro_GetUsername(SDL_Libretro* lr);
+
+// Config
+
+bool SDL_Libretro_LoadConfig(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_LoadDefaultConfig(SDL_Libretro* lr);
+bool SDL_Libretro_SaveConfig(SDL_Libretro* lr);
+bool SDL_Libretro_UnloadConfig(SDL_Libretro* lr);
+const char* SDL_Libretro_GetConfig(const SDL_Libretro* lr);
 
 // Core
 
@@ -242,8 +257,6 @@ int SDL_Libretro_GetMessageType(SDL_Libretro* lr);
 unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr);
 bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
     const char** msg, int* progress, int* type);
-
-bool SDL_Libretro_SetConfig(SDL_Libretro* lr, const char* file);
 
 #ifdef __cplusplus
 }
@@ -488,10 +501,10 @@ struct SDL_Libretro {
 
     void* userData; /** Generic data available to the implementation. */
 
-    #ifdef SDL_INI_VERSION
-    const char* iniFile;
+#ifndef SDL_LIBRETRO_NO_CONFIG
+    char* iniFile;
     SDL_ini* ini;
-    #endif
+#endif
 };
 
 /**
@@ -564,7 +577,6 @@ static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 
 static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr);
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr);
-static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr);
 
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"
