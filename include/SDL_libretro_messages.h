@@ -18,7 +18,6 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
             lr->osdQueue[i].priority = priority;
             lr->osdQueue[i].type = type;
             lr->osdQueue[i].progress = progress;
-            lr->osdTopIndex = -1;
             return;
         }
     }
@@ -49,7 +48,6 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
     lr->osdQueue[slot].priority = priority;
     lr->osdQueue[slot].type = type;
     lr->osdQueue[slot].progress = progress;
-    lr->osdTopIndex = -1;
 }
 
 static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
@@ -72,7 +70,6 @@ static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
         dst++;
     }
     lr->osdQueueCount = dst;
-    lr->osdTopIndex = best;
     return best;
 }
 
@@ -84,7 +81,6 @@ static void SDL_Libretro_FreeMessages(SDL_Libretro* lr) {
     lr->osdQueue = NULL;
     lr->osdQueueCount = 0;
     lr->osdQueueCapacity = 0;
-    lr->osdTopIndex = -1;
 }
 
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
@@ -94,7 +90,6 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
             SDL_free(lr->osdQueue[i].msg);
         }
         lr->osdQueueCount = 0;
-        lr->osdTopIndex = -1;
         return;
     }
     SDL_Libretro_OsdPush(lr, msg, duration, 0, RETRO_MESSAGE_TYPE_NOTIFICATION, -1);
@@ -107,14 +102,18 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
     return lr->osdQueue[top].msg;
 }
 
-int SDL_Libretro_GetMessageProgress(const SDL_Libretro* lr) {
-    if (!lr || lr->osdTopIndex < 0 || lr->osdTopIndex >= lr->osdQueueCount) return -1;
-    return lr->osdQueue[lr->osdTopIndex].progress;
+int SDL_Libretro_GetMessageProgress(SDL_Libretro* lr) {
+    if (!lr || lr->osdQueueCount == 0) return -1;
+    int top = SDL_Libretro_OsdFindTop(lr);
+    if (top < 0) return -1;
+    return lr->osdQueue[top].progress;
 }
 
-int SDL_Libretro_GetMessageType(const SDL_Libretro* lr) {
-    if (!lr || lr->osdTopIndex < 0 || lr->osdTopIndex >= lr->osdQueueCount) return 0;
-    return (int)lr->osdQueue[lr->osdTopIndex].type;
+int SDL_Libretro_GetMessageType(SDL_Libretro* lr) {
+    if (!lr || lr->osdQueueCount == 0) return 0;
+    int top = SDL_Libretro_OsdFindTop(lr);
+    if (top < 0) return 0;
+    return (int)lr->osdQueue[top].type;
 }
 
 #endif /* SDL_LIBRETRO_MESSAGES_IMPL_ONCE */

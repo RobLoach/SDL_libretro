@@ -236,8 +236,8 @@ int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr);
 
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration);
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
-int SDL_Libretro_GetMessageProgress(const SDL_Libretro* lr);
-int SDL_Libretro_GetMessageType(const SDL_Libretro* lr);
+int SDL_Libretro_GetMessageProgress(SDL_Libretro* lr);
+int SDL_Libretro_GetMessageType(SDL_Libretro* lr);
 
 #ifdef __cplusplus
 }
@@ -452,7 +452,6 @@ struct SDL_Libretro {
     SDL_LibretroOsdEntry* osdQueue;
     int osdQueueCount;
     int osdQueueCapacity;
-    int osdTopIndex;
 
     // Virtual File System
     struct retro_vfs_interface vfs_interface;
