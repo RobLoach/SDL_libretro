@@ -74,6 +74,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     }
 
     SDL_Libretro_FreeMessages(lr);
+    SDL_Libretro_SaveConfig(lr);
 
     SDL_free(lr);
 }
@@ -155,6 +156,9 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     // Default the content name to the core's reported name.
     SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
 
+    // Config
+    SDL_Libretro_LoadCoreConfig(lr);
+
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
@@ -175,6 +179,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
     SDL_Libretro_UnloadGame(lr);
+    SDL_Libretro_SaveCoreConfig(lr);
 
     lr->core.symbols.retro_deinit();
     if (lr->core.symbols.handle) {
@@ -672,6 +677,11 @@ bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username) {
     if (!lr) return false;
     SDL_strlcpy(lr->username, username ? username : "", sizeof(lr->username));
     return true;
+}
+
+const char* SDL_Libretro_GetUsername(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->username;
 }
 
 /**
