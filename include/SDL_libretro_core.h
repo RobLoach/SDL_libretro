@@ -644,7 +644,7 @@ bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
-// Directory setters
+// Directory
 
 /**
  * Sets the associated libretro core directory, where the default set of cores will be loaded from.
@@ -671,6 +671,26 @@ bool SDL_Libretro_SetCoreAssetsDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
     SDL_strlcpy(lr->coreAssetsDirectory, path ? path : "", sizeof(lr->coreAssetsDirectory));
     return true;
+}
+
+const char* SDL_Libretro_GetCoreDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->coreDirectory[0] ? lr->coreDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetSaveDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->saveDirectory[0] ? lr->saveDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetSystemDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->systemDirectory[0] ? lr->systemDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetCoreAssetsDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->coreAssetsDirectory[0] ? lr->coreAssetsDirectory : NULL;
 }
 
 bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username) {

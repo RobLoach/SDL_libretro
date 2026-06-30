@@ -24,11 +24,9 @@ int main(int argc, char* argv[]) {
     SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
-    SDL_SetRenderVSync(renderer, 1);
-
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_LoadDefaultConfig(lr);
+    SDL_Libretro_LoadConfig(lr, "SDL_Libretro.cfg");
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {

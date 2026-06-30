@@ -29,11 +29,6 @@ bool SDL_Libretro_UnloadConfig(SDL_Libretro* lr) {
     return false;
 }
 
-const char* SDL_Libretro_GetConfig(const SDL_Libretro* lr) {
-    (void)lr;
-    return NULL;
-}
-
 static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
     (void)lr;
     return false;
@@ -58,63 +53,64 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
 bool SDL_Libretro_LoadConfig(SDL_Libretro* lr, const char* file) {
     if (!lr || !file) return false;
 
+    // Clear our any existing config.
     SDL_free(lr->iniFile);
     lr->iniFile = NULL;
     INI_Destroy(lr->ini);
     lr->ini = NULL;
 
+    // Load the file.
     SDL_ini* ini = INI_Load(file);
     if (!ini) {
         ini = INI_Create();
         if (!ini) return false;
     }
 
-    if (INI_HasKey(ini, NULL, "volume"))
-        SDL_Libretro_SetVolume(lr, INI_GetFloat(ini, NULL, "volume", 1.0f));
-    if (INI_HasKey(ini, NULL, "username"))
-        SDL_Libretro_SetUsername(lr, INI_GetString(ini, NULL, "username", "SDL_libretro"));
-    if (INI_HasKey(ini, NULL, "audiolatency"))
-        SDL_Libretro_SetAudioLatency(lr, (unsigned)INI_GetInt(ini, NULL, "audiolatency", 100));
-    if (INI_HasKey(ini, NULL, "scalemode")) {
-        const char* scaleStr = INI_GetString(ini, NULL, "scalemode", "aspect");
-        if (SDL_strcasecmp(scaleStr, "integer") == 0) {
-            SDL_Libretro_SetScaleMode(lr, SDL_LIBRETRO_SCALE_INTEGER);
-        } else {
-            SDL_Libretro_SetScaleMode(lr, SDL_LIBRETRO_SCALE_ASPECT);
-        }
-    }
-    if (INI_HasKey(ini, NULL, "savedirectory"))
-        SDL_Libretro_SetSaveDirectory(lr, INI_GetString(ini, NULL, "savedirectory", ""));
-    if (INI_HasKey(ini, NULL, "systemdirectory"))
-        SDL_Libretro_SetSystemDirectory(lr, INI_GetString(ini, NULL, "systemdirectory", ""));
-    if (INI_HasKey(ini, NULL, "coredirectory"))
-        SDL_Libretro_SetCoreDirectory(lr, INI_GetString(ini, NULL, "coredirectory", ""));
-    if (INI_HasKey(ini, NULL, "coreassetsdirectory"))
-        SDL_Libretro_SetCoreAssetsDirectory(lr, INI_GetString(ini, NULL, "coreassetsdirectory", ""));
-
+    // Capture the ini file path.
     lr->iniFile = SDL_strdup(file);
     if (!lr->iniFile) {
         INI_Destroy(ini);
         return false;
     }
-
     lr->ini = ini;
+
+    // Get all the configs.
+    if (INI_HasValue(ini, NULL, "volume"))
+        SDL_Libretro_SetVolume(lr, INI_GetFloat(ini, NULL, "volume", SDL_Libretro_GetVolume(lr)));
+    if (INI_HasValue(ini, NULL, "username"))
+        SDL_Libretro_SetUsername(lr, INI_GetString(ini, NULL, "username", SDL_Libretro_GetUsername(lr)));
+    if (INI_HasValue(ini, NULL, "audiolatency"))
+        SDL_Libretro_SetAudioLatency(lr, (unsigned)INI_GetInt(ini, NULL, "audiolatency", SDL_Libretro_GetAudioLatency(lr)));
+    if (INI_HasValue(ini, NULL, "scalemode"))
+        SDL_Libretro_SetScaleMode(lr, INI_GetInt(ini, NULL, "scalemode", SDL_Libretro_GetScaleMode(lr)));
+    if (INI_HasValue(ini, NULL, "savedirectory"))
+        SDL_Libretro_SetSaveDirectory(lr, INI_GetString(ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr)));
+    if (INI_HasValue(ini, NULL, "systemdirectory"))
+        SDL_Libretro_SetSystemDirectory(lr, INI_GetString(ini, NULL, "systemdirectory", SDL_Libretro_GetSystemDirectory(lr)));
+    if (INI_HasValue(ini, NULL, "coredirectory"))
+        SDL_Libretro_SetCoreDirectory(lr, INI_GetString(ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr)));
+    if (INI_HasValue(ini, NULL, "coreassetsdirectory"))
+        SDL_Libretro_SetCoreAssetsDirectory(lr, INI_GetString(ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr)));
+
     return true;
 }
 
-bool SDL_Libretro_LoadDefaultConfig(SDL_Libretro* lr) {
+/**
+ * Sets up the config file to be the default path, accoring to the organization and app name.
+ *
+ * @see SDL_GetPrefPath()
+ * @see https://wiki.libsdl.org/SDL3/SDL_GetPrefPath
+ */
+bool SDL_Libretro_LoadDefaultConfig(SDL_Libretro* lr, const char* org, const char* app) {
     if (!lr) return false;
-    char* prefPath = SDL_GetPrefPath("SDL_libretro", "SDL_libretro");
+    if (!org || org[0] == '\0') org = "SDL_libretro";
+    if (!app || app[0] == '\0') app = "SDL_libretro";
+    char* prefPath = SDL_GetPrefPath(org, app);
     if (!prefPath) return false;
     char path[SDL_LIBRETRO_MAX_PATH];
-    SDL_snprintf(path, sizeof(path), "%sconfig.cfg", prefPath);
+    SDL_snprintf(path, sizeof(path), "%s%s.cfg", prefPath, app);
     SDL_free(prefPath);
     return SDL_Libretro_LoadConfig(lr, path);
-}
-
-const char* SDL_Libretro_GetConfig(const SDL_Libretro* lr) {
-    if (!lr) return NULL;
-    return lr->iniFile;
 }
 
 static void SDL_Libretro_SetCoreConfigOption(void *userdata, const SDL_ini *ini, const char* section, const char *key, const char *value) {
@@ -159,17 +155,11 @@ bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetFloat(lr->ini, NULL, "volume", SDL_Libretro_GetVolume(lr));
     INI_SetString(lr->ini, NULL, "username", SDL_Libretro_GetUsername(lr));
     INI_SetInt(lr->ini, NULL, "audiolatency", (Sint64)SDL_Libretro_GetAudioLatency(lr));
-    INI_SetString(lr->ini, NULL, "scalemode",
-        SDL_Libretro_GetScaleMode(lr) == SDL_LIBRETRO_SCALE_INTEGER ? "integer" : "aspect");
-
-    if (lr->saveDirectory[0])
-        INI_SetString(lr->ini, NULL, "savedirectory", lr->saveDirectory);
-    if (lr->systemDirectory[0])
-        INI_SetString(lr->ini, NULL, "systemdirectory", lr->systemDirectory);
-    if (lr->coreDirectory[0])
-        INI_SetString(lr->ini, NULL, "coredirectory", lr->coreDirectory);
-    if (lr->coreAssetsDirectory[0])
-        INI_SetString(lr->ini, NULL, "coreassetsdirectory", lr->coreAssetsDirectory);
+    INI_SetInt(lr->ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetScaleMode(lr));
+    INI_SetString(lr->ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr));
+    INI_SetString(lr->ini, NULL, "systemdirectory", SDL_Libretro_GetSystemDirectory(lr));
+    INI_SetString(lr->ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr));
+    INI_SetString(lr->ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr));
 
     return INI_Save(lr->ini, lr->iniFile);
 }
