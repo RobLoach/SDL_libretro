@@ -817,15 +817,27 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
         }
     }
 
-    if (lr->osdQueueCount >= lr->osdQueueCapacity) {
-        int newCap = lr->osdQueueCapacity ? lr->osdQueueCapacity * 2 : SDL_LIBRETRO_OSD_INITIAL_CAPACITY;
-        SDL_LibretroOsdEntry* newQueue = (SDL_LibretroOsdEntry*)SDL_realloc(lr->osdQueue, (size_t)newCap * sizeof(SDL_LibretroOsdEntry));
-        if (!newQueue) return;
-        lr->osdQueue = newQueue;
-        lr->osdQueueCapacity = newCap;
+    Uint64 now = SDL_GetTicks();
+    int slot = -1;
+    for (int i = 0; i < lr->osdQueueCount; i++) {
+        if (now > lr->osdQueue[i].endTimeMs) {
+            SDL_free(lr->osdQueue[i].msg);
+            lr->osdQueue[i].msg = NULL;
+            slot = i;
+            break;
+        }
     }
 
-    int slot = lr->osdQueueCount++;
+    if (slot < 0) {
+        if (lr->osdQueueCount >= lr->osdQueueCapacity) {
+            int newCap = lr->osdQueueCapacity ? lr->osdQueueCapacity * 2 : SDL_LIBRETRO_OSD_INITIAL_CAPACITY;
+            SDL_LibretroOsdEntry* newQueue = (SDL_LibretroOsdEntry*)SDL_realloc(lr->osdQueue, (size_t)newCap * sizeof(SDL_LibretroOsdEntry));
+            if (!newQueue) return;
+            lr->osdQueue = newQueue;
+            lr->osdQueueCapacity = newCap;
+        }
+        slot = lr->osdQueueCount++;
+    }
     lr->osdQueue[slot].msg = SDL_strdup(msg);
     lr->osdQueue[slot].endTimeMs = endMs;
     lr->osdQueue[slot].priority = priority;
