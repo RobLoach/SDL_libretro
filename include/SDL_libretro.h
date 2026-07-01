@@ -60,7 +60,17 @@ bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path);
 bool SDL_Libretro_SetSaveDirectory(SDL_Libretro* lr, const char* path);
 bool SDL_Libretro_SetSystemDirectory(SDL_Libretro* lr, const char* path);
 bool SDL_Libretro_SetCoreAssetsDirectory(SDL_Libretro* lr, const char* path);
+const char* SDL_Libretro_GetCoreDirectory(SDL_Libretro* lr);
+const char* SDL_Libretro_GetSaveDirectory(SDL_Libretro* lr);
+const char* SDL_Libretro_GetSystemDirectory(SDL_Libretro* lr);
+const char* SDL_Libretro_GetCoreAssetsDirectory(SDL_Libretro* lr);
 bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username);
+const char* SDL_Libretro_GetUsername(SDL_Libretro* lr);
+
+// Config
+
+bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app);
+bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file);
 
 // Core
 
@@ -251,13 +261,18 @@ void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs);
 
 // Logging
 
-void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level);
-int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr);
+void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level);
+SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr);
 
 // On-Screen Display
 
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration);
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
+int SDL_Libretro_GetMessageProgress(SDL_Libretro* lr);
+int SDL_Libretro_GetMessageType(SDL_Libretro* lr);
+unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr);
+bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
+    const char** msg, int* progress, int* type);
 
 #ifdef __cplusplus
 }
@@ -272,10 +287,23 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr);
 
 #include "libretro.h"
 
+#ifndef SDL_LIBRETRO_NO_CONFIG
+#include "SDL_ini.h"
+#endif
+
 #define SDL_LIBRETRO_MAX_PATH 4096
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
 #define SDL_LIBRETRO_SENSOR_PORTS 4
+#define SDL_LIBRETRO_OSD_INITIAL_CAPACITY 8
+
+typedef struct SDL_LibretroOsdEntry {
+    char* msg;
+    Uint64 endTimeMs;
+    unsigned priority;
+    enum retro_message_type type;
+    int8_t progress;
+} SDL_LibretroOsdEntry;
 
 typedef struct SDL_LibretroCoreSymbols {
     SDL_SharedObject* handle;
@@ -312,7 +340,7 @@ typedef struct SDL_LibretroCoreSymbols {
 typedef struct SDL_LibretroMicrophone {
     SDL_AudioStream* stream;
     unsigned rate; /** The sample rate. */
-    bool active;
+    bool active; /** Whether or not the micropohne device is active. */
     SDL_Libretro* lr; /** A pointer back to the libretro data, used to dereference itself in case the core doesn't close for us. */
 } SDL_LibretroMicrophone;
 
@@ -321,7 +349,7 @@ typedef struct SDL_LibretroCoreData {
 
     bool loaded;     /** A core is loaded. */
     bool gameLoaded; /** A game is loaded into the core (content or no-content). */
-    bool shutdown;
+    bool shutdown; /** Whether or not the core has requested to shutdown. */
     unsigned width, height;
     double fps;
     double sampleRate;
@@ -461,11 +489,12 @@ struct SDL_Libretro {
     char username[64];
 
     // Logging
-    int logLevel;
+    enum retro_log_level logLevel;
 
-    // On-Screen Display Message
-    char osdMessage[256]; /** The current On-Screen Display message. */
-    Uint64 osdEndTimeMs; /** The time at which the OSD should finish. */
+    // On-Screen Display Message Queue
+    SDL_LibretroOsdEntry* osdQueue;
+    int osdQueueCount;
+    int osdQueueCapacity;
 
     // Virtual File System
     struct retro_vfs_interface vfs_interface;
@@ -495,6 +524,11 @@ struct SDL_Libretro {
     SDL_LibretroCoreData core;
 
     void* userData; /** Generic data available to the implementation. */
+
+#ifndef SDL_LIBRETRO_NO_CONFIG
+    char* iniFile;
+    SDL_ini* ini;
+#endif
 };
 
 /**
@@ -517,6 +551,8 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr);
 static void SDL_Libretro_InputPoll(void);
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id);
 
+static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress);
+static void SDL_Libretro_FreeMessages(SDL_Libretro* lr);
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
 static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
@@ -562,14 +598,22 @@ static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
 static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr);
 
+// Config
+
+static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr);
+static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr);
+static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr);
+
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"
 #include "SDL_libretro_input.h"
 #include "SDL_libretro_options.h"
 #include "SDL_libretro_serialize.h"
 #include "SDL_libretro_vfs.h"
+#include "SDL_libretro_messages.h"
 #include "SDL_libretro_env.h"
 #include "SDL_libretro_core.h"
+#include "SDL_libretro_config.h"
 
 #endif /* SDL_LIBRETRO_IMPLEMENTATION_ONCE */
 #endif /* SDL_LIBRETRO_IMPLEMENTATION */

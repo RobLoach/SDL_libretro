@@ -24,8 +24,6 @@ int main(int argc, char* argv[]) {
     SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
-    SDL_SetRenderVSync(renderer, 1);
-
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -47,10 +45,6 @@ int main(int argc, char* argv[]) {
         SDL_Quit();
         return 1;
     }
-
-    // Allow Rewind.
-    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
-    SDL_Libretro_SetRewindMemoryDuration(lr, 6.0);
 
     bool running = true;
     while (running && !SDL_Libretro_IsShutdown(lr)) {

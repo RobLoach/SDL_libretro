@@ -9,8 +9,11 @@
 
 #include <stdarg.h>
 
+/**
+ * Callback for when the libretro core writes to the log.
+ */
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
-    if (SDL_Libretro_active && (int)level < SDL_Libretro_active->logLevel) {
+    if (SDL_Libretro_active && level < SDL_Libretro_active->logLevel) {
         return;
     }
 
@@ -25,16 +28,16 @@ static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...
     if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
 
     switch (level) {
-        case RETRO_LOG_DEBUG: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_INFO:  SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
-        default:              SDL_Log("[SDL_Libretro] %s", buf); break;
+        case RETRO_LOG_DEBUG:
+        default: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
     }
 }
 
 static retro_time_t SDL_Libretro_GetTimeUSEC(void) {
-    return (retro_time_t)(SDL_GetPerformanceCounter() * 1000000 / SDL_GetPerformanceFrequency());
+    return (SDL_GetPerformanceCounter() * (Uint64)1000000) / SDL_GetPerformanceFrequency();
 }
 
 static uint64_t SDL_Libretro_GetCPUFeatures(void) {
@@ -790,7 +793,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             *(unsigned*)data = 1;
             return true;
         }
-        
+
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: {
             if (!data) {
                 lr->core.optionsUpdateDisplayCallback = NULL;
@@ -805,8 +808,20 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
             const struct retro_message_ext* msg = (const struct retro_message_ext*)data;
             if (!msg || !msg->msg) return false;
-            double seconds = msg->duration / (lr->core.fps > 0 ? lr->core.fps : 60.0);
-            SDL_Libretro_SetMessage(lr, msg->msg, seconds);
+            double seconds = msg->duration / 1000.0;
+
+            if (msg->target == RETRO_MESSAGE_TARGET_LOG || msg->target == RETRO_MESSAGE_TARGET_ALL) {
+                switch (msg->level) {
+                    case RETRO_LOG_DEBUG: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    default:              SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                }
+            }
+
+            if (msg->target != RETRO_MESSAGE_TARGET_LOG) {
+                SDL_Libretro_OsdPush(lr, msg->msg, seconds, msg->priority, msg->type, msg->progress);
+            }
             return true;
         }
 

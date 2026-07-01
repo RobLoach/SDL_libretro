@@ -73,6 +73,9 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
         }
     }
 
+    SDL_Libretro_FreeMessages(lr);
+    SDL_Libretro_CloseConfig(lr);
+
     SDL_free(lr);
 }
 
@@ -153,11 +156,13 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     // Default the content name to the core's reported name.
     SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
 
+    // Config
+    SDL_Libretro_LoadCoreConfig(lr);
+
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
-    SDL_Log("[SDL_Libretro] Core loaded: %s %s",
-        lr->core.libraryName, lr->core.libraryVersion);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
     return true;
 }
@@ -173,6 +178,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
     SDL_Libretro_UnloadGame(lr);
+    SDL_Libretro_SaveCoreConfig(lr);
 
     lr->core.symbols.retro_deinit();
     if (lr->core.symbols.handle) {
@@ -388,7 +394,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
     bool persistData = false;
-    char expandedPath[SDL_LIBRETRO_MAX_PATH]; // Scratch for the resolved path; only read within this function (copied into contentPath and used for SDL_LoadFile).
 
     // Cleared here so a no-content load leaves GET_GAME_INFO_EXT invalid.
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
@@ -415,9 +420,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         bool needFullpath = SDL_Libretro_ContentNeedsFullpath(lr, ext);
         persistData = SDL_Libretro_ContentPersistData(lr, ext);
 
-        // Point at the persistent copy, not the function-local expandedPath: a
-        // need_fullpath core may retain this pointer to stream content during
-        // retro_run(), long after this stack frame (and expandedPath) is gone.
         gameInfo.path = lr->core.contentPath;
 
         if (!needFullpath) {
@@ -780,7 +782,7 @@ bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
-// Directory setters
+// Directory
 
 /**
  * Sets the associated libretro core directory, where the default set of cores will be loaded from.
@@ -809,10 +811,35 @@ bool SDL_Libretro_SetCoreAssetsDirectory(SDL_Libretro* lr, const char* path) {
     return true;
 }
 
+const char* SDL_Libretro_GetCoreDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->coreDirectory[0] ? lr->coreDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetSaveDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->saveDirectory[0] ? lr->saveDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetSystemDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->systemDirectory[0] ? lr->systemDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetCoreAssetsDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->coreAssetsDirectory[0] ? lr->coreAssetsDirectory : NULL;
+}
+
 bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username) {
     if (!lr) return false;
     SDL_strlcpy(lr->username, username ? username : "", sizeof(lr->username));
     return true;
+}
+
+const char* SDL_Libretro_GetUsername(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->username;
 }
 
 /**
@@ -861,17 +888,28 @@ float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
 /**
  * Sets the threshold for logs to be posted.
  *
- * Default is RETRO_LOG_DEBUG.
- *
- * @see RETRO_LOG_DEBUG
+ * @see SDL_LOG_PRIORITY_INVALID
  */
-void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level) {
+void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level) {
     if (!lr) return;
-    lr->logLevel = SDL_clamp(level, RETRO_LOG_DEBUG, RETRO_LOG_ERROR);
+    switch (level) {
+        case SDL_LOG_PRIORITY_INFO: lr->logLevel = RETRO_LOG_INFO; break;
+        case SDL_LOG_PRIORITY_WARN: lr->logLevel = RETRO_LOG_WARN; break;
+        case SDL_LOG_PRIORITY_ERROR: lr->logLevel = RETRO_LOG_ERROR; break;
+        case SDL_LOG_PRIORITY_CRITICAL: lr->logLevel = RETRO_LOG_ERROR; break;
+        default: lr->logLevel = RETRO_LOG_DEBUG; break;
+    }
 }
 
-int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
-    return lr ? lr->logLevel : RETRO_LOG_DEBUG;
+SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
+    if (!lr) return SDL_LOG_PRIORITY_INVALID;
+    switch (lr->logLevel) {
+        case RETRO_LOG_DEBUG: return SDL_LOG_PRIORITY_DEBUG;
+        case RETRO_LOG_INFO: return SDL_LOG_PRIORITY_INFO;
+        case RETRO_LOG_WARN: return SDL_LOG_PRIORITY_WARN;
+        case RETRO_LOG_ERROR: return SDL_LOG_PRIORITY_ERROR;
+        default: return SDL_LOG_PRIORITY_INVALID;
+    }
 }
 
 /**
@@ -933,47 +971,6 @@ static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) 
         p = sep + 1;
     }
     return false;
-}
-
-/**
- * Displays the given message within the libretro context.
- *
- * @param lr The libretro context.
- * @param msg The message to display, or NULL/empty to clear the message.
- * @param duration The amount of time to display the message, in seconds.
- */
-void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
-    if (!lr) return;
-
-    // Allow clearing the message.
-    if (msg == NULL || msg[0] == '\0') {
-        lr->osdEndTimeMs = 0;
-        lr->osdMessage[0] = '\0';
-        return;
-    }
-
-    SDL_strlcpy(lr->osdMessage, msg, sizeof(lr->osdMessage));
-    lr->osdEndTimeMs = SDL_GetTicks() + (Uint64)(duration * 1000.0);
-}
-
-/**
- * Retrieves the active on-screen message.
- *
- * @return A string for the message to display. NULL if there there is no message to display.
- */
-const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
-    if (!lr || lr->osdMessage[0] == '\0' || lr->osdEndTimeMs == 0) {
-        return NULL;
-    }
-
-    // Timeout the message if needed.
-    if (SDL_GetTicks() > lr->osdEndTimeMs) {
-        lr->osdMessage[0] = '\0';
-        lr->osdEndTimeMs = 0;
-        return NULL;
-    }
-
-    return lr->osdMessage;
 }
 
 #undef LOAD_SYM
