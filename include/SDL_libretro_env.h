@@ -754,7 +754,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             *(unsigned*)data = 1;
             return true;
         }
-        
+
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK: {
             if (!data) {
                 lr->core.optionsUpdateDisplayCallback = NULL;

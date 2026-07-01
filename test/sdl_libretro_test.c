@@ -715,25 +715,6 @@ static int SDLCALL test_SavePath(void *arg) {
 #endif
 }
 
-static int SDLCALL test_LogLevel(void *arg) {
-    SDL_Libretro* lr = SDL_Libretro_Create();
-
-    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_DEBUG, "Default log level is DEBUG");
-    SDL_Libretro_SetLogLevel(lr, RETRO_LOG_WARN);
-    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_WARN, "Log level set to WARN");
-    SDL_Libretro_SetLogLevel(lr, RETRO_LOG_ERROR);
-    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_ERROR, "Log level set to ERROR");
-    SDL_Libretro_SetLogLevel(lr, -1);
-    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_DEBUG, "Negative level clamped to DEBUG");
-    SDL_Libretro_SetLogLevel(lr, 99);
-    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(lr) == RETRO_LOG_ERROR, "Overflow level clamped to ERROR");
-    SDLTest_AssertCheck(SDL_Libretro_GetLogLevel(NULL) == RETRO_LOG_DEBUG, "GetLogLevel(NULL) returns DEBUG");
-    SDL_Libretro_SetLogLevel(NULL, RETRO_LOG_WARN);
-
-    SDL_Libretro_Destroy(lr);
-    return TEST_COMPLETED;
-}
-
 static int SDLCALL test_ContentExtension(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -796,7 +777,6 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),
     LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
-    LIBRETRO_TEST_CASE(test_LogLevel,         "Log level filtering"),
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),

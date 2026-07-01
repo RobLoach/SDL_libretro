@@ -155,6 +155,9 @@ static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
     return true;
 }
 
+/**
+ * Save the configuration to the file system.
+ */
 static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     if (!lr || !lr->ini || !lr->iniFile) return false;
 

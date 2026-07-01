@@ -749,17 +749,28 @@ float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
 /**
  * Sets the threshold for logs to be posted.
  *
- * Default is RETRO_LOG_DEBUG.
- *
- * @see RETRO_LOG_DEBUG
+ * @see SDL_LOG_PRIORITY_INVALID
  */
-void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level) {
+void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level) {
     if (!lr) return;
-    lr->logLevel = SDL_clamp(level, RETRO_LOG_DEBUG, RETRO_LOG_ERROR);
+    switch (level) {
+        case SDL_LOG_PRIORITY_INFO: lr->logLevel = RETRO_LOG_INFO; break;
+        case SDL_LOG_PRIORITY_WARN: lr->logLevel = RETRO_LOG_WARN; break;
+        case SDL_LOG_PRIORITY_ERROR: lr->logLevel = RETRO_LOG_ERROR; break;
+        case SDL_LOG_PRIORITY_CRITICAL: lr->logLevel = RETRO_LOG_ERROR; break;
+        default: lr->logLevel = RETRO_LOG_DEBUG; break;
+    }
 }
 
-int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
-    return lr ? lr->logLevel : RETRO_LOG_DEBUG;
+SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
+    if (!lr) return SDL_LOG_PRIORITY_INVALID;
+    switch (lr->logLevel) {
+        case RETRO_LOG_DEBUG: return SDL_LOG_PRIORITY_DEBUG;
+        case RETRO_LOG_INFO: return SDL_LOG_PRIORITY_INFO;
+        case RETRO_LOG_WARN: return SDL_LOG_PRIORITY_WARN;
+        case RETRO_LOG_ERROR: return SDL_LOG_PRIORITY_ERROR;
+        default: return SDL_LOG_PRIORITY_INVALID;
+    }
 }
 
 /**

@@ -26,7 +26,6 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_InitConfigFile(lr, "SDL_Libretro.cfg");
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
@@ -46,10 +45,6 @@ int main(int argc, char* argv[]) {
         SDL_Quit();
         return 1;
     }
-
-    // Allow Rewind.
-    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
-    SDL_Libretro_SetRewindMemoryDuration(lr, 6.0);
 
     bool running = true;
     while (running && !SDL_Libretro_IsShutdown(lr)) {
