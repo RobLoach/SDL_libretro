@@ -38,13 +38,6 @@
 
 #include <SDL3/SDL.h>
 
-#ifndef SDL_LIBRETRO_NO_CONFIG
-#ifdef SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_INI_IMPLEMENTATION
-#endif
-#include "SDL_ini.h"
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif

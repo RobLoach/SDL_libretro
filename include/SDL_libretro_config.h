@@ -4,8 +4,13 @@
  * @file SDL_libretro_config.h
  */
 
-#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_INI_IMPL_ONCE)
-#define SDL_LIBRETRO_INI_IMPL_ONCE
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CONFIG_IMPL_ONCE)
+#define SDL_LIBRETRO_CONFIG_IMPL_ONCE
+
+#ifndef SDL_LIBRETRO_NO_CONFIG
+#define SDL_INI_IMPLEMENTATION
+#include "SDL_ini.h"
+#endif
 
 #ifdef SDL_LIBRETRO_NO_CONFIG
 
@@ -165,6 +170,7 @@ bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
 }
 
 bool SDL_Libretro_UnloadConfig(SDL_Libretro* lr) {
+    if (!lr) return false;
     bool ok = SDL_Libretro_SaveConfig(lr);
     SDL_free(lr->iniFile);
     lr->iniFile = NULL;
