@@ -267,6 +267,10 @@ bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
 
 #include "libretro.h"
 
+#ifndef SDL_LIBRETRO_NO_CONFIG
+#include "SDL_ini.h"
+#endif
+
 #define SDL_LIBRETRO_MAX_PATH 4096
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
