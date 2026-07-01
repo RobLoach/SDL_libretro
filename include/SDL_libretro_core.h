@@ -74,7 +74,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     }
 
     SDL_Libretro_FreeMessages(lr);
-    SDL_Libretro_UnloadConfig(lr);
+    SDL_Libretro_CloseConfig(lr);
 
     SDL_free(lr);
 }
@@ -162,8 +162,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
-    SDL_Log("[SDL_Libretro] Core loaded: %s %s",
-        lr->core.libraryName, lr->core.libraryVersion);
+    SDL_Log("[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
     return true;
 }

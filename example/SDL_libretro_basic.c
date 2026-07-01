@@ -26,7 +26,7 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    SDL_Libretro_LoadConfig(lr, "SDL_Libretro.cfg");
+    SDL_Libretro_InitConfigFile(lr, "SDL_Libretro.cfg");
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {

@@ -69,10 +69,8 @@ const char* SDL_Libretro_GetUsername(SDL_Libretro* lr);
 
 // Config
 
-bool SDL_Libretro_LoadConfig(SDL_Libretro* lr, const char* file);
-bool SDL_Libretro_LoadDefaultConfig(SDL_Libretro* lr, const char* org, const char* app);
-bool SDL_Libretro_SaveConfig(SDL_Libretro* lr);
-bool SDL_Libretro_UnloadConfig(SDL_Libretro* lr);
+bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app);
+bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file);
 
 // Core
 
@@ -577,6 +575,7 @@ static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 
 static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr);
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr);
+static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr);
 
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"

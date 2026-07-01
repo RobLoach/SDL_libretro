@@ -14,22 +14,17 @@
 
 #ifdef SDL_LIBRETRO_NO_CONFIG
 
-bool SDL_Libretro_LoadConfig(SDL_Libretro* lr, const char* file) {
+bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     (void)lr; (void)file;
     return false;
 }
 
-bool SDL_Libretro_LoadDefaultConfig(SDL_Libretro* lr) {
-    (void)lr;
+bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app) {
+    (void)lr; (void)org; (void)app;
     return false;
 }
 
-bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
-    (void)lr;
-    return false;
-}
-
-bool SDL_Libretro_UnloadConfig(SDL_Libretro* lr) {
+static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr) {
     (void)lr;
     return false;
 }
@@ -55,7 +50,10 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
     }
 }
 
-bool SDL_Libretro_LoadConfig(SDL_Libretro* lr, const char* file) {
+/**
+ * Initializes the config system based on the given file.
+ */
+bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     if (!lr || !file) return false;
 
     // Clear our any existing config.
@@ -103,10 +101,13 @@ bool SDL_Libretro_LoadConfig(SDL_Libretro* lr, const char* file) {
 /**
  * Sets up the config file to be the default path, accoring to the organization and app name.
  *
+ * Will automatically call SDL_Libretro_CloseConfig()
+ *
+ * @see SDL_Libretro_InitConfigFile
  * @see SDL_GetPrefPath()
  * @see https://wiki.libsdl.org/SDL3/SDL_GetPrefPath
  */
-bool SDL_Libretro_LoadDefaultConfig(SDL_Libretro* lr, const char* org, const char* app) {
+bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app) {
     if (!lr) return false;
     if (!org || org[0] == '\0') org = "SDL_libretro";
     if (!app || app[0] == '\0') app = "SDL_libretro";
@@ -115,7 +116,7 @@ bool SDL_Libretro_LoadDefaultConfig(SDL_Libretro* lr, const char* org, const cha
     char path[SDL_LIBRETRO_MAX_PATH];
     SDL_snprintf(path, sizeof(path), "%s%s.cfg", prefPath, app);
     SDL_free(prefPath);
-    return SDL_Libretro_LoadConfig(lr, path);
+    return SDL_Libretro_InitConfigFile(lr, path);
 }
 
 static void SDL_Libretro_SetCoreConfigOption(void *userdata, const SDL_ini *ini, const char* section, const char *key, const char *value) {
@@ -132,6 +133,9 @@ static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
     return true;
 }
 
+/**
+ * Set the core options directly into the config.
+ */
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
     if (!lr->ini) return false;
     char section[256];
@@ -141,6 +145,7 @@ static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
         const SDL_LibretroOption* option = SDL_Libretro_GetOptionByIndex(lr, i);
         if (!option) continue;
         const char* val = option->value ? option->value : option->defaultValue;
+        // Only set the value in the config if they're different from the defaults.
         if (option->defaultValue && SDL_strcmp(val, option->defaultValue) == 0) {
             INI_RemoveKey(lr->ini, section, option->key);
             continue;
@@ -150,9 +155,10 @@ static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
     return true;
 }
 
-bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
+static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     if (!lr || !lr->ini || !lr->iniFile) return false;
 
+    // Save the core options if needed.
     if (lr->core.loaded) {
         SDL_Libretro_SaveCoreConfig(lr);
     }
@@ -169,7 +175,10 @@ bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     return INI_Save(lr->ini, lr->iniFile);
 }
 
-bool SDL_Libretro_UnloadConfig(SDL_Libretro* lr) {
+/**
+ * Called when closing the instance to save the config and close.
+ */
+static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr) {
     if (!lr) return false;
     bool ok = SDL_Libretro_SaveConfig(lr);
     SDL_free(lr->iniFile);
