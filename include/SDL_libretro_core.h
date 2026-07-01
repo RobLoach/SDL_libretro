@@ -74,6 +74,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     }
 
     SDL_Libretro_FreeMessages(lr);
+    SDL_Libretro_CloseConfig(lr);
 
     SDL_free(lr);
 }
@@ -155,11 +156,13 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     // Default the content name to the core's reported name.
     SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
 
+    // Config
+    SDL_Libretro_LoadCoreConfig(lr);
+
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
-    SDL_Log("[SDL_Libretro] Core loaded: %s %s",
-        lr->core.libraryName, lr->core.libraryVersion);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
     return true;
 }
@@ -175,6 +178,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) return;
 
     SDL_Libretro_UnloadGame(lr);
+    SDL_Libretro_SaveCoreConfig(lr);
 
     lr->core.symbols.retro_deinit();
     if (lr->core.symbols.handle) {
@@ -639,7 +643,7 @@ bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
-// Directory setters
+// Directory
 
 /**
  * Sets the associated libretro core directory, where the default set of cores will be loaded from.
@@ -668,10 +672,35 @@ bool SDL_Libretro_SetCoreAssetsDirectory(SDL_Libretro* lr, const char* path) {
     return true;
 }
 
+const char* SDL_Libretro_GetCoreDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->coreDirectory[0] ? lr->coreDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetSaveDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->saveDirectory[0] ? lr->saveDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetSystemDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->systemDirectory[0] ? lr->systemDirectory : NULL;
+}
+
+const char* SDL_Libretro_GetCoreAssetsDirectory(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->coreAssetsDirectory[0] ? lr->coreAssetsDirectory : NULL;
+}
+
 bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username) {
     if (!lr) return false;
     SDL_strlcpy(lr->username, username ? username : "", sizeof(lr->username));
     return true;
+}
+
+const char* SDL_Libretro_GetUsername(SDL_Libretro* lr) {
+    if (!lr) return NULL;
+    return lr->username;
 }
 
 /**
@@ -720,17 +749,28 @@ float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
 /**
  * Sets the threshold for logs to be posted.
  *
- * Default is RETRO_LOG_DEBUG.
- *
- * @see RETRO_LOG_DEBUG
+ * @see SDL_LOG_PRIORITY_INVALID
  */
-void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, int level) {
+void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level) {
     if (!lr) return;
-    lr->logLevel = SDL_clamp(level, RETRO_LOG_DEBUG, RETRO_LOG_ERROR);
+    switch (level) {
+        case SDL_LOG_PRIORITY_INFO: lr->logLevel = RETRO_LOG_INFO; break;
+        case SDL_LOG_PRIORITY_WARN: lr->logLevel = RETRO_LOG_WARN; break;
+        case SDL_LOG_PRIORITY_ERROR: lr->logLevel = RETRO_LOG_ERROR; break;
+        case SDL_LOG_PRIORITY_CRITICAL: lr->logLevel = RETRO_LOG_ERROR; break;
+        default: lr->logLevel = RETRO_LOG_DEBUG; break;
+    }
 }
 
-int SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
-    return lr ? lr->logLevel : RETRO_LOG_DEBUG;
+SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
+    if (!lr) return SDL_LOG_PRIORITY_INVALID;
+    switch (lr->logLevel) {
+        case RETRO_LOG_DEBUG: return SDL_LOG_PRIORITY_DEBUG;
+        case RETRO_LOG_INFO: return SDL_LOG_PRIORITY_INFO;
+        case RETRO_LOG_WARN: return SDL_LOG_PRIORITY_WARN;
+        case RETRO_LOG_ERROR: return SDL_LOG_PRIORITY_ERROR;
+        default: return SDL_LOG_PRIORITY_INVALID;
+    }
 }
 
 /**
