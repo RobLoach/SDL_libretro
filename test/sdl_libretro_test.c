@@ -455,9 +455,10 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game is ready after load");
 
     int w = 0, h = 0;
@@ -467,8 +468,8 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture created");
     SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 128, "Serialize size is 128");
 
-    SDL_Libretro_RunFrame(lr);
-    SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_Update(lr);
+    SDL_Libretro_Update(lr);
 
     SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == true, "SaveState succeeds");
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
@@ -492,8 +493,9 @@ static int SDLCALL test_GameInfoExt(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
-    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer);
+    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
 
     // The test core probes GET_GAME_INFO_EXT during load and exposes the result
     // via SYSTEM_RAM, verifying the frontend populated the extended game info.
@@ -526,20 +528,21 @@ static int SDLCALL test_LoadGameNoContent(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
     // The test core opts into no-content, so a NULL load runs.
     SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == false, "Core does not require content");
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL, renderer) == true, "LoadGame succeeds with NULL content");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == true, "LoadGame succeeds with NULL content");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready with no content");
 
-    SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_Update(lr);
     SDL_Libretro_UnloadGame(lr);
 
     // A core that requires content must reject a NULL load (and not disturb state).
     lr->core.supportNoGame = false;
     SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == true, "Core now reports content required");
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL, renderer) == false, "LoadGame(NULL) rejected when content is required");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == false, "LoadGame(NULL) rejected when content is required");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready after a rejected NULL load");
 
     SDL_Libretro_Destroy(lr);
@@ -561,10 +564,11 @@ static int SDLCALL test_LoadGameFailure(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
     // A missing ".txt" file fails the load (the core wants the data buffer).
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "definitely_missing.txt", renderer) == false,
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "definitely_missing.txt") == false,
         "LoadGame fails for a missing content file");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready after a failed load");
 
@@ -579,7 +583,7 @@ static int SDLCALL test_LoadGameFailure(void *arg) {
         "Save path falls back to the core name, not the failed content: %s", path);
 
     // The context still works: a real load afterward succeeds.
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true,
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true,
         "LoadGame succeeds after a prior failure");
 
     SDL_Libretro_Destroy(lr);
@@ -607,8 +611,9 @@ static int SDLCALL test_Memory(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
-    SDL_Libretro_LoadGame(lr, NULL, renderer);
+    SDL_Libretro_LoadGame(lr, NULL);
 
     // GetMemoryData: SAVE_RAM is exposed at 64 bytes; an unsupported type is not.
     size_t sz = 123;
@@ -696,15 +701,16 @@ static int SDLCALL test_SavePath(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_SetSaveDirectory(lr, "test_saves");
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
-    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer);
+    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
 
     SDLTest_AssertCheck(SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) > 0, "GetSavePath derives a path with content");
     SDLTest_AssertCheck(SDL_strstr(path, "test_saves") != NULL && SDL_strstr(path, ".srm") != NULL, "Derived path uses save dir and extension: %s", path);
 
     // LoadGame again should unload the existing game and reload cleanly.
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true, "LoadGame again succeeds (reloads over existing game)");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame again succeeds (reloads over existing game)");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after reload");
 
     SDL_Libretro_Destroy(lr);

@@ -449,12 +449,12 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         case RETRO_DEVICE_LIGHTGUN: {
             if (id == RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X || id == RETRO_DEVICE_ID_LIGHTGUN_X) {
                 int w = 0, h = 0;
-                if (lr->core.window) SDL_GetWindowSize(lr->core.window, &w, &h);
+                if (lr->window) SDL_GetWindowSize(lr->window, &w, &h);
                 if (w > 0) return (int16_t)((lr->core.inputMouseX / (float)w) * 32767.0f * 2.0f - 32767.0f);
             }
             if (id == RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y || id == RETRO_DEVICE_ID_LIGHTGUN_Y) {
                 int w = 0, h = 0;
-                if (lr->core.window) SDL_GetWindowSize(lr->core.window, &w, &h);
+                if (lr->window) SDL_GetWindowSize(lr->window, &w, &h);
                 if (h > 0) return (int16_t)((lr->core.inputMouseY / (float)h) * 32767.0f * 2.0f - 32767.0f);
             }
             if (id == RETRO_DEVICE_ID_LIGHTGUN_TRIGGER) {

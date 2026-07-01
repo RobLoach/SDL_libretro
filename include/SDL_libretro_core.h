@@ -342,9 +342,9 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
  *
  * @see SDL_Libretro_UnloadGame()
  */
-bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
-    if (!lr || !lr->core.loaded || !renderer) {
-        SDL_SetError("[SDL_Libretro] Core not loaded or invalid renderer");
+bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
+    if (!lr || !lr->core.loaded || !lr->renderer) {
+        SDL_SetError("[SDL_Libretro] Core not loaded or renderer not set");
         return false;
     }
 
@@ -358,9 +358,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     if (lr->core.gameLoaded) {
         SDL_Libretro_UnloadGame(lr);
     }
-
-    lr->core.renderer = renderer;
-    lr->core.window = SDL_GetRenderWindow(renderer);
 
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
@@ -492,7 +489,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
     return lr &&
         lr->core.gameLoaded &&
-        lr->core.renderer != NULL;
+        lr->renderer != NULL;
 }
 
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
@@ -547,7 +544,7 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
     }
 }
 
-void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
+void SDL_Libretro_Update(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded) return;
 
     // Pending Video Driver Reinit

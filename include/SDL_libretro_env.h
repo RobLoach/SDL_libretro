@@ -153,8 +153,8 @@ static const char* SDL_Libretro_GetDirectory(SDL_Libretro* lr, unsigned cmd) {
  */
 static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
     float rate = 60.0f;
-    if (lr->core.window) {
-        SDL_DisplayID display = SDL_GetDisplayForWindow(lr->core.window);
+    if (lr->window) {
+        SDL_DisplayID display = SDL_GetDisplayForWindow(lr->window);
         if (display) {
             const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(display);
             if (mode && mode->refresh_rate > 0.0f) {
@@ -556,7 +556,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
                 // VSYNC
                 int vsync = SDL_RENDERER_VSYNC_DISABLED;
-                if (lr->core.renderer && SDL_GetRenderVSync(lr->core.renderer, &vsync) && vsync != SDL_RENDERER_VSYNC_DISABLED) {
+                if (lr->renderer && SDL_GetRenderVSync(lr->renderer, &vsync) && vsync != SDL_RENDERER_VSYNC_DISABLED) {
                     float interval = (vsync == SDL_RENDERER_VSYNC_ADAPTIVE) ? 1.0f : (float)vsync;
                     float vsyncRate = SDL_Libretro_GetTargetRefreshRate(lr) / interval;
                     if (vsyncRate < fps) {

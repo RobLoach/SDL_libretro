@@ -81,15 +81,17 @@ bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr);
 
 // Game
 
-bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer);
+bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath);
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr);
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr);
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr);
 bool SDL_Libretro_Reset(SDL_Libretro* lr);
-void SDL_Libretro_RunFrame(SDL_Libretro* lr);
+void SDL_Libretro_Update(SDL_Libretro* lr);
 
 // Video
 
+bool SDL_Libretro_SetRenderer(SDL_Libretro* lr, SDL_Renderer* renderer);
+SDL_Renderer* SDL_Libretro_GetRenderer(const SDL_Libretro* lr);
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr);
 SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr);
 bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect);
@@ -347,7 +349,6 @@ typedef struct SDL_LibretroCoreData {
     // Video
     SDL_Texture* texture;
     SDL_ScaleMode textureScaleMode;
-    SDL_Renderer* renderer;
     SDL_FRect renderDstRect; /** The desired destination rendering rectangle. */
     bool videoReinitPending; /** True when the video requires a re-initialization. */
 
@@ -369,7 +370,6 @@ typedef struct SDL_LibretroCoreData {
     struct retro_audio_buffer_status_callback audio_buffer_status; /** @see SDL_Libretro_ReportAudioBufferStatus() */
 
     // Input
-    SDL_Window* window;
     float inputLastMouseX, inputLastMouseY;
     float inputMouseX, inputMouseY;
     unsigned portDeviceMap[16];
@@ -461,6 +461,10 @@ struct SDL_Libretro {
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
     char username[64];
+
+    // Render target (persists across cores/games; set via SDL_Libretro_SetRenderer)
+    SDL_Renderer* renderer;
+    SDL_Window* window; /** Derived from the renderer via SDL_GetRenderWindow(). */
 
     // Logging
     enum retro_log_level logLevel;

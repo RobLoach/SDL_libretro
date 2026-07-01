@@ -47,8 +47,7 @@ SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZ
 SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
 SDL_Libretro* lr = SDL_Libretro_Create();
-SDL_Libretro_SetSystemDirectory(lr, "system");
-SDL_Libretro_SetSaveDirectory(lr, "saves");
+SDL_Libretro_SetRenderer(lr, renderer);
 SDL_Libretro_LoadCore(lr, "core.so");
 SDL_Libretro_LoadGame(lr, "game.rom", renderer);
 
@@ -58,7 +57,7 @@ while (!SDL_Libretro_IsShutdown(lr)) {
         SDL_Libretro_HandleEvent(lr, &event);
     }
 
-    SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_Update(lr);
 
     SDL_RenderClear(renderer);
     SDL_Libretro_Render(lr, NULL);

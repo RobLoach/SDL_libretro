@@ -44,7 +44,7 @@ static void SDL_Libretro_ReleaseSoftwareFramebuffer(SDL_Libretro* lr) {
  * @internal
  */
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
-    if (!lr || !lr->core.renderer) return false;
+    if (!lr || !lr->renderer) return false;
 
     // Make sure we're starting a clean video context.
     SDL_Libretro_CloseVideo(lr);
@@ -56,7 +56,7 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
 
     // Build the Texture.
-    lr->core.texture = SDL_CreateTexture(lr->core.renderer,
+    lr->core.texture = SDL_CreateTexture(lr->renderer,
         SDL_Libretro_GetTextureFormat(lr->core.pixelFormat),
         SDL_TEXTUREACCESS_STREAMING,
         lr->core.width, lr->core.height);
@@ -140,6 +140,43 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     SDL_UnlockTexture(lr->core.texture);
 }
 
+/**
+ * Set the renderer the context draws into.
+ *
+ * The renderer is a frontend resource that persists across core/game loads, so it typically only needs to be set once, right after SDL_Libretro_Create() and before SDL_Libretro_LoadGame(). The window is derived from it via SDL_GetRenderWindow().
+ *
+ * @param lr the libretro context.
+ * @param renderer the renderer to draw into; must not be NULL.
+ * @returns true on success, false on invalid arguments or if the texture rebuild fails.
+ */
+bool SDL_Libretro_SetRenderer(SDL_Libretro* lr, SDL_Renderer* renderer) {
+    if (!lr || !renderer) {
+        SDL_SetError("[SDL_Libretro] Invalid context");
+        return false;
+    }
+
+    // The texture is tied to the Renderer, so we'll re-init if the renderer changed during run.
+    bool changed = (lr->renderer != renderer);
+    lr->renderer = renderer;
+    lr->window = SDL_GetRenderWindow(renderer);
+
+    if (changed && lr->core.texture) {
+        return SDL_Libretro_InitVideo(lr);
+    }
+
+    return true;
+}
+
+/**
+ * Get the renderer the context draws into.
+ *
+ * @param lr the libretro context.
+ * @returns the renderer set via SDL_Libretro_SetRenderer(), or NULL if none.
+ */
+SDL_Renderer* SDL_Libretro_GetRenderer(const SDL_Libretro* lr) {
+    return lr ? lr->renderer : NULL;
+}
+
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
     return (lr && lr->core.texture) ? lr->core.texture : NULL;
 }
@@ -176,14 +213,14 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
  * @param dstRect The desintation rectangle, or NULL to fit within the full width and height of the renderer.
  */
 bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
-    if (!lr || !lr->core.texture || !lr->core.renderer) return false;
+    if (!lr || !lr->core.texture || !lr->renderer) return false;
 
     SDL_FRect dst;
     if (dstRect) {
         dst = *dstRect;
     } else {
         int w, h;
-        SDL_GetRenderOutputSize(lr->core.renderer, &w, &h);
+        SDL_GetRenderOutputSize(lr->renderer, &w, &h);
         dst.x = 0;
         dst.y = 0;
         dst.w = (float)w;
@@ -231,7 +268,7 @@ bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
     double angle = lr->core.rotation * 90.0;
     SDL_FPoint center = { dst.w * 0.5f, dst.h * 0.5f };
 
-    return SDL_RenderTextureRotated(lr->core.renderer, lr->core.texture,
+    return SDL_RenderTextureRotated(lr->renderer, lr->core.texture,
         NULL, &dst, angle, &center, SDL_FLIP_NONE);
 }
 

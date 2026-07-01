@@ -21,11 +21,15 @@ int main(int argc, char* argv[]) {
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS);
 
-    SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE);
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+    SDL_Window* window;
+    SDL_Renderer* renderer;
+    SDL_CreateWindowAndRenderer("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer);
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // Set the renderer to draw into.
+    SDL_Libretro_SetRenderer(lr, renderer);
 
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
@@ -38,7 +42,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Load the game.
-    if (!SDL_Libretro_LoadGame(lr, gamePath, renderer)) {
+    if (!SDL_Libretro_LoadGame(lr, gamePath)) {
         SDL_Libretro_Destroy(lr);
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
@@ -108,12 +112,14 @@ int main(int argc, char* argv[]) {
             SDL_Libretro_HandleEvent(lr, &event);
         }
 
-        // Update
-        SDL_Libretro_RunFrame(lr);
+        // Update the context
+        SDL_Libretro_Update(lr);
 
-        // Draw
+        // Clear the screen
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
+
+        // Draw the libretro context
         SDL_Libretro_Render(lr, NULL);
 
         // Draw the current OSD message, if there is one.
