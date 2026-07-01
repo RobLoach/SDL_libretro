@@ -162,7 +162,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
-    SDL_Log("[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
     return true;
 }

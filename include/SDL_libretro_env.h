@@ -9,8 +9,11 @@
 
 #include <stdarg.h>
 
+/**
+ * Callback for when the libretro core writes to the log.
+ */
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
-    if (SDL_Libretro_active && (int)level < SDL_Libretro_active->logLevel) {
+    if (SDL_Libretro_active && level < SDL_Libretro_active->logLevel) {
         return;
     }
 
@@ -25,16 +28,16 @@ static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...
     if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
 
     switch (level) {
-        case RETRO_LOG_DEBUG: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_INFO:  SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
-        default:              SDL_Log("[SDL_Libretro] %s", buf); break;
+        case RETRO_LOG_DEBUG:
+        default: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
     }
 }
 
 static retro_time_t SDL_Libretro_GetTimeUSEC(void) {
-    return (retro_time_t)(SDL_GetPerformanceCounter() * 1000000 / SDL_GetPerformanceFrequency());
+    return (SDL_GetPerformanceCounter() * (Uint64)1000000) / SDL_GetPerformanceFrequency();
 }
 
 static uint64_t SDL_Libretro_GetCPUFeatures(void) {

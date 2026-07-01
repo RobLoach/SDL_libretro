@@ -26,6 +26,8 @@ static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button
         case RETRO_DEVICE_ID_JOYPAD_X:       return SDL_GAMEPAD_BUTTON_NORTH;
         case RETRO_DEVICE_ID_JOYPAD_L:       return SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
         case RETRO_DEVICE_ID_JOYPAD_R:       return SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
+        case RETRO_DEVICE_ID_JOYPAD_L2:      return SDL_GAMEPAD_BUTTON_LEFT_PADDLE1;
+        case RETRO_DEVICE_ID_JOYPAD_R2:      return SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1;
         case RETRO_DEVICE_ID_JOYPAD_L3:      return SDL_GAMEPAD_BUTTON_LEFT_STICK;
         case RETRO_DEVICE_ID_JOYPAD_R3:      return SDL_GAMEPAD_BUTTON_RIGHT_STICK;
         default:                             return SDL_GAMEPAD_BUTTON_INVALID;
