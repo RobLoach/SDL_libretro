@@ -143,11 +143,11 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
 /**
  * Set the renderer the context draws into.
  *
- * The renderer is a frontend resource that persists across core/game loads, so it typically only needs to be set once, right after SDL_Libretro_Create() and before SDL_Libretro_LoadGame(). The window is derived from it via SDL_GetRenderWindow().
+ * If a game is already loaded, setting the renderer builds the video texture immediately.
  *
  * @param lr the libretro context.
  * @param renderer the renderer to draw into; must not be NULL.
- * @returns true on success, false on invalid arguments or if the texture rebuild fails.
+ * @returns true on success, false on invalid arguments or if the texture (re)build fails.
  */
 bool SDL_Libretro_SetRenderer(SDL_Libretro* lr, SDL_Renderer* renderer) {
     if (!lr || !renderer) {
@@ -155,12 +155,15 @@ bool SDL_Libretro_SetRenderer(SDL_Libretro* lr, SDL_Renderer* renderer) {
         return false;
     }
 
-    // The texture is tied to the Renderer, so we'll re-init if the renderer changed during run.
     bool changed = (lr->renderer != renderer);
     lr->renderer = renderer;
     lr->window = SDL_GetRenderWindow(renderer);
 
-    if (changed && lr->core.texture) {
+    // Build the texture if a game is loaded but has none yet (deferred init after
+    // a renderer-less LoadGame), or rebuild it against the new renderer on a swap
+    // (a texture is bound to the renderer that created it). With no game loaded,
+    // LoadGame's InitVideo handles it once the geometry is known.
+    if (lr->core.gameLoaded && (!lr->core.texture || changed)) {
         return SDL_Libretro_InitVideo(lr);
     }
 
@@ -207,69 +210,97 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
 }
 
 /**
- * Render the libretro context, using the provided scale method in the loaded renderer.
+ * Shrink `*rect` from the available area to the on-screen rectangle the core's
+ * frame occupies: letterboxed to the aspect ratio (inverted for a 90/270 turn,
+ * per `rotated`) and, in integer-scale mode, snapped to a whole multiple of the
+ * native size.
  *
- * @param lr The libretro context.
- * @param dstRect The desintation rectangle, or NULL to fit within the full width and height of the renderer.
+ * @internal
  */
-bool SDL_Libretro_Render(SDL_Libretro* lr, const SDL_FRect* dstRect) {
-    if (!lr || !lr->core.texture || !lr->renderer) return false;
+static void SDL_Libretro_FitRect(const SDL_Libretro* lr, SDL_FRect* rect, bool rotated) {
+    SDL_FRect avail = *rect;
 
-    SDL_FRect dst;
-    if (dstRect) {
-        dst = *dstRect;
-    } else {
-        int w, h;
-        SDL_GetRenderOutputSize(lr->renderer, &w, &h);
-        dst.x = 0;
-        dst.y = 0;
-        dst.w = (float)w;
-        dst.h = (float)h;
-    }
-
-    // Aspect Ratio
+    // Content aspect ratio, falling back to the frame dimensions.
     float srcAspect = lr->core.aspectRatio;
     if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
         srcAspect = (float)lr->core.width / (float)lr->core.height;
     }
 
-    // Fit within destination maintaining aspect ratio
-    if (srcAspect > 0.0f) {
-        float dstAspect = dst.w / dst.h;
-        if (srcAspect > dstAspect) {
-            float newH = dst.w / srcAspect;
-            dst.y += (dst.h - newH) * 0.5f;
-            dst.h = newH;
+    // Letterbox to the effective aspect ratio within the available area.
+    float aspect = (rotated && srcAspect > 0.0f) ? 1.0f / srcAspect : srcAspect;
+    if (aspect > 0.0f) {
+        if (aspect > avail.w / avail.h) {
+            rect->h = avail.w / aspect;
+            rect->y = avail.y + (avail.h - rect->h) * 0.5f;
         } else {
-            float newW = dst.h * srcAspect;
-            dst.x += (dst.w - newW) * 0.5f;
-            dst.w = newW;
+            rect->w = avail.h * aspect;
+            rect->x = avail.x + (avail.w - rect->w) * 0.5f;
         }
     }
 
-    // Integer Scaling
+    // Integer scaling: a quarter turn maps the core's width to the vertical
+    // extent and its height to the horizontal.
     if (lr->scaleMode == SDL_LIBRETRO_SCALE_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
-        float coreW = (float)lr->core.width;
-        float coreH = (float)lr->core.height;
-        int scaleX = (int)(dst.w / coreW);
-        int scaleY = (int)(dst.h / coreH);
-        int scale = scaleX < scaleY ? scaleX : scaleY;
-        if (scale < 1) scale = 1;
-        float intW = coreW * (float)scale;
-        float intH = coreH * (float)scale;
-        dst.x += (dst.w - intW) * 0.5f;
-        dst.y += (dst.h - intH) * 0.5f;
-        dst.w = intW;
-        dst.h = intH;
+        float coreW = rotated ? (float)lr->core.height : (float)lr->core.width;
+        float coreH = rotated ? (float)lr->core.width : (float)lr->core.height;
+        int scale = SDL_max(1, SDL_min((int)(rect->w / coreW), (int)(rect->h / coreH)));
+        float w = coreW * (float)scale;
+        float h = coreH * (float)scale;
+        rect->x += (rect->w - w) * 0.5f;
+        rect->y += (rect->h - h) * 0.5f;
+        rect->w = w;
+        rect->h = h;
+    }
+}
+
+/**
+ * Render the libretro context in the given renderer.
+ *
+ * @param renderer the renderer to draw into; must not be NULL.
+ * @param lr the libretro context.
+ * @param dstRect the destination rectangle, or NULL to fit within the full width and height of the renderer.
+ * @returns true on success, false on invalid arguments or if there is nothing to draw yet.
+ *
+ * @see SDL_Libretro_SetRenderer()
+ */
+bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRect* dstRect) {
+    if (!lr || !renderer) return false;
+
+    // Adopt the renderer if it changed or isn't initialized.
+    if (renderer != lr->renderer && !SDL_Libretro_SetRenderer(lr, renderer)) return false;
+
+    // Requires a texture to render.
+    if (!lr->core.texture) return false;
+
+    // Determine the destination area: the given rect, or the full render output.
+    if (dstRect) {
+        lr->core.renderDstRect = *dstRect;
+    } else {
+        int w, h;
+        if (!SDL_GetRenderOutputSize(renderer, &w, &h)) return false;
+        lr->core.renderDstRect = (SDL_FRect){ 0.0f, 0.0f, (float)w, (float)h };
     }
 
-    lr->core.renderDstRect = dst;
+    // A 90/270 turn swaps the image's on-screen extents.
+    bool rotated = (lr->core.rotation & 1) != 0;
 
-    double angle = lr->core.rotation * 90.0;
-    SDL_FPoint center = { dst.w * 0.5f, dst.h * 0.5f };
+    // Fit the destination to optimally fit within the renderer.
+    SDL_Libretro_FitRect(lr, &lr->core.renderDstRect, rotated);
 
-    return SDL_RenderTextureRotated(lr->renderer, lr->core.texture,
-        NULL, &dst, angle, &center, SDL_FLIP_NONE);
+    // libretro SET_ROTATION is counter-clockwise, but SDL_RenderTextureRotated's
+    // angle is clockwise, so negate it.
+    double angle = -(lr->core.rotation * 90.0);
+
+    if (rotated) {
+        SDL_FRect dst = lr->core.renderDstRect;
+        dst.w = lr->core.renderDstRect.h;
+        dst.h = lr->core.renderDstRect.w;
+        dst.x = lr->core.renderDstRect.x + (lr->core.renderDstRect.w - dst.w) * 0.5f;
+        dst.y = lr->core.renderDstRect.y + (lr->core.renderDstRect.h - dst.h) * 0.5f;
+        return SDL_RenderTextureRotated(renderer, lr->core.texture, NULL, &dst, angle, NULL, SDL_FLIP_NONE);
+    }
+
+    return SDL_RenderTextureRotated(renderer, lr->core.texture, NULL, &lr->core.renderDstRect, angle, NULL, SDL_FLIP_NONE);
 }
 
 void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h) {

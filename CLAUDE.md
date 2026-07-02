@@ -7,7 +7,7 @@ An SDL3-based [libretro](https://www.libretro.com/) frontend library. Spiritual 
 ### Context-based design
 
 All state lives in an opaque `SDL_Libretro*` context, unlike raylib-libretro's global static. Internally split into:
-- `struct SDL_Libretro` — persistent settings (directories, volume, speed, keyboard map, OSD)
+- `struct SDL_Libretro` — persistent settings (directories, volume, speed, keyboard map, OSD, renderer/window)
 - `SDL_LibretroCoreData` — per-core state, zeroed on unload (symbols, texture, audio, options)
 
 Since libretro C callbacks have no userdata parameter, a file-static `SDL_Libretro_active` pointer is set when a core loads. **Only one active context per process.**

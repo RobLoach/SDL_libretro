@@ -47,9 +47,8 @@ SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZ
 SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
 SDL_Libretro* lr = SDL_Libretro_Create();
-SDL_Libretro_SetRenderer(lr, renderer);
 SDL_Libretro_LoadCore(lr, "core.so");
-SDL_Libretro_LoadGame(lr, "game.rom", renderer);
+SDL_Libretro_LoadGame(lr, "game.rom");
 
 while (!SDL_Libretro_IsShutdown(lr)) {
     SDL_Event event;
@@ -60,7 +59,7 @@ while (!SDL_Libretro_IsShutdown(lr)) {
     SDL_Libretro_Update(lr);
 
     SDL_RenderClear(renderer);
-    SDL_Libretro_Render(lr, NULL);
+    SDL_Libretro_Render(renderer, lr, NULL);
     SDL_RenderPresent(renderer);
 }
 
@@ -73,17 +72,14 @@ See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example.
 
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
 
-```c
-// Enable the XOR delta between rewind frames to reduce
-// memory at the expense of performance.
-#define SDL_LIBRETRO_ENABLE_REWIND_DELTA
-```
-
+- `SDL_LIBRETRO_NO_CONFIG`: Disables the config system with [SDL_ini](https://github.com/RobLoach/SDL_ini)
+- `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
 
 ## Dependencies
 
 - [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
-- [libretro.h](https://github.com/libretro/libretro-common) (included as a submodule)
+- [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
+- [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
 
 ## License
 

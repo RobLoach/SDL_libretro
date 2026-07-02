@@ -28,9 +28,6 @@ int main(int argc, char* argv[]) {
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
 
-    // Set the renderer to draw into.
-    SDL_Libretro_SetRenderer(lr, renderer);
-
     // Load the core.
     if (!SDL_Libretro_LoadCore(lr, corePath)) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
@@ -120,7 +117,7 @@ int main(int argc, char* argv[]) {
         SDL_RenderClear(renderer);
 
         // Draw the libretro context
-        SDL_Libretro_Render(lr, NULL);
+        SDL_Libretro_Render(renderer, lr, NULL);
 
         // Draw the current OSD message, if there is one.
         const char* message = SDL_Libretro_GetMessage(lr);

@@ -412,6 +412,8 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         }
 
         case RETRO_DEVICE_POINTER: {
+            if (index > 0) return 0;
+
             float mx = lr->core.inputMouseX;
             float my = lr->core.inputMouseY;
             SDL_FRect r = lr->core.renderDstRect;
@@ -419,23 +421,30 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
                 mx >= r.x && mx < r.x + r.w &&
                 my >= r.y && my < r.y + r.h;
 
-            if (index > 0) return 0;
-
             switch (id) {
-                case RETRO_DEVICE_ID_POINTER_X: {
-                    if (r.w <= 0) return 0;
-                    float v = (mx - r.x) / r.w * 2.0f - 1.0f;
-                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
-                }
+                case RETRO_DEVICE_ID_POINTER_X:
                 case RETRO_DEVICE_ID_POINTER_Y: {
-                    if (r.h <= 0) return 0;
-                    float v = (my - r.y) / r.h * 2.0f - 1.0f;
-                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                    if (r.w <= 0.0f || r.h <= 0.0f) return 0;
+
+                    // Position within the on-screen (post-rotation) image, 0..1.
+                    float sx = (mx - r.x) / r.w;
+                    float sy = (my - r.y) / r.h;
+
+                    // Undo the display rotation applied by SDL_Libretro_Render()
+                    // (counter-clockwise, per libretro SET_ROTATION) to recover the
+                    // core's unrotated framebuffer coordinates.
+                    float u, v;
+                    switch (lr->core.rotation & 3) {
+                        case 1:  u = 1.0f - sy; v = sx;        break; // 90° CCW
+                        case 2:  u = 1.0f - sx; v = 1.0f - sy; break; // 180°
+                        case 3:  u = sy;        v = 1.0f - sx; break; // 270° CCW
+                        default: u = sx;        v = sy;        break; // 0°
+                    }
+
+                    float n = (id == RETRO_DEVICE_ID_POINTER_X ? u : v) * 2.0f - 1.0f;
+                    return (int16_t)(SDL_clamp(n, -1.0f, 1.0f) * 0x7FFF);
                 }
-                case RETRO_DEVICE_ID_POINTER_PRESSED: {
-                    Uint32 state = SDL_GetMouseState(NULL, NULL);
-                    return (state & SDL_BUTTON_LMASK) ? 1 : 0;
-                }
+                case RETRO_DEVICE_ID_POINTER_PRESSED:
                 case RETRO_DEVICE_ID_POINTER_COUNT: {
                     Uint32 state = SDL_GetMouseState(NULL, NULL);
                     return (state & SDL_BUTTON_LMASK) ? 1 : 0;

@@ -766,6 +766,146 @@ static int SDLCALL test_ExtensionInList(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_LoadGameNoRenderer(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+
+    // Load a game with NO renderer set: the game runs and video is deferred.
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == NULL, "No renderer set initially");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == true, "LoadGame succeeds without a renderer");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after renderer-less load");
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "No texture until a renderer is set");
+    SDLTest_AssertCheck(SDL_Libretro_Render(NULL, lr, NULL) == false, "Render fails with a NULL renderer");
+
+    // The core still runs with no video attached.
+    SDL_Libretro_Update(lr);
+    SDL_Libretro_Update(lr);
+
+    // Rendering with a renderer adopts it and builds the texture (deferred init).
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+    SDLTest_AssertCheck(SDL_Libretro_Render(renderer, lr, NULL) == true, "Render adopts the renderer and draws");
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == renderer, "Render stored the renderer");
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture created via Render's deferred init");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+// Drive the pointer input callback for a rotation and assert POINTER_X/Y map as
+// expected (within a rounding unit). renderDstRect and the mouse must be set first.
+static void CheckPointer(SDL_Libretro* lr, int rot, int16_t expectX, int16_t expectY) {
+    lr->core.rotation = rot;
+    int16_t x = SDL_Libretro_InputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
+    int16_t y = SDL_Libretro_InputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+    SDLTest_AssertCheck(SDL_abs(x - expectX) <= 2, "rot %d POINTER_X ~%d, got %d", rot, expectX, x);
+    SDLTest_AssertCheck(SDL_abs(y - expectY) <= 2, "rot %d POINTER_Y ~%d, got %d", rot, expectY, y);
+}
+
+static int SDLCALL test_Rotation(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL); // 320x240 (4:3) core, no content
+
+    // --- renderDstRect fit under rotation, into the full 320x240 output ---
+    // 0deg: a 4:3 frame fills the 4:3 window.
+    lr->core.rotation = 0;
+    SDL_Libretro_Render(renderer, lr, NULL);
+    SDL_FRect r0 = lr->core.renderDstRect;
+    SDLTest_AssertCheck(SDL_fabsf(r0.w - 320.0f) < 1.0f && SDL_fabsf(r0.h - 240.0f) < 1.0f,
+        "0deg fills 320x240, got %gx%g", r0.w, r0.h);
+
+    // 90deg: the on-screen extents swap, so the fit is portrait (aspect inverted
+    // to 3:4), centered and within the window bounds.
+    lr->core.rotation = 1;
+    SDL_Libretro_Render(renderer, lr, NULL);
+    SDL_FRect r1 = lr->core.renderDstRect;
+    SDLTest_AssertCheck(r1.w < r1.h, "90deg is portrait (w<h), got %gx%g", r1.w, r1.h);
+    SDLTest_AssertCheck(SDL_fabsf(r1.w / r1.h - 0.75f) < 0.01f, "90deg aspect ~3:4, got %g", r1.w / r1.h);
+    SDLTest_AssertCheck(r1.x >= 0.0f && r1.y >= 0.0f &&
+        r1.x + r1.w <= 321.0f && r1.y + r1.h <= 241.0f, "90deg fit stays within the window");
+
+    // --- POINTER_X/Y map through the inverse of the display rotation ---
+    // Known on-screen rect and mouse at sx=0.25, sy=0.75.
+    lr->core.renderDstRect = (SDL_FRect){ 0.0f, 0.0f, 100.0f, 200.0f };
+    lr->core.inputMouseX = 25.0f;
+    lr->core.inputMouseY = 150.0f;
+    const int16_t LO = -16383, HI = 16383; // (0.25*2-1)*0x7FFF and (0.75*2-1)*0x7FFF
+    CheckPointer(lr, 0, LO, HI); // u=sx=.25,   v=sy=.75
+    CheckPointer(lr, 1, LO, LO); // u=1-sy=.25, v=sx=.25   (90deg CCW)
+    CheckPointer(lr, 2, HI, LO); // u=1-sx=.75, v=1-sy=.25 (180deg)
+    CheckPointer(lr, 3, HI, HI); // u=sy=.75,   v=1-sx=.75 (270deg CCW)
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_SetRenderer(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* w1 = SDL_CreateWindow("test1", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* r1 = SDL_CreateRenderer(w1, NULL);
+    SDL_Window* w2 = SDL_CreateWindow("test2", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* r2 = SDL_CreateRenderer(w2, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // NULL is rejected for both the context and the renderer.
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(lr, NULL) == false, "SetRenderer(NULL renderer) rejected");
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(NULL, r1) == false, "SetRenderer(NULL context) rejected");
+
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(lr, r1) == true, "SetRenderer(r1) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == r1, "GetRenderer returns r1");
+
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL);
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture built on r1");
+
+    // Swapping renderers rebuilds the texture against the new renderer.
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(lr, r2) == true, "SetRenderer(r2) swap succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == r2, "GetRenderer returns r2 after swap");
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture rebuilt on r2");
+    SDLTest_AssertCheck(SDL_Libretro_Render(r2, lr, NULL) == true, "Render works on the swapped renderer");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(r1);
+    SDL_DestroyWindow(w1);
+    SDL_DestroyRenderer(r2);
+    SDL_DestroyWindow(w2);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -789,6 +929,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
+    LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
+    LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),
+    LIBRETRO_TEST_CASE(test_Rotation,          "Rotation-aware fit rect and pointer mapping"),
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),

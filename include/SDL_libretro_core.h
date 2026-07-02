@@ -340,11 +340,17 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
 /**
  * Loads a game at the given path.
  *
+ * A renderer is not required to load a game. If none has been set via
+ * SDL_Libretro_SetRenderer(), the game still loads and runs (audio and input
+ * work); video texture creation is deferred until a renderer is set, and until
+ * then rendered frames are dropped.
+ *
  * @see SDL_Libretro_UnloadGame()
+ * @see SDL_Libretro_SetRenderer()
  */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
-    if (!lr || !lr->core.loaded || !lr->renderer) {
-        SDL_SetError("[SDL_Libretro] Core not loaded or renderer not set");
+    if (!lr || !lr->core.loaded) {
+        SDL_SetError("[SDL_Libretro] Core not loaded");
         return false;
     }
 
@@ -445,15 +451,17 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     lr->core.sampleRate = avInfo.timing.sample_rate;
     lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
 
-    // Initialize the Video.
-    if (!SDL_Libretro_InitVideo(lr)) {
-        SDL_Libretro_UnloadGame(lr);
-        return false;
+    // Failed video initialization should not fail loading the game. It will
+    // hopefully initialize itself on the first render.
+    if (lr->renderer) {
+        if (!SDL_Libretro_InitVideo(lr)) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Video failed to initialize: %s", SDL_GetError());
+        }
     }
 
     // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
     if (!SDL_Libretro_InitAudio(lr)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio unavailable: %s", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio failed to initialize: %s", SDL_GetError());
     }
 
     SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
@@ -487,9 +495,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
-    return lr &&
-        lr->core.gameLoaded &&
-        lr->renderer != NULL;
+    return lr && lr->core.gameLoaded;
 }
 
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
@@ -563,7 +569,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     if (lr->speed == 0.0f) return;
 
     // Rewind mode: step backwards when speed is negative.
-    if (lr->speed < 0.0f && lr->rewindEnabled) {
+    if (lr->rewindEnabled && lr->speed < 0.0f) {
         Uint64 nowNS = SDL_GetTicksNS();
         if (lr->lastTickNS == 0) {
             lr->lastTickNS = nowNS;
