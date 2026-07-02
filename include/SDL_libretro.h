@@ -194,10 +194,6 @@ void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t*
 
 // Core Options
 
-#ifndef SDL_LIBRETRO_OPTION_VALUES_MAX
-#define SDL_LIBRETRO_OPTION_VALUES_MAX 128 /** Maximum selectable values per option (mirrors libretro's limit). */
-#endif
-
 /**
  * One selectable value for a core option.
  */
@@ -217,8 +213,9 @@ typedef struct SDL_LibretroOption {
     const char* defaultValue; /** The default value. */
     const char* category;     /** Key of the category it belongs to; empty if none. */
     bool visible;             /** Whether the frontend should display it. */
-    unsigned valuesCount;      /** The number of entries in values. */
-    SDL_LibretroOptionValue values[SDL_LIBRETRO_OPTION_VALUES_MAX]; /** The selectable values; the first valuesCount entries are populated. */
+    unsigned valuesCount;     /** The number of populated entries in values. */
+    SDL_LibretroOptionValue* values; /** The selectable values; dynamically allocated. */
+    unsigned valuesCapacity;  /** Allocated capacity of the values array. */
 } SDL_LibretroOption;
 
 /**

@@ -6,10 +6,6 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_OPTIONS_IMPL_ONCE)
 #define SDL_LIBRETRO_OPTIONS_IMPL_ONCE
 
-/* The option's values[] array is sized by our public constant; cores hand us at
- * most RETRO_NUM_CORE_OPTION_VALUES_MAX values, so the two must agree. */
-SDL_COMPILE_TIME_ASSERT(option_values_max, SDL_LIBRETRO_OPTION_VALUES_MAX == RETRO_NUM_CORE_OPTION_VALUES_MAX);
-
 static char* SDL_Libretro_Strdup(const char* s) {
     if (!s) return SDL_strdup("");
     return SDL_strdup(s);
@@ -44,15 +40,22 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     slot->category = SDL_Libretro_Strdup(categoryKey);
     slot->visible = true;
 
-    // Deep-copy the values; the slot came from SDL_realloc and isn't zeroed, so
-    // clear the array first. Copying stops at the { NULL, NULL } terminator.
-    SDL_memset(slot->values, 0, sizeof(slot->values));
+    slot->values = NULL;
     slot->valuesCount = 0;
+    slot->valuesCapacity = 0;
     if (values) {
-        for (unsigned v = 0; v < SDL_LIBRETRO_OPTION_VALUES_MAX && values[v].value; v++) {
-            slot->values[v].value = SDL_Libretro_Strdup(values[v].value);
-            slot->values[v].label = values[v].label ? SDL_Libretro_Strdup(values[v].label) : NULL;
-            slot->valuesCount++;
+        unsigned count = 0;
+        while (values[count].value) count++;
+        if (count > 0) {
+            slot->values = (SDL_LibretroOptionValue*)SDL_calloc(count, sizeof(SDL_LibretroOptionValue));
+            if (slot->values) {
+                slot->valuesCapacity = count;
+                for (unsigned v = 0; v < count; v++) {
+                    slot->values[v].value = SDL_Libretro_Strdup(values[v].value);
+                    slot->values[v].label = values[v].label ? SDL_Libretro_Strdup(values[v].label) : NULL;
+                    slot->valuesCount++;
+                }
+            }
         }
     }
 
@@ -101,10 +104,11 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
             SDL_free((void*)opt->desc);
             SDL_free((void*)opt->info);
             SDL_free((void*)opt->category);
-            for (unsigned v = 0; v < SDL_LIBRETRO_OPTION_VALUES_MAX && opt->values[v].value; v++) {
+            for (unsigned v = 0; v < opt->valuesCount; v++) {
                 SDL_free((void*)opt->values[v].value);
                 SDL_free((void*)opt->values[v].label);
             }
+            SDL_free(opt->values);
         }
         SDL_free(lr->core.options);
         lr->core.options = NULL;
