@@ -152,6 +152,7 @@ void SDL_Libretro_SetVolume(SDL_Libretro* lr, float volume);
 float SDL_Libretro_GetVolume(const SDL_Libretro* lr);
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed);
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr);
+bool SDL_Libretro_IsFastforwardOverrideActive(const SDL_Libretro* lr);
 void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs);
 unsigned SDL_Libretro_GetAudioLatency(const SDL_Libretro* lr);
 double SDL_Libretro_GetSampleRate(const SDL_Libretro* lr);
@@ -427,6 +428,10 @@ typedef struct SDL_LibretroCoreData {
     // Timing
     struct retro_frame_time_callback runloop_frame_time;
     retro_usec_t runloop_frame_time_last;
+
+    // Fast-forward override
+    struct retro_fastforwarding_override fastforwardOverride;
+    bool fastforwardOverrideActive;
 
     // Core Options
     SDL_LibretroOption* options; /** The options that have been set by the core; strings owned by the context. */

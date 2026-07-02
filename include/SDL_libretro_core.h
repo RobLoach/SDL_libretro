@@ -896,6 +896,8 @@ float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     if (!lr) return;
 
+    if (lr->core.fastforwardOverrideActive && lr->core.fastforwardOverride.inhibit_toggle) return;
+
     if (speed < 0.0f && lr->rewindEnabled) {
         lr->speed = speed;
         if (lr->core.audioStream) {
@@ -919,6 +921,10 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
 
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
     return lr ? lr->speed : 1.0f;
+}
+
+bool SDL_Libretro_IsFastforwardOverrideActive(const SDL_Libretro* lr) {
+    return lr && lr->core.fastforwardOverrideActive;
 }
 
 /**

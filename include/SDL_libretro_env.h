@@ -515,6 +515,24 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
+            if (!data) return false;
+            lr->core.fastforwardOverride = *(const struct retro_fastforwarding_override*)data;
+            lr->core.fastforwardOverrideActive = lr->core.fastforwardOverride.fastforward;
+            // Bypass SDL_Libretro_SetSpeed so the inhibit_toggle guard doesn't block the core's own request.
+            if (lr->core.fastforwardOverride.fastforward) {
+                float ratio = lr->core.fastforwardOverride.ratio;
+                lr->speed = ratio > 1.0f ? ratio : 10.0f;
+            } else {
+                lr->speed = 1.0f;
+            }
+            if (lr->core.fastforwardOverride.notification) {
+                SDL_Libretro_SetMessage(lr, lr->core.fastforwardOverride.fastforward
+                    ? "Fast-forward (core)" : "Normal speed", 2.0);
+            }
+            return true;
+        }
+
         case 50:
         case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
             if (!data) return false;
