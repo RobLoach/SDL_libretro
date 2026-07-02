@@ -23,13 +23,12 @@ SDL_Libretro* SDL_Libretro_Create(void) {
         return NULL;
     }
 
-    // Initial state
-    SDL_zero(lr);
-    SDL_Libretro_SetVFS(lr, NULL);
-    lr->volume = 1.0f;
-    lr->speed = 1.0f;
+    // Initial state (the calloc above already zeroed the struct).
     lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
-    SDL_strlcpy(lr->username, "SDL_libretro", sizeof(lr->username));
+    SDL_Libretro_SetVFS(lr, NULL);
+    SDL_Libretro_SetVolume(lr, 1.0f);
+    SDL_Libretro_SetSpeed(lr, 1.0f);
+    SDL_Libretro_SetUsername(lr, "SDL_Libretro");
 
     // Keyboard Mappings
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]       = SDL_SCANCODE_Z;
@@ -70,6 +69,8 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
         }
     }
 
+
+    SDL_Libretro_FreeCoreLibrary(lr);
     SDL_Libretro_FreeMessages(lr);
     SDL_Libretro_CloseConfig(lr);
 
@@ -335,6 +336,39 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
 }
 
 /**
+ * Given a game path, load the core that supported its file extension.
+ *
+ * @return True if the core was successfully loaded.
+ */
+static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath) {
+    if (!lr || !gamePath) return false;
+
+    // The game's file extension.
+    const char* dot = SDL_strrchr(gamePath, '.');
+    const char* extension = dot ? dot + 1 : "";
+    if (extension[0] == '\0') {
+        SDL_SetError("[SDL_Libretro] Game path '%s' has no file extension", gamePath);
+        return false;
+    }
+
+    // Try to load cores that match the extension.
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        // Check if the extension is in the lr->coreLibrary[i] list.
+        if (!SDL_Libretro_ExtensionInList(extension, lr->coreLibrary[i].supported_extensions)) {
+            continue;
+        }
+
+        // A candidate core claims this extension, try loading it.
+        if (SDL_Libretro_LoadCore(lr, lr->coreLibrary[i].path)) {
+            return true;
+        }
+    }
+
+    SDL_SetError("[SDL_Libretro] No core found for extension '%s'", extension);
+    return false;
+}
+
+/**
  * Loads a game at the given path.
  *
  * A renderer is not required to load a game. If none has been set via
@@ -346,20 +380,23 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
  * @see SDL_Libretro_SetRenderer()
  */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
-    if (!lr || !lr->core.loaded) {
-        SDL_SetError("[SDL_Libretro] Core not loaded");
-        return false;
+    if (!lr) return false;
+
+    // Switching content: unload any game that's already running first.
+    SDL_Libretro_UnloadGame(lr);
+
+    // Try to find what can be loaded with it.
+    if (!SDL_Libretro_IsCoreReady(lr)) {
+        if (!SDL_Libretro_LoadCoreForGame(lr, gamePath)) {
+            SDL_SetError("[SDL_Libretro] Core not loaded");
+            return false;
+        }
     }
 
     // A core that didn't opt into no-content (SET_SUPPORT_NO_GAME) can't run without a game.
     if (!gamePath && !lr->core.supportNoGame) {
         SDL_SetError("[SDL_Libretro] This core requires content");
         return false;
-    }
-
-    // Switching content: unload any game that's already running first.
-    if (lr->core.gameLoaded) {
-        SDL_Libretro_UnloadGame(lr);
     }
 
     struct retro_game_info gameInfo = {0};
@@ -645,12 +682,99 @@ bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
 
 // Directory
 
+static void SDL_Libretro_FreeCoreLibrary(SDL_Libretro* lr) {
+    if (lr->coreLibrary) {
+        for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+            SDL_free(lr->coreLibrary[i].corename);
+            SDL_free(lr->coreLibrary[i].supported_extensions);
+            SDL_free(lr->coreLibrary[i].path);
+        }
+        SDL_free(lr->coreLibrary);
+        lr->coreLibrary = NULL;
+    }
+    lr->coreLibraryCount = 0;
+}
+
+// The file extension for the cores on this platform
+#if defined(SDL_PLATFORM_WINDOWS)
+#define SDL_LIBRETRO_CORE_EXTENSION ".dll"
+#elif defined(SDL_PLATFORM_APPLE)
+#define SDL_LIBRETRO_CORE_EXTENSION ".dylib"
+#elif defined(SDL_PLATFORM_EMSCRIPTEN)
+#define SDL_LIBRETRO_CORE_EXTENSION ".wasm"
+#else
+#define SDL_LIBRETRO_CORE_EXTENSION ".so"
+#endif
+
+static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void *userdata, const char *dirname, const char *fname) {
+    SDL_Libretro* lr = (SDL_Libretro*)userdata;
+
+    // Find all .info files in the core directory.
+    const char* dot = SDL_strrchr(fname, '.');
+    if (!dot || SDL_strcasecmp(dot, ".info") != 0) {
+        return SDL_ENUM_CONTINUE;
+    }
+
+    // Get the path.
+    char infoPath[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(infoPath, sizeof(infoPath), "%s%s", dirname, fname);
+
+    // Load the .ini file.
+    SDL_ini* ini = INI_Load(infoPath);
+    if (!ini) {
+        return SDL_ENUM_CONTINUE;
+    }
+
+    // Make sure it's a valid info file.
+    const char* corename = INI_GetString(ini, NULL, "corename", NULL);
+    if (!corename) {
+        INI_Destroy(ini);
+        return SDL_ENUM_CONTINUE;
+    }
+
+    // Grow the core library by one entry.
+    SDL_Libretro_CoreInfo* grown = (SDL_Libretro_CoreInfo*)SDL_realloc(
+        lr->coreLibrary, (lr->coreLibraryCount + 1) * sizeof(SDL_Libretro_CoreInfo));
+    if (!grown) {
+        INI_Destroy(ini);
+        return SDL_ENUM_CONTINUE;
+    }
+    lr->coreLibrary = grown;
+
+    // Build the SDL_Libretro_CoreInfo structure.
+    SDL_Libretro_CoreInfo* entry = &lr->coreLibrary[lr->coreLibraryCount];
+    entry->corename = SDL_strdup(corename);
+
+    const char* extensions = INI_GetString(ini, NULL, "supported_extensions", NULL);
+    entry->supported_extensions = extensions ? SDL_strdup(extensions) : NULL;
+    entry->needs_fullpath = INI_GetBoolean(ini, NULL, "needs_fullpath", false);
+    entry->supports_no_game = INI_GetBoolean(ini, NULL, "supports_no_game", false);
+
+    // Build the path for the core.
+    char base[SDL_LIBRETRO_MAX_PATH];
+    size_t baseLen = (size_t)(dot - fname);
+    SDL_strlcpy(base, fname, (baseLen < sizeof(base)) ? baseLen + 1 : sizeof(base));
+    char corePath[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(corePath, sizeof(corePath), "%s%s%s", dirname, base, SDL_LIBRETRO_CORE_EXTENSION);
+    entry->path = SDL_strdup(corePath);
+
+    lr->coreLibraryCount++;
+
+    INI_Destroy(ini);
+    return SDL_ENUM_CONTINUE;
+}
+
 /**
  * Sets the associated libretro core directory, where the default set of cores will be loaded from.
  */
 bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
-    SDL_strlcpy(lr->coreDirectory, path ? path : "", sizeof(lr->coreDirectory));
+    const char* newPath = path ? path : "";
+    SDL_strlcpy(lr->coreDirectory, newPath, sizeof(lr->coreDirectory));
+
+    // When the core directory changed, rebuild the core library.
+    SDL_Libretro_FreeCoreLibrary(lr);
+    SDL_EnumerateDirectory(lr->coreDirectory, &SDL_Libretro_SetCoreDirectory_Iterator, (void*)lr);
     return true;
 }
 

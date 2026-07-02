@@ -11,7 +11,7 @@ static int SDLCALL test_CreateDestroy(void *arg) {
     // Defaults
     SDLTest_AssertCheck(lr->volume == 1.0f, "Default volume is 1.0");
     SDLTest_AssertCheck(lr->speed == 1.0f, "Default speed is 1.0");
-    SDLTest_AssertCheck(SDL_strcmp(lr->username, "SDL_libretro") == 0, "Default username is SDL_libretro");
+    SDLTest_AssertCheck(SDL_strcmp(lr->username, "SDL_Libretro") == 0, "Default username is SDL_Libretro");
 
     // Default Keyboard Mappings
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_Z, "B mapped to Z");

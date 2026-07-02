@@ -7,40 +7,6 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CONFIG_IMPL_ONCE)
 #define SDL_LIBRETRO_CONFIG_IMPL_ONCE
 
-#ifndef SDL_LIBRETRO_NO_CONFIG
-#define SDL_INI_IMPLEMENTATION
-#include "SDL_ini.h"
-#endif
-
-#ifdef SDL_LIBRETRO_NO_CONFIG
-
-bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
-    (void)lr; (void)file;
-    return false;
-}
-
-bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app) {
-    (void)lr; (void)org; (void)app;
-    return false;
-}
-
-static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr) {
-    (void)lr;
-    return false;
-}
-
-static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
-    (void)lr;
-    return false;
-}
-
-static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
-    (void)lr;
-    return false;
-}
-
-#else /* !SDL_LIBRETRO_NO_CONFIG */
-
 static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const char* name) {
     SDL_strlcpy(dst, name, dstSize);
     for (char* p = dst; *p; ++p) {
@@ -190,7 +156,5 @@ static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr) {
     lr->ini = NULL;
     return ok;
 }
-
-#endif /* SDL_LIBRETRO_NO_CONFIG */
 
 #endif

@@ -1,7 +1,10 @@
 /*
  * SDL_libretro basic example
  *
- * Usage: SDL_libretro_basic <core.so> [game.rom]
+ * Usage: SDL_libretro_basic [core.so] [game.rom]
+ *
+ * Both arguments are optional. With no game loaded the window still runs and
+ * prompts you to drag & drop a game onto it.
  */
 
 #include <SDL3/SDL.h>
@@ -11,12 +14,7 @@
 #include "SDL_libretro.h"
 
 int main(int argc, char* argv[]) {
-    if (argc < 2) {
-        SDL_Log("Usage: %s <core> [game]", argv[0]);
-        return 1;
-    }
-
-    const char* corePath = argv[1];
+    const char* corePath = argc > 1 ? argv[1] : NULL;
     const char* gamePath = argc > 2 ? argv[2] : NULL;
 
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS);
@@ -27,24 +25,14 @@ int main(int argc, char* argv[]) {
 
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetCoreDirectory(lr, "cores");
 
-    // Load the core.
-    if (!SDL_Libretro_LoadCore(lr, corePath)) {
+    if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
-        SDL_Libretro_Destroy(lr);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
     }
 
-    // Load the game.
-    if (!SDL_Libretro_LoadGame(lr, gamePath)) {
-        SDL_Libretro_Destroy(lr);
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
+    if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
+        SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 
     bool running = true;
@@ -105,6 +93,12 @@ int main(int argc, char* argv[]) {
                 SDL_Libretro_LoadState(lr, "save.sav");
             }
 
+            // Drag and drop a file to unload the current core and load the dropped game.
+            else if (event.type == SDL_EVENT_DROP_FILE) {
+                SDL_Libretro_UnloadCore(lr);
+                SDL_Libretro_LoadGame(lr, event.drop.data);
+            }
+
             // Pass all events to SDL_Libretro.
             SDL_Libretro_HandleEvent(lr, &event);
         }
@@ -118,6 +112,12 @@ int main(int argc, char* argv[]) {
 
         // Draw the libretro context
         SDL_Libretro_Render(renderer, lr, NULL);
+
+        // Tell them they can drop a file
+        if (!SDL_Libretro_IsGameReady(lr)) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderDebugText(renderer, 0, 0, "Drag & Drop a game to play");
+        }
 
         // Draw the current OSD message, if there is one.
         const char* message = SDL_Libretro_GetMessage(lr);

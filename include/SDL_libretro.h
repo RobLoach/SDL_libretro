@@ -267,7 +267,8 @@ bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
 
 #include "libretro.h"
 
-#ifndef SDL_LIBRETRO_NO_CONFIG
+#ifndef SDL_LIBRETRO_NO_INI_IMPLEMENTATION
+#define SDL_INI_IMPLEMENTATION
 #include "SDL_ini.h"
 #endif
 
@@ -276,6 +277,14 @@ bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
 #define SDL_LIBRETRO_RUMBLE_PORTS 4
 #define SDL_LIBRETRO_SENSOR_PORTS 4
 #define SDL_LIBRETRO_OSD_INITIAL_CAPACITY 8
+
+typedef struct SDL_Libretro_CoreInfo {
+    char* corename;
+    char* supported_extensions;
+    char* path;
+    bool needs_fullpath;
+    bool supports_no_game;
+} SDL_Libretro_CoreInfo;
 
 typedef struct SDL_LibretroOsdEntry {
     char* msg;
@@ -503,10 +512,13 @@ struct SDL_Libretro {
 
     void* userData; /** Generic data available to the implementation. */
 
-#ifndef SDL_LIBRETRO_NO_CONFIG
+    // Configuration
     char* iniFile;
     SDL_ini* ini;
-#endif
+
+    // Core Library
+    SDL_Libretro_CoreInfo* coreLibrary;
+    unsigned coreLibraryCount;
 };
 
 /**
@@ -574,6 +586,10 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
 static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
+
+// Directory
+
+static void SDL_Libretro_FreeCoreLibrary(SDL_Libretro* lr);
 
 // Config
 

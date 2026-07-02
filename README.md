@@ -72,7 +72,6 @@ See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example.
 
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
 
-- `SDL_LIBRETRO_NO_CONFIG`: Disables the config system with [SDL_ini](https://github.com/RobLoach/SDL_ini)
 - `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
 
 ## Dependencies
