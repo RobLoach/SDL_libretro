@@ -23,18 +23,15 @@ SDL_Libretro* SDL_Libretro_Create(void) {
         return NULL;
     }
 
-    // Set the initial SDL3 VFS callbacks.
+    // Initial state
+    SDL_zero(lr);
     SDL_Libretro_SetVFS(lr, NULL);
-
     lr->volume = 1.0f;
     lr->speed = 1.0f;
     lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
     SDL_strlcpy(lr->username, "SDL_libretro", sizeof(lr->username));
-    SDL_strlcpy(lr->coreDirectory, "cores", sizeof(lr->coreDirectory));
-    SDL_strlcpy(lr->saveDirectory, "saves", sizeof(lr->saveDirectory));
-    SDL_strlcpy(lr->systemDirectory, "system", sizeof(lr->systemDirectory));
-    SDL_strlcpy(lr->coreAssetsDirectory, "assets", sizeof(lr->coreAssetsDirectory));
 
+    // Keyboard Mappings
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]       = SDL_SCANCODE_Z;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y]       = SDL_SCANCODE_A;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_SELECT]  = SDL_SCANCODE_RSHIFT;
