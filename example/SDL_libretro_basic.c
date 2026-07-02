@@ -1,10 +1,7 @@
 /*
- * SDL_libretro basic example
+ * SDL_libretro_basic: A simple implementation of using SDL_libretro.
  *
- * Usage: SDL_libretro_basic [core.so] [game.rom]
- *
- * Both arguments are optional. With no game loaded the window still runs and
- * prompts you to drag & drop a game onto it.
+ * Usage: SDL_libretro_basic <core.so> <game.rom>
  */
 
 #include <SDL3/SDL.h>
@@ -16,7 +13,7 @@
 int main(int argc, char* argv[]) {
     const char* corePath = argc > 1 ? argv[1] : NULL;
     const char* gamePath = argc > 2 ? argv[2] : NULL;
-    if (!gamePath) {
+    if (!corePath || !gamePath) {
         SDL_Log("Usage: SDL_libertro_basic <core> <game>");
         return 1;
     }

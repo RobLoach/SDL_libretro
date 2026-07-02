@@ -21,8 +21,7 @@
 
 #ifndef SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE
 /**
- * Fallback rate used when a core reports no audio sample rate (<= 0). The real
- * rate, if it arrives later via SET_SYSTEM_AV_INFO, triggers a reopen.
+ * Fallback rate used when a core reports no audio sample rate (<= 0).
  */
 #define SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE 48000
 #endif
@@ -180,7 +179,10 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr) {
     lr->core.audio_buffer_status.callback(active, occupancy, underrunLikely);
 }
 
-bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
+/**
+ * Initialize the audio for the given libretro context.
+ */
+static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) {
         SDL_SetError("[SDL_Libretro] No core loaded");
         return false;
@@ -236,7 +238,7 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     return true;
 }
 
-void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
+static void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
     if (!lr) return;
 
     // Audio Callback
@@ -250,6 +252,11 @@ void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
     }
 }
 
+/**
+ * Set the desired minimum audio latency for the audio stream.
+ *
+ * @see SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS
+ */
 void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs) {
     if (!lr) return;
     lr->core.minimumAudioLatencyMs = latencyMs;

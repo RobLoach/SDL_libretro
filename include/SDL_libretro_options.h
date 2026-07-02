@@ -218,7 +218,6 @@ void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
 }
 
 /**
- *
  * Retrieves whether the options have been changed since the last time they were checked.
  */
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr) {

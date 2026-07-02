@@ -911,8 +911,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
         case 43:
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
-        // Note: 44 (masked SET_HW_SHARED_CONTEXT) is omitted — it collides with
-        // RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS (44), handled above.
+        case 87:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
         case 46:
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE:

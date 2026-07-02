@@ -83,7 +83,29 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
 }
 
 /**
+ * Retrieve the core path based on its core name from the library.
+ *
+ * @param lr the libretro context.
+ * @param coreName the name of the core to retrieve the path for.
+ * @returns the path to the core, or NULL if it wasn't found or the coreName is a path.
+ */
+static const char* SDL_Libretro_GetCorePathFromName(const SDL_Libretro* lr, const char* coreName) {
+    if (!lr || !coreName || !lr->coreLibrary || SDL_strrchr(coreName, '.') != NULL) {
+        return NULL;
+    }
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        if (lr->coreLibrary[i].corename && SDL_strcasecmp(lr->coreLibrary[i].corename, coreName) == 0) {
+            return lr->coreLibrary[i].path;
+        }
+    }
+    return NULL;
+}
+
+/**
  * Loads a libretro core.
+ *
+ * @param lr the libretro context.
+ * @param corePath Either the path to the core to load, or a name of the core within the core directory.
  *
  * @see SDL_Libretro_Create()
  * @see SDL_Libretro_UnloadCore()
@@ -99,12 +121,16 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
         return false;
     }
 
-    if (lr->core.loaded) {
-        SDL_Libretro_UnloadCore(lr);
+    // Make sure the old core is unloaded.
+    SDL_Libretro_UnloadCore(lr);
+
+    // If the corePath is just a name, see if it lives in the loaded coreLibrary.
+    const char* path = SDL_Libretro_GetCorePathFromName(lr, corePath);
+    if (path) {
+        corePath = path;
     }
 
-    SDL_memset(&lr->core, 0, sizeof(lr->core));
-
+    // Load the core handle.
     lr->core.symbols.handle = SDL_LoadObject(corePath);
     if (!lr->core.symbols.handle) {
         SDL_SetError("[SDL_Libretro] Failed to load core '%s': %s", corePath, SDL_GetError());
@@ -150,8 +176,10 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
 
     SDL_Libretro_active = lr;
 
+    // Tell the core that we should call our own enviornment callback.
     lr->core.symbols.retro_set_environment(SDL_Libretro_EnvironmentCallback);
 
+    // Grab the initial system info from the core.
     struct retro_system_info sysinfo = {0};
     lr->core.symbols.retro_get_system_info(&sysinfo);
     SDL_strlcpy(lr->core.libraryName, sysinfo.library_name ? sysinfo.library_name : "", sizeof(lr->core.libraryName));
@@ -165,6 +193,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     // Config
     SDL_Libretro_LoadCoreConfig(lr);
 
+    // Initialize the core
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
@@ -208,7 +237,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
         SDL_Libretro_active = NULL;
     }
 
-    SDL_Log("[SDL_Libretro] Core unloaded");
+    SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core unloaded");
 }
 
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
@@ -261,12 +290,17 @@ size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, c
     if (!dst || dstSize == 0) return 0;
     dst[0] = '\0';
     if (!lr || lr->core.contentName[0] == '\0') return 0;
-    if (!extension) extension = "";
+
+    if (!extension) {
+        extension = "";
+    }
+
     if (lr->saveDirectory[0] != '\0') {
         SDL_snprintf(dst, dstSize, "%s/%s%s", lr->saveDirectory, lr->core.contentName, extension);
     } else {
         SDL_snprintf(dst, dstSize, "%s%s", lr->core.contentName, extension);
     }
+
     return SDL_strlen(dst);
 }
 
@@ -903,6 +937,9 @@ void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level) {
     }
 }
 
+/**
+ * Retrieve the threshold for logs that will be posted.
+ */
 SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
     if (!lr) return SDL_LOG_PRIORITY_INVALID;
     switch (lr->logLevel) {

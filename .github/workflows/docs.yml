@@ -22,34 +22,44 @@ jobs:
         with:
           submodules: true
 
+      - name: Setup SDL
+        id: sdl
+        uses: libsdl-org/setup-sdl@a966470e7d9b6a5c93eec3f08d5dac370325c860
+        with:
+          version: 3.4.4
+          sdl-test: false
+          build-type: Release
+          install-linux-dependencies: true
+          cmake-arguments: -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TESTS=OFF
+
       - name: Install Doxygen
         run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
-
-      - name: Generate Doxygen HTML
-        run: doxygen .Doxyfile
 
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
 
-      - name: Cache SDL3 (Emscripten)
-        id: sdl3-cache
-        uses: actions/cache@v4
-        with:
-          path: sdl3-install
-          key: sdl3-emscripten-3.4.4
+      - name: Generate Doxygen HTML
+        run: doxygen .Doxyfile
 
-      - name: Build SDL3 with Emscripten
-        if: steps.sdl3-cache.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch release-3.4.4 https://github.com/libsdl-org/SDL.git sdl3-src
-          emcmake cmake -B sdl3-build -S sdl3-src \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DSDL_SHARED=OFF \
-            -DSDL_STATIC=ON \
-            -DSDL_TESTS=OFF \
-            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
-          cmake --build sdl3-build -j
-          cmake --install sdl3-build
+    #   - name: Cache SDL3 (Emscripten)
+    #     id: sdl3-cache
+    #     uses: actions/cache@v4
+    #     with:
+    #       path: sdl3-install
+    #       key: sdl3-emscripten-3.4.4
+
+    #   - name: Build SDL3 with Emscripten
+    #     if: steps.sdl3-cache.outputs.cache-hit != 'true'
+    #     run: |
+    #       git clone --depth 1 --branch release-3.4.4 https://github.com/libsdl-org/SDL.git sdl3-src
+    #       emcmake cmake -B sdl3-build -S sdl3-src \
+    #         -DCMAKE_BUILD_TYPE=Release \
+    #         -DSDL_SHARED=OFF \
+    #         -DSDL_STATIC=ON \
+    #         -DSDL_TESTS=OFF \
+    #         -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
+    #       cmake --build sdl3-build -j
+    #       cmake --install sdl3-build
 
       - name: Build Emscripten demo
         run: |

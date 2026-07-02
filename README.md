@@ -1,19 +1,18 @@
 # SDL_libretro
 
-An [SDL3](https://libsdl.org/)-based [libretro](https://www.libretro.com/) frontend library.
+A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libsdl.org/).
 
 ## Features
 
 - Header-only C99 library
-- Context-based design (`SDL_Libretro*`)
-- Audio via SDL_AudioStream with dynamic rate control
-- Gamepad, keyboard, mouse, lightgun, and pointer input
+- Audio via `SDL_AudioStream` with dynamic rate control
+- Input with gamepad, keyboard, mouse, lightgun, or pointer
 - Save states and SRAM
 - Memory access and memory-map descriptors (cheats, debuggers, RAM watching)
 - Core options
-- Rewind with delta compression
 - Fast-forward and slow-motion
-- Rumble feedback
+- Rewind with delta compression
+- Rumble
 - On-screen display messages
 
 ## Build
@@ -66,7 +65,9 @@ while (!SDL_Libretro_ShouldQuit(lr)) {
 SDL_Libretro_Destroy(lr);
 ```
 
-See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example, or try the [live web demo](https://robloach.github.io/SDL_libretro/demo/). Full API docs: [robloach.github.io/SDL_libretro](https://robloach.github.io/SDL_libretro/).
+- [API Documentation](https://robloach.github.io/SDL_libretro/)
+- [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
+- [Demo](https://robloach.github.io/SDL_libretro/demo/)
 
 ## Configuration
 

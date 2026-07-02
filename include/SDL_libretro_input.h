@@ -478,6 +478,9 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
     }
 }
 
+/**
+ * Call this function within the SDL_PollEvent() loop to ensure libretro knows of important events.
+ */
 void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
     if (!lr || !event) return;
 
@@ -575,7 +578,7 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
  *
  * @param lr Pointer to an initialized SDL_Libretro instance. Must not be NULL.
  *
- * @see SDL_Libretro_GetInputDescriptor
+ * @see SDL_Libretro_GetInputDescriptor()
  */
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
     return (lr && lr->core.loaded) ? lr->core.inputDescriptorCount : 0;

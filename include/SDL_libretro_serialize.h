@@ -54,6 +54,9 @@ size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
     return lr->core.symbols.retro_serialize_size();
 }
 
+/**
+ * Save the current libretro state to the given SDL_IOStream.
+ */
 bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
     if (!lr || !lr->core.gameLoaded || !dst) {
@@ -76,6 +79,9 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
     return ok;
 }
 
+/**
+ * Saves the current libretro state to a file.
+ */
 bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
     if (!lr || !lr->core.gameLoaded || !file) {
         SDL_SetError("[SDL_Libretro] Invalid SaveState arguments");
@@ -103,6 +109,9 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
     return ok;
 }
 
+/**
+ * Loads the libretro state from the given file.
+ */
 bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
     if (!lr || !lr->core.gameLoaded || !file) {
         SDL_SetError("[SDL_Libretro] Invalid LoadState arguments");
@@ -440,6 +449,9 @@ bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio)
     return SDL_Libretro_SaveMemory_IO(lr, RETRO_MEMORY_SAVE_RAM, dst, closeio);
 }
 
+/**
+ * Saves the current SRAM to the given file.
+ */
 bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file) {
     return SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_SAVE_RAM, file);
 }
@@ -448,6 +460,9 @@ bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio)
     return SDL_Libretro_LoadMemory_IO(lr, RETRO_MEMORY_SAVE_RAM, src, closeio);
 }
 
+/**
+ * Loads the current SRAM to the given file.
+ */
 bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
     return SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_SAVE_RAM, file);
 }
@@ -985,7 +1000,7 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
  * @param lr the libretro context.
  * @returns true if a frame was rewound, false if rewind is unavailable or the buffer is empty.
  */
-bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
+static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded || !lr->rewindEnabled) {
         SDL_SetError("[SDL_Libretro] Rewind is not enabled");
         return false;

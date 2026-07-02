@@ -141,7 +141,7 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
 }
 
 /**
- * Set the renderer the context draws into.
+ * Set the renderer the libretro context draws into.
  *
  * If a game is already loaded, setting the renderer builds the video texture immediately.
  *
@@ -220,36 +220,38 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
 static void SDL_Libretro_FitRect(const SDL_Libretro* lr, SDL_FRect* rect, bool rotated) {
     SDL_FRect avail = *rect;
 
-    // Content aspect ratio, falling back to the frame dimensions.
-    float srcAspect = lr->core.aspectRatio;
-    if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
-        srcAspect = (float)lr->core.width / (float)lr->core.height;
-    }
-
-    // Letterbox to the effective aspect ratio within the available area.
-    float aspect = (rotated && srcAspect > 0.0f) ? 1.0f / srcAspect : srcAspect;
-    if (aspect > 0.0f) {
-        if (aspect > avail.w / avail.h) {
-            rect->h = avail.w / aspect;
-            rect->y = avail.y + (avail.h - rect->h) * 0.5f;
-        } else {
-            rect->w = avail.h * aspect;
-            rect->x = avail.x + (avail.w - rect->w) * 0.5f;
+    if (lr->fitMode != SDL_LIBRETRO_FIT_STRETCH) {
+        // Content aspect ratio, falling back to the frame dimensions.
+        float srcAspect = lr->core.aspectRatio;
+        if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
+            srcAspect = (float)lr->core.width / (float)lr->core.height;
         }
-    }
 
-    // Integer scaling: a quarter turn maps the core's width to the vertical
-    // extent and its height to the horizontal.
-    if (lr->scaleMode == SDL_LIBRETRO_SCALE_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
-        float coreW = rotated ? (float)lr->core.height : (float)lr->core.width;
-        float coreH = rotated ? (float)lr->core.width : (float)lr->core.height;
-        int scale = SDL_max(1, SDL_min((int)(rect->w / coreW), (int)(rect->h / coreH)));
-        float w = coreW * (float)scale;
-        float h = coreH * (float)scale;
-        rect->x += (rect->w - w) * 0.5f;
-        rect->y += (rect->h - h) * 0.5f;
-        rect->w = w;
-        rect->h = h;
+        // Letterbox to the effective aspect ratio within the available area.
+        float aspect = (rotated && srcAspect > 0.0f) ? 1.0f / srcAspect : srcAspect;
+        if (aspect > 0.0f) {
+            if (aspect > avail.w / avail.h) {
+                rect->h = avail.w / aspect;
+                rect->y = avail.y + (avail.h - rect->h) * 0.5f;
+            } else {
+                rect->w = avail.h * aspect;
+                rect->x = avail.x + (avail.w - rect->w) * 0.5f;
+            }
+        }
+
+        // Integer scaling: a quarter turn maps the core's width to the vertical
+        // extent and its height to the horizontal.
+        if (lr->fitMode == SDL_LIBRETRO_FIT_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
+            float coreW = rotated ? (float)lr->core.height : (float)lr->core.width;
+            float coreH = rotated ? (float)lr->core.width : (float)lr->core.height;
+            int scale = SDL_max(1, SDL_min((int)(rect->w / coreW), (int)(rect->h / coreH)));
+            float w = coreW * (float)scale;
+            float h = coreH * (float)scale;
+            rect->x += (rect->w - w) * 0.5f;
+            rect->y += (rect->h - h) * 0.5f;
+            rect->w = w;
+            rect->h = h;
+        }
     }
 }
 
@@ -303,11 +305,17 @@ bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRe
     return SDL_RenderTextureRotated(renderer, lr->core.texture, NULL, &lr->core.renderDstRect, angle, NULL, SDL_FLIP_NONE);
 }
 
+/**
+ * Gets the width and heigh tof the given libretro context.
+ */
 void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h) {
     if (w) *w = lr ? (int)lr->core.width : 0;
     if (h) *h = lr ? (int)lr->core.height : 0;
 }
 
+/**
+ * Gets the aspect ratio for the libretro context.
+ */
 float SDL_Libretro_GetAspectRatio(const SDL_Libretro* lr) {
     return lr ? lr->core.aspectRatio : 0.0f;
 }
@@ -320,12 +328,17 @@ int SDL_Libretro_GetRotation(const SDL_Libretro* lr) {
     return lr ? lr->core.rotation * 90 : 0;
 }
 
-void SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_LibretroScaleMode mode) {
-    if (lr) lr->scaleMode = mode;
+/**
+ * Sets the desired scale mode for the libretro context when it's displayed.
+ */
+void SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode) {
+    if (lr && lr->fitMode != mode) {
+        lr->fitMode = mode;
+    }
 }
 
-SDL_LibretroScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr) {
-    return lr ? lr->scaleMode : SDL_LIBRETRO_SCALE_ASPECT;
+SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr) {
+    return lr ? lr->fitMode : SDL_LIBRETRO_FIT_ASPECT;
 }
 
 #endif /* SDL_LIBRETRO_VIDEO_IMPL_ONCE */

@@ -83,6 +83,9 @@ static void SDL_Libretro_FreeMessages(SDL_Libretro* lr) {
     lr->osdQueueCapacity = 0;
 }
 
+/**
+ * Add a message to be displayed within the libretro context.
+ */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
     if (!lr) return;
     if (!msg || msg[0] == '\0') {
@@ -95,6 +98,9 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
     SDL_Libretro_OsdPush(lr, msg, duration, 0, RETRO_MESSAGE_TYPE_NOTIFICATION, -1);
 }
 
+/**
+ * Gets the most relevent libretro message to display from the queue.
+ */
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
     if (!lr || lr->osdQueueCount == 0) return NULL;
     int top = SDL_Libretro_OsdFindTop(lr);

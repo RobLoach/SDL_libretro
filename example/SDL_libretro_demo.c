@@ -1,14 +1,7 @@
 /*
- * SDL_libretro demo
+ * SDL_libretro_demo: A demonstration of what SDL_libretro can do.
  *
  * Usage: SDL_libretro_demo [core.so] [game.rom]
- *
- * Both arguments are optional. With no game loaded the window still runs and
- * prompts you to drag & drop a game onto it.
- *
- * Uses SDL3's callback-based main model (SDL_MAIN_USE_CALLBACKS) so SDL drives
- * the loop. This is friendlier to platforms like Emscripten where the app
- * cannot own a blocking while() loop.
  */
 
 #define SDL_MAIN_USE_CALLBACKS
@@ -25,8 +18,8 @@ typedef struct {
 } AppContext;
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
-    const char* corePath = argc > 1 ? argv[1] : NULL;
-    const char* gamePath = argc > 2 ? argv[2] : NULL;
+    const char* corePath = argc > 2 ? argv[1] : NULL;
+    const char* gamePath = argc > 2 ? argv[2] : (argc > 1 ? argv[1] : NULL);
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
         SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
@@ -43,6 +36,9 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetCoreDirectory(lr, "cores");
+    SDL_Libretro_SetSystemDirectory(lr, "system");
+    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
+    SDL_Libretro_InitConfigFile(lr, "SDL_libretro_demo.cfg");
 
     if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
@@ -113,12 +109,16 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
     // Save State
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F2) {
-        SDL_Libretro_SaveState(lr, "save.sav");
+        char savePath[4096];
+        SDL_Libretro_GetSavePath(lr, ".sav", savePath, sizeof(savePath));
+        SDL_Libretro_SaveState(lr, savePath);
     }
 
     // Load State
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F4) {
-        SDL_Libretro_LoadState(lr, "save.sav");
+        char savePath[4096];
+        SDL_Libretro_GetSavePath(lr, ".sav", savePath, sizeof(savePath));
+        SDL_Libretro_LoadState(lr, savePath);
     }
 
     // Drag and drop a file to unload the current core and load the dropped game.
@@ -154,15 +154,15 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 
     // Tell them they can drop a file
     if (!SDL_Libretro_IsGameReady(lr)) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_RenderDebugText(renderer, 0, 0, "Drag & Drop a game to play");
+        SDL_SetRenderDrawColor(renderer, 245, 224, 220, 255);
+        SDL_RenderDebugText(renderer, 19.0f, 19.0f, "Drag & Drop a game to play");
     }
 
     // Draw the current OSD message, if there is one.
     const char* message = SDL_Libretro_GetMessage(lr);
     if (message) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_RenderDebugText(renderer, 19.0f, 19.0f, message);
+        SDL_SetRenderDrawColor(renderer, 245, 224, 220, 255);
+        SDL_RenderDebugText(renderer, 19.0f, 27.0f, message);
     }
 
     SDL_RenderPresent(renderer);

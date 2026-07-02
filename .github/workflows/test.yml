@@ -19,10 +19,10 @@ jobs:
         uses: libsdl-org/setup-sdl@a966470e7d9b6a5c93eec3f08d5dac370325c860
         with:
           version: 3.4.4
-          sdl-test: true
+          sdl-test: false
           build-type: Release
           install-linux-dependencies: true
-          cmake-arguments: -DSDL_STATIC=ON -DSDL_SHARED=OFF
+          cmake-arguments: -DSDL_STATIC=ON -DSDL_SHARED=OFF -DSDL_TESTS=OFF
 
       - name: Configure
         run: >

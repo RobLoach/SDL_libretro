@@ -419,6 +419,7 @@ static int SDL_Libretro_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
 /**
  * Set the Virtual File System for libretro.
  *
+ * @param lr the libretro context.
  * @param vfs_interface A void* pointing to `struct retro_vfs_interface`. When set to NULL, will set the SDL3's File System.
  *
  * @see retro_vfs_interface
