@@ -44,7 +44,9 @@ jobs:
           git clone --depth 1 --branch release-3.4.4 https://github.com/libsdl-org/SDL.git sdl3-src
           emcmake cmake -B sdl3-build -S sdl3-src \
             -DCMAKE_BUILD_TYPE=Release \
-            -DSDL_SHARED=OFF -DSDL_STATIC=ON \
+            -DSDL_SHARED=OFF \
+            -DSDL_STATIC=ON \
+            -DSDL_TESTS=OFF \
             -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
           cmake --build sdl3-build -j
           cmake --install sdl3-build
