@@ -182,14 +182,14 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 
     // Tell them they can drop a file
     if (!SDL_Libretro_IsGameReady(lr)) {
-        SDL_SetRenderDrawColor(renderer, 245, 224, 220, 255);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderDebugText(renderer, 19.0f, 19.0f, "Drag & Drop a game to play");
     }
 
     // Draw the current OSD message, if there is one.
     const char* message = SDL_Libretro_GetMessage(lr);
     if (message) {
-        SDL_SetRenderDrawColor(renderer, 245, 224, 220, 255);
+        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
         SDL_RenderDebugText(renderer, 19.0f, 27.0f, message);
     }
 

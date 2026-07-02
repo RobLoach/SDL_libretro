@@ -56,12 +56,12 @@ if(SDL_LIBRETRO_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include)
     set_target_properties(test_core PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
 
-    add_executable(sdl_libretro_test test/sdl_libretro_test.c)
-    target_link_libraries(sdl_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
-    target_compile_definitions(sdl_libretro_test PRIVATE
+    add_executable(SDL_libretro_test test/SDL_libretro_test.c)
+    target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
+    target_compile_definitions(SDL_libretro_test PRIVATE
         TEST_CORE_PATH="$<TARGET_FILE:test_core>"
         TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt")
-    add_test(NAME sdl_libretro_test COMMAND sdl_libretro_test)
+    add_test(NAME SDL_libretro_test COMMAND SDL_libretro_test)
 endif()
 
 # Install (only when this is the top-level project)

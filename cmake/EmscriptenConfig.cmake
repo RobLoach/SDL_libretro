@@ -59,4 +59,5 @@ target_link_options(SDL_libretro_demo PRIVATE
     -sUSE_ZLIB=1
     -sEXPORTED_RUNTIME_METHODS=ccall,FS # Used for the Drag & Drop exposure in the JS handler
     "--post-js=${CMAKE_SOURCE_DIR}/example/SDL_libretro_demo_web.js"
+    "--shell-file=${CMAKE_SOURCE_DIR}/example/SDL_libretro_demo.html" # Minimal canvas-only page
     ${CORE_EXPORTS})
