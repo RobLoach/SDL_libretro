@@ -35,8 +35,8 @@ SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_strlcpy(lr->systemDirectory, "system", sizeof(lr->systemDirectory));
     SDL_strlcpy(lr->coreAssetsDirectory, "assets", sizeof(lr->coreAssetsDirectory));
 
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]      = SDL_SCANCODE_Z;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y]      = SDL_SCANCODE_A;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]       = SDL_SCANCODE_Z;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y]       = SDL_SCANCODE_A;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_SELECT]  = SDL_SCANCODE_RSHIFT;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START]   = SDL_SCANCODE_RETURN;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_UP]      = SDL_SCANCODE_UP;

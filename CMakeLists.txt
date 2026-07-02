@@ -64,10 +64,21 @@ endif()
 # Install (only when this is the top-level project)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     install(TARGETS SDL_libretro EXPORT SDL_libretroTargets)
-    install(FILES include/SDL_libretro.h DESTINATION include)
+    
     # Implementation fragments + the libretro API header are part of the
     # shipped header set (needed by the TU that defines the macro).
-    install(DIRECTORY include/ DESTINATION include
-        FILES_MATCHING PATTERN "SDL_libretro_*.h")
+    install(
+        DIRECTORY include/
+        DESTINATION include
+        FILES_MATCHING PATTERN "SDL_*.h"
+    )
     install(FILES vendor/libretro-common/include/libretro.h DESTINATION include)
+endif()
+
+if(EMSCRIPTEN)
+    if(NOT SDL_LIBRETRO_DOWNLOAD_CORES)
+        message(FATAL_ERROR "Emscripten builds require SDL_LIBRETRO_DOWNLOAD_CORES=ON: "
+            "cores must be downloaded so they can be preloaded into the virtual filesystem.")
+    endif()
+    include(EmscriptenConfig)
 endif()
