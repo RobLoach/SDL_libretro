@@ -527,6 +527,12 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: {
+            if (!data) return false;
+            *(unsigned*)data = 1;
+            return true;
+        }
+
         case 71:
         case RETRO_ENVIRONMENT_GET_THROTTLE_STATE: {
             if (!data) return false;
@@ -915,7 +921,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
         case 46:
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
             return false;
 
         default: {
