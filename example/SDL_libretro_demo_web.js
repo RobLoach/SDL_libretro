@@ -1,10 +1,5 @@
 /**
  * Drag & drop support for the Emscripten (web) build of SDL_libretro_demo.
- *
- * SDL_AppInit calls Module.installDemoDrop() with the app pointer, which is
- * captured in this closure and passed back to the C side on each drop, so no
- * global app state is needed. Dropped files are written into the Emscripten
- * filesystem (where the libretro core can read them) and handed to the demo.
  */
 Module.installDemoDrop = function (appPtr) {
     function loadDroppedFile(file) {
