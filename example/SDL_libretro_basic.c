@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
     }
 
     bool running = true;
-    while (running && !SDL_Libretro_IsShutdown(lr)) {
+    while (running && !SDL_Libretro_ShouldQuit(lr)) {
         // Check any events.
         SDL_Event event;
         while (SDL_PollEvent(&event)) {

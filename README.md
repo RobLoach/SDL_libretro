@@ -50,7 +50,7 @@ SDL_Libretro* lr = SDL_Libretro_Create();
 SDL_Libretro_LoadCore(lr, "core.so");
 SDL_Libretro_LoadGame(lr, "game.rom");
 
-while (!SDL_Libretro_IsShutdown(lr)) {
+while (!SDL_Libretro_ShouldQuit(lr)) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         SDL_Libretro_HandleEvent(lr, &event);
@@ -66,7 +66,7 @@ while (!SDL_Libretro_IsShutdown(lr)) {
 SDL_Libretro_Destroy(lr);
 ```
 
-See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example.
+See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example, or try the [live web demo](https://robloach.github.io/SDL_libretro/demo/). Full API docs: [robloach.github.io/SDL_libretro](https://robloach.github.io/SDL_libretro/).
 
 ## Configuration
 

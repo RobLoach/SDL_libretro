@@ -26,6 +26,9 @@ Consumers define `SDL_LIBRETRO_IMPLEMENTATION` in **exactly one** translation un
 - `include/SDL_libretro_env.h` — environment callback dispatch (the big switch)
 - `include/SDL_libretro_options.h` — core variables/options (dynamic arrays, not fixed-size)
 - `include/SDL_libretro_serialize.h` — save state, SRAM, cheats
+- `include/SDL_libretro_config.h` — INI-backed config persistence (built on vendored `SDL_ini.h`)
+- `include/SDL_libretro_messages.h` — OSD message queue (priority, duration, progress)
+- `include/SDL_libretro_vfs.h` — SDL3-backed VFS bridge for `RETRO_ENVIRONMENT_GET_VFS_INTERFACE`
 
 Each `include/*.h` fragment is guarded by `#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(<FILE>_IMPL_ONCE)` and is meant to be pulled in only by the umbrella header.
 

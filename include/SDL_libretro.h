@@ -38,6 +38,45 @@
 
 #include <SDL3/SDL.h>
 
+/**
+ * \defgroup SDL_Libretro SDL_Libretro
+ * @{
+ */
+
+/**
+ * The major version of SDL_Libretro.
+ *
+ * \see SDL_LIBRETRO_VERSION
+ * \see SDL_LIBRETRO_VERSION_ATLEAST
+ */
+#define SDL_LIBRETRO_MAJOR_VERSION 0
+
+/**
+ * The minor version of SDL_Libretro.
+ *
+ * \see SDL_LIBRETRO_VERSION
+ * \see SDL_LIBRETRO_VERSION_ATLEAST
+ */
+#define SDL_LIBRETRO_MINOR_VERSION 1
+
+/**
+ * The micro/patch version of SDL_Libretro.
+ *
+ * \see SDL_LIBRETRO_VERSION
+ * \see SDL_LIBRETRO_VERSION_ATLEAST
+ */
+#define SDL_LIBRETRO_MICRO_VERSION 0
+
+/**
+ * Retrieves an integer representation of the of the SDL_Libretro version.
+ */
+#define SDL_LIBRETRO_VERSION SDL_VERSIONNUM(SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION)
+
+/**
+ * Checks if SDL_Libretro is at least the given version.
+ */
+#define SDL_LIBRETRO_VERSION_ATLEAST(X, Y, Z) (SDL_LIBRETRO_VERSION >= SDL_VERSIONNUM(X, Y, Z))
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,6 +92,7 @@ typedef enum SDL_LibretroScaleMode {
 
 SDL_Libretro* SDL_Libretro_Create(void);
 void SDL_Libretro_Destroy(SDL_Libretro* lr);
+int SDL_Libretro_Version(void);
 
 // Directories
 
@@ -77,7 +117,7 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath);
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr);
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr);
-bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr);
+bool SDL_Libretro_ShouldQuit(const SDL_Libretro* lr);
 
 // Game
 
@@ -253,6 +293,10 @@ int SDL_Libretro_GetMessageType(SDL_Libretro* lr);
 unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr);
 bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
     const char** msg, int* progress, int* type);
+
+/**
+ * @}
+ */
 
 #ifdef __cplusplus
 }

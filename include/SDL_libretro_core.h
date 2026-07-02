@@ -16,6 +16,11 @@
     } \
 } while (0)
 
+/**
+ * Builds a libretro context.
+ *
+ * @see SDL_Libretro_LoadCore()
+ */
 SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro* lr = (SDL_Libretro*)SDL_calloc(1, sizeof(SDL_Libretro));
     if (!lr) {
@@ -79,6 +84,9 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
 
 /**
  * Loads a libretro core.
+ *
+ * @see SDL_Libretro_Create()
+ * @see SDL_Libretro_UnloadCore()
  */
 bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     if (!lr || !corePath) {
@@ -676,8 +684,17 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     }
 }
 
-bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
+/**
+ * Indicates whether or not the core has requested to shutdown.
+ *
+ * @see RETRO_ENVIRONMENT_SHUTDOWN
+ */
+bool SDL_Libretro_ShouldQuit(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
+}
+
+int SDL_Libretro_Version(void) {
+    return SDL_LIBRETRO_VERSION;
 }
 
 // Directory

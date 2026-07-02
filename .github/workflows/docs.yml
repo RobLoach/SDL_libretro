@@ -1,0 +1,81 @@
+name: Docs
+
+on:
+  #push:
+  #  branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install Doxygen
+        run: sudo apt-get update && sudo apt-get install -y doxygen graphviz
+
+      - name: Generate Doxygen HTML
+        run: doxygen .Doxyfile
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      - name: Cache SDL3 (Emscripten)
+        id: sdl3-cache
+        uses: actions/cache@v4
+        with:
+          path: sdl3-install
+          key: sdl3-emscripten-3.4.4
+
+      - name: Build SDL3 with Emscripten
+        if: steps.sdl3-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch release-3.4.4 https://github.com/libsdl-org/SDL.git sdl3-src
+          emcmake cmake -B sdl3-build -S sdl3-src \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_SHARED=OFF -DSDL_STATIC=ON \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl3-install
+          cmake --build sdl3-build -j
+          cmake --install sdl3-build
+
+      - name: Build Emscripten demo
+        run: |
+          emcmake cmake -B build-em \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DSDL_LIBRETRO_DOWNLOAD_CORES=ON \
+            -DSDL_LIBRETRO_BUILD_TESTS=OFF \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/sdl3-install
+          cmake --build build-em -j
+
+      - name: Assemble Pages site
+        run: |
+          mkdir -p docs/demo
+          cp build-em/SDL_libretro_basic.html docs/demo/index.html
+          cp build-em/SDL_libretro_basic.js docs/demo/
+          cp build-em/SDL_libretro_basic.wasm docs/demo/
+          cp build-em/SDL_libretro_basic.data docs/demo/
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
