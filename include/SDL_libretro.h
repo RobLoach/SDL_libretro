@@ -255,6 +255,8 @@ const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr);
 unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr);
+enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro* lr);
+void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context);
 
 // Utilities
 
@@ -392,6 +394,7 @@ typedef struct SDL_LibretroCoreData {
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel; /** @see SDL_Libretro_GetPerformanceLevel() */
     uint64_t serializationQuirks;
+    enum retro_savestate_context savestateContext;
     int rotation;
 
     // Video

@@ -492,6 +492,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 72:
+        case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT: {
+            if (!data) return false;
+            *(unsigned*)data = (unsigned)lr->core.savestateContext;
+            return true;
+        }
+
         case 25:
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE: {
             if (!data) return false;
