@@ -41,6 +41,9 @@ option(SDL_LIBRETRO_BUILD_EXAMPLES "Build example applications" ON)
 if(SDL_LIBRETRO_BUILD_EXAMPLES)
     add_executable(SDL_libretro_basic example/SDL_libretro_basic.c)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
+
+    add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
+    target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro)
 endif()
 
 # Tests

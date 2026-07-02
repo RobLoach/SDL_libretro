@@ -61,10 +61,10 @@ jobs:
       - name: Assemble Pages site
         run: |
           mkdir -p docs/demo
-          cp build-em/SDL_libretro_basic.html docs/demo/index.html
-          cp build-em/SDL_libretro_basic.js docs/demo/
-          cp build-em/SDL_libretro_basic.wasm docs/demo/
-          cp build-em/SDL_libretro_basic.data docs/demo/
+          cp build-em/SDL_libretro_demo.html docs/demo/index.html
+          cp build-em/SDL_libretro_demo.js docs/demo/
+          cp build-em/SDL_libretro_demo.wasm docs/demo/
+          cp build-em/SDL_libretro_demo.data docs/demo/
 
       - uses: actions/upload-pages-artifact@v3
         with:
