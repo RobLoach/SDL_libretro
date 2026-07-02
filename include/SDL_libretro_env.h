@@ -913,9 +913,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
         case 87:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
+        case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: {
+            if (!data) return false;
+            *(unsigned*)data = 1;
+            return true;
+        }
+
         case 46:
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION:
             return false;
 
         default: {
