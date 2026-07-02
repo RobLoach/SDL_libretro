@@ -15,18 +15,6 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Rumble
 - On-screen display messages
 
-## Build
-
-```sh
-git clone --recurse-submodules https://github.com/RobLoach/SDL_libretro.git
-cd SDL_libretro
-mkdir build && cd build
-cmake ..
-cmake --build .
-```
-
-SDL3 is fetched automatically via CMake FetchContent if not already installed on the system.
-
 ## Usage
 
 Define `SDL_LIBRETRO_IMPLEMENTATION` in exactly one `.c` file before including the header:
@@ -68,6 +56,27 @@ SDL_Libretro_Destroy(lr);
 - [API Documentation](https://robloach.github.io/SDL_libretro/)
 - [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
 - [Demo](https://robloach.github.io/SDL_libretro/demo/)
+
+## Build
+
+```sh
+git clone --recurse-submodules https://github.com/RobLoach/SDL_libretro.git
+cd SDL_libretro
+mkdir build && cd build
+cmake ..
+cmake --build .
+```
+
+SDL3 is fetched automatically via CMake FetchContent if not already installed on the system.
+
+### Emscripten
+
+With the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) activated, configure through `emcmake`:
+
+```sh
+emcmake cmake -B build-web
+cmake --build build-web
+```
 
 ## Configuration
 

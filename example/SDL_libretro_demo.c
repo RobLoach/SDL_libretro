@@ -11,11 +11,35 @@
 #define SDL_LIBRETRO_IMPLEMENTATION
 #include "SDL_libretro.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Libretro* lr;
 } AppContext;
+
+/**
+ * Called when dragging and dropping a game onto the window.
+ */
+static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
+    SDL_Libretro_UnloadCore(app->lr);
+    SDL_Libretro_LoadGame(app->lr, path);
+}
+
+#ifdef __EMSCRIPTEN__
+/**
+ * Called from SDL_libretro_demo_web.js to pass over to DemoLoadDroppedGame()
+ */
+EMSCRIPTEN_KEEPALIVE
+void SDL_Libretro_DemoDropFile(AppContext* app, const char* path) {
+    if (app && path) {
+        SDL_Libretro_DemoLoadDroppedGame(app, path);
+    }
+}
+#endif
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     const char* corePath = argc > 2 ? argv[1] : NULL;
@@ -56,6 +80,11 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     app->renderer = renderer;
     app->lr = lr;
     *appstate = app;
+
+#ifdef __EMSCRIPTEN__
+    // Hand the app pointer to the drag & drop bridge; it passes it back on drop.
+    EM_ASM({ Module.installDemoDrop($0); }, app);
+#endif
 
     return SDL_APP_CONTINUE;
 }
@@ -123,8 +152,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
     // Drag and drop a file to unload the current core and load the dropped game.
     else if (event->type == SDL_EVENT_DROP_FILE) {
-        SDL_Libretro_UnloadCore(lr);
-        SDL_Libretro_LoadGame(lr, event->drop.data);
+        SDL_Libretro_DemoLoadDroppedGame(app, event->drop.data);
     }
 
     // Pass all events to SDL_Libretro.
