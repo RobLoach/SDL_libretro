@@ -516,7 +516,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
-            if (!data) return false;
+            if (!data) return true;
             lr->core.fastforwardOverride = *(const struct retro_fastforwarding_override*)data;
             lr->core.fastforwardOverrideActive = lr->core.fastforwardOverride.fastforward;
             // Bypass SDL_Libretro_SetSpeed so the inhibit_toggle guard doesn't block the core's own request.
