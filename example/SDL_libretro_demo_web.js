@@ -1,27 +1,4 @@
 /**
- * Workaround for -sALLOW_MEMORY_GROWTH.
- *
- * TextDecoder.decode() throws on any view over a resizable ArrayBuffer,
- * which aborts callMain the first time Emscripten decodes a string, like
- * the window title.
- */
-(function () {
-    if (typeof TextDecoder === 'undefined') return;
-    var proto = TextDecoder.prototype;
-    var originalDecode = proto.decode;
-    proto.decode = function (input, options) {
-        if (input) {
-            if (ArrayBuffer.isView(input) && input.buffer && input.buffer.resizable) {
-                input = input.slice();
-            } else if (input instanceof ArrayBuffer && input.resizable) {
-                input = input.slice(0);
-            }
-        }
-        return originalDecode.call(this, input, options);
-    };
-})();
-
-/**
  * Drag & drop support for the Emscripten (web) build of SDL_libretro_demo.
  */
 Module.installDemoDrop = function (appPtr) {

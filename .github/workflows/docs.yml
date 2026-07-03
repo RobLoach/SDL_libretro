@@ -31,6 +31,7 @@ jobs:
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
+          version: 5.0.6
           actions-cache-folder: emsdk-cache
 
       - name: Cache SDL3 (Emscripten)
