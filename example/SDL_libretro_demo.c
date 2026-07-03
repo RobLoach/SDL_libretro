@@ -61,7 +61,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetCoreDirectory(lr, "cores");
     SDL_Libretro_SetSystemDirectory(lr, "system");
-    SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
+    //SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
     SDL_Libretro_InitConfigFile(lr, "SDL_libretro_demo.cfg");
 
     if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {

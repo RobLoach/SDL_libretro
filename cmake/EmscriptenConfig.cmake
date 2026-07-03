@@ -54,12 +54,21 @@ list(TRANSFORM CORE_EXPORTS PREPEND "-Wl,--export=")
 target_link_options(SDL_libretro_demo PRIVATE
     -sMAIN_MODULE=1 # Enables dynamic linking with dlopen()
     -sGL_ENABLE_GET_PROC_ADDRESS=1 # Allows cores to resolve GL at runtime
+
+    # Memory
+    #-sALLOW_MEMORY_GROWTH
+
     # Use a fixed 256MB heap instead of -sALLOW_MEMORY_GROWTH. A fixed
     # heap keeps the buffer non-resizable and is plenty for these cores.
     -sINITIAL_MEMORY=268435456
+
     # Avoid using ASYNCIFY since it breaks SDL's render loop
+
+    # zlib
     -sUSE_ZLIB=1
-    -sEXPORTED_RUNTIME_METHODS=ccall,FS # Used for the Drag & Drop exposure in the JS handler
+
+     # Used for the Drag & Drop exposure in the JS handler
+    -sEXPORTED_RUNTIME_METHODS=ccall,FS
     "--post-js=${CMAKE_SOURCE_DIR}/example/SDL_libretro_demo_web.js"
     "--shell-file=${CMAKE_SOURCE_DIR}/example/SDL_libretro_demo.html" # Minimal canvas-only page
     ${CORE_EXPORTS})
