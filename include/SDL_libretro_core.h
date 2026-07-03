@@ -991,6 +991,14 @@ unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr) {
     return lr ? lr->core.performanceLevel : 0;
 }
 
+enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro* lr) {
+    return lr ? lr->core.savestateContext : RETRO_SAVESTATE_CONTEXT_NORMAL;
+}
+
+void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context) {
+    if (lr) lr->core.savestateContext = context;
+}
+
 /**
  * Get the extension of the loaded content, as it appears in the path.
  *
