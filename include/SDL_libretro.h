@@ -152,6 +152,7 @@ void SDL_Libretro_SetVolume(SDL_Libretro* lr, float volume);
 float SDL_Libretro_GetVolume(const SDL_Libretro* lr);
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed);
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr);
+bool SDL_Libretro_IsFastforwardOverrideActive(const SDL_Libretro* lr);
 void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs);
 unsigned SDL_Libretro_GetAudioLatency(const SDL_Libretro* lr);
 double SDL_Libretro_GetSampleRate(const SDL_Libretro* lr);
@@ -403,6 +404,7 @@ typedef struct SDL_LibretroCoreData {
     bool loaded;     /** A core is currently loaded. */
     bool gameLoaded; /** A game is currently loaded into the core (content or no-content). */
     bool shutdown; /** Whether or not the core has requested to shutdown. */
+    float speed; /** The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */
     unsigned width, height;
     double fps;
     double sampleRate;
@@ -455,6 +457,10 @@ typedef struct SDL_LibretroCoreData {
     // Timing
     struct retro_frame_time_callback runloop_frame_time;
     retro_usec_t runloop_frame_time_last;
+
+    // Fast-forward override
+    struct retro_fastforwarding_override fastforwardOverride;
+    bool fastforwardOverrideActive;
 
     // Core Options
     SDL_LibretroOption* options; /** The options that have been set by the core. The strings are owned by the context. */
@@ -528,7 +534,6 @@ typedef struct SDL_LibretroRewindDelta {
 struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /** The audio volume. */
-    float speed; /** The speed that the libretro context is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. */
     SDL_LibretroFitMode fitMode;
     double speedAccumulator;
     Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */

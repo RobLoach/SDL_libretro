@@ -253,7 +253,7 @@ static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     lr->core.drcAdjustment = 1.0f;
     lr->core.drcEnabled = true;
     lr->core.drcDriftAvg = 0.0;
-    if (!SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->speed * lr->core.drcAdjustment)) {
+    if (!SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->core.speed * lr->core.drcAdjustment)) {
         SDL_SetError("[SDL_Libretro] Failed to set audio frequency: %s", SDL_GetError());
         SDL_DestroyAudioStream(lr->core.audioStream);
         lr->core.audioStream = NULL;
