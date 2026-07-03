@@ -338,11 +338,11 @@ static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr) {
             SDL_free((void*)lr->core.subsystems[i].desc);
             SDL_free((void*)lr->core.subsystems[i].ident);
             if (lr->core.subsystems[i].roms) {
-                for (unsigned r = 0; r < lr->core.subsystems[i].numRoms; r++) {
+                for (unsigned r = 0; r < lr->core.subsystems[i].romsCount; r++) {
                     SDL_free((void*)lr->core.subsystems[i].roms[r].desc);
                     SDL_free((void*)lr->core.subsystems[i].roms[r].validExtensions);
                     if (lr->core.subsystems[i].roms[r].memory) {
-                        for (unsigned m = 0; m < lr->core.subsystems[i].roms[r].numMemory; m++) {
+                        for (unsigned m = 0; m < lr->core.subsystems[i].roms[r].memoryCount; m++) {
                             SDL_free((void*)lr->core.subsystems[i].roms[r].memory[m].extension);
                         }
                         SDL_free(lr->core.subsystems[i].roms[r].memory);
@@ -638,6 +638,7 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const 
     // Find the subsystem info to determine per-ROM need_fullpath.
     const SDL_LibretroSubsystemInfo* subsys = SDL_Libretro_GetSubsystemById(lr, subsystemId);
 
+    // Build the game info with the given data.
     struct retro_game_info* gameInfos = (struct retro_game_info*)SDL_calloc(numPaths, sizeof(struct retro_game_info));
     void** fileBuffers = (void**)SDL_calloc(numPaths, sizeof(void*));
     if (!gameInfos || !fileBuffers) {
@@ -652,7 +653,7 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const 
         gameInfos[i].path = paths[i];
 
         bool needFullpath = lr->core.needFullpath;
-        if (subsys && i < subsys->numRoms) {
+        if (subsys && i < subsys->romsCount) {
             needFullpath = subsys->roms[i].needFullpath;
         }
 

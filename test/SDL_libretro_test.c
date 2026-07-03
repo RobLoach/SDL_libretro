@@ -543,21 +543,21 @@ static int SDLCALL test_Subsystem(void *arg) {
     if (sub) {
         SDLTest_AssertCheck(SDL_strcmp(sub->desc, "Super Game Boy") == 0, "Subsystem desc matches");
         SDLTest_AssertCheck(SDL_strcmp(sub->ident, "sgb") == 0, "Subsystem ident matches");
-        SDLTest_AssertCheck(sub->numRoms == 2, "Subsystem has 2 roms");
+        SDLTest_AssertCheck(sub->romsCount == 2, "Subsystem has 2 roms");
         SDLTest_AssertCheck(sub == SDL_Libretro_GetSubsystem(lr, 0), "ById and index agree");
 
         // First ROM carries a single memory descriptor (srm / 0x100).
         SDLTest_AssertCheck(sub->roms[0].required == true, "Rom 0 required");
         SDLTest_AssertCheck(sub->roms[0].needFullpath == false, "Rom 0 need_fullpath false");
-        SDLTest_AssertCheck(sub->roms[0].numMemory == 1, "Rom 0 has 1 memory region");
-        if (sub->roms[0].numMemory == 1) {
+        SDLTest_AssertCheck(sub->roms[0].memoryCount == 1, "Rom 0 has 1 memory region");
+        if (sub->roms[0].memoryCount == 1) {
             SDLTest_AssertCheck(SDL_strcmp(sub->roms[0].memory[0].extension, "srm") == 0, "Rom 0 memory extension srm");
             SDLTest_AssertCheck(sub->roms[0].memory[0].type == 0x100, "Rom 0 memory type 0x100");
         }
 
         // Second ROM has no memory descriptors.
         SDLTest_AssertCheck(sub->roms[1].needFullpath == true, "Rom 1 need_fullpath true");
-        SDLTest_AssertCheck(sub->roms[1].numMemory == 0, "Rom 1 has no memory regions");
+        SDLTest_AssertCheck(sub->roms[1].memoryCount == 0, "Rom 1 has no memory regions");
         SDLTest_AssertCheck(sub->roms[1].memory == NULL, "Rom 1 memory NULL");
     }
 

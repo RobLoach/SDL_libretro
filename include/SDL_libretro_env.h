@@ -618,7 +618,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                         lr->core.subsystems[i].desc = SDL_strdup(info[i].desc ? info[i].desc : "");
                         lr->core.subsystems[i].ident = SDL_strdup(info[i].ident ? info[i].ident : "");
                         lr->core.subsystems[i].id = info[i].id;
-                        lr->core.subsystems[i].numRoms = info[i].num_roms;
+                        lr->core.subsystems[i].romsCount = info[i].num_roms;
                         if (info[i].num_roms > 0 && info[i].roms) {
                             lr->core.subsystems[i].roms = (SDL_LibretroSubsystemRomInfo*)SDL_calloc(
                                 info[i].num_roms, sizeof(SDL_LibretroSubsystemRomInfo));
@@ -635,7 +635,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                                         lr->core.subsystems[i].roms[r].memory = (SDL_LibretroSubsystemMemoryInfo*)SDL_calloc(
                                             info[i].roms[r].num_memory, sizeof(SDL_LibretroSubsystemMemoryInfo));
                                         if (lr->core.subsystems[i].roms[r].memory) {
-                                            lr->core.subsystems[i].roms[r].numMemory = info[i].roms[r].num_memory;
+                                            lr->core.subsystems[i].roms[r].memoryCount = info[i].roms[r].num_memory;
                                             for (unsigned m = 0; m < info[i].roms[r].num_memory; m++) {
                                                 lr->core.subsystems[i].roms[r].memory[m].extension = SDL_strdup(
                                                     info[i].roms[r].memory[m].extension ? info[i].roms[r].memory[m].extension : "");

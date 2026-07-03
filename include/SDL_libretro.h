@@ -256,15 +256,15 @@ typedef struct SDL_LibretroSubsystemRomInfo {
     bool needFullpath;
     bool blockExtract;
     bool required;
-    SDL_LibretroSubsystemMemoryInfo* memory; /** Memory regions this ROM type uses; NULL when numMemory is 0. */
-    unsigned numMemory; /** The number of entries in memory. */
+    SDL_LibretroSubsystemMemoryInfo* memory; /** Memory regions this ROM type uses; NULL when memoryCount is 0. */
+    unsigned memoryCount; /** The number of entries in memory. */
 } SDL_LibretroSubsystemRomInfo;
 
 typedef struct SDL_LibretroSubsystemInfo {
     const char* desc;
     const char* ident;
     unsigned id;
-    unsigned numRoms;
+    unsigned romsCount;
     SDL_LibretroSubsystemRomInfo* roms;
 } SDL_LibretroSubsystemInfo;
 
