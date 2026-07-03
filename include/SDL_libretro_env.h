@@ -112,7 +112,7 @@ static void SDL_Libretro_PerfLog(void) {
 
 static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_RUMBLE_PORTS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_RUMBLE_PORTS) return false;
 
     float normalized = (float)strength / 65535.0f;
     if (effect == RETRO_RUMBLE_STRONG) {
@@ -121,7 +121,7 @@ static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect 
         lr->core.rumbleWeak[port] = normalized;
     }
 
-    if (port < 16 && lr->gamepads[port]) {
+    if (lr->gamepads[port]) {
         Uint16 lo = (Uint16)(lr->core.rumbleWeak[port] * 65535.0f);
         Uint16 hi = (Uint16)(lr->core.rumbleStrong[port] * 65535.0f);
         SDL_RumbleGamepad(lr->gamepads[port], lo, hi, 100);
@@ -258,12 +258,12 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             for (const struct retro_input_descriptor* d = desc; d->description; d++) count++;
             SDL_free(lr->core.inputDescriptors);
             lr->core.inputDescriptors = NULL;
-            lr->core.inputDescriptorCount = 0;
+            lr->core.inputDescriptorsCount = 0;
             if (count > 0) {
                 lr->core.inputDescriptors = (struct retro_input_descriptor*)SDL_malloc(count * sizeof(*desc));
                 if (lr->core.inputDescriptors) {
                     SDL_memcpy(lr->core.inputDescriptors, desc, count * sizeof(*desc));
-                    lr->core.inputDescriptorCount = count;
+                    lr->core.inputDescriptorsCount = count;
                 }
             }
             return true;
@@ -584,14 +584,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!info) return true;
             SDL_free(lr->core.controllerInfo);
             lr->core.controllerInfo = NULL;
-            lr->core.controllerPortCount = 0;
+            lr->core.controllerInfoCount = 0;
             unsigned count = 0;
             for (unsigned i = 0; info[i].types; i++) count++;
             if (count > 0) {
                 lr->core.controllerInfo = (struct retro_controller_info*)SDL_malloc(count * sizeof(*info));
                 if (lr->core.controllerInfo) {
                     SDL_memcpy(lr->core.controllerInfo, info, count * sizeof(*info));
-                    lr->core.controllerPortCount = count;
+                    lr->core.controllerInfoCount = count;
                 }
             }
             return true;

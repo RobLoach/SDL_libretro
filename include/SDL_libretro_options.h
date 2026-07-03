@@ -54,13 +54,22 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
         // Build the available values.
         if (count > 0) {
             slot->values = (SDL_LibretroOptionValue*)SDL_calloc(count, sizeof(SDL_LibretroOptionValue));
-            if (slot->values) {
-                slot->valuesCapacity = count;
-                for (unsigned v = 0; v < count; v++) {
-                    slot->values[v].value = SDL_Libretro_Strdup(values[v].value);
-                    slot->values[v].label = values[v].label ? SDL_Libretro_Strdup(values[v].label) : NULL;
-                    slot->valuesCount++;
-                }
+            if (!slot->values) {
+                // When out of memory, make sure to clear the rest of the slot.
+                SDL_free((void*)slot->key);
+                SDL_free((void*)slot->value);
+                SDL_free((void*)slot->defaultValue);
+                SDL_free((void*)slot->desc);
+                SDL_free((void*)slot->info);
+                SDL_free((void*)slot->category);
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Out of memory registering option '%s'", key);
+                return;
+            }
+            slot->valuesCapacity = count;
+            for (unsigned v = 0; v < count; v++) {
+                slot->values[v].value = SDL_Libretro_Strdup(values[v].value);
+                slot->values[v].label = values[v].label ? SDL_Libretro_Strdup(values[v].label) : NULL;
+                slot->valuesCount++;
             }
         }
     }
@@ -73,28 +82,28 @@ static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* ke
     if (!lr || !key || key[0] == '\0') return;
 
     // Check if already registered
-    for (unsigned i = 0; i < lr->core.optionCategoryCount; i++) {
+    for (unsigned i = 0; i < lr->core.optionCategoriesCount; i++) {
         if (lr->core.optionCategories[i].key && SDL_strcmp(lr->core.optionCategories[i].key, key) == 0) {
             return;
         }
     }
 
     // Grow array if needed
-    if (lr->core.optionCategoryCount >= lr->core.optionCategoryCapacity) {
-        unsigned newCap = lr->core.optionCategoryCapacity ? lr->core.optionCategoryCapacity * 2 : 8;
+    if (lr->core.optionCategoriesCount >= lr->core.optionCategoriesCapacity) {
+        unsigned newCap = lr->core.optionCategoriesCapacity ? lr->core.optionCategoriesCapacity * 2 : 8;
         SDL_LibretroCategory* newCats = (SDL_LibretroCategory*)SDL_realloc(lr->core.optionCategories, newCap * sizeof(SDL_LibretroCategory));
         if (!newCats) return;
         lr->core.optionCategories = newCats;
-        lr->core.optionCategoryCapacity = newCap;
+        lr->core.optionCategoriesCapacity = newCap;
     }
 
     // Set the category; strings are deep-copied and owned by the context.
-    SDL_LibretroCategory* cat = &lr->core.optionCategories[lr->core.optionCategoryCount];
+    SDL_LibretroCategory* cat = &lr->core.optionCategories[lr->core.optionCategoriesCount];
     cat->key = SDL_Libretro_Strdup(key);
     cat->desc = SDL_Libretro_Strdup(desc);
     cat->info = SDL_Libretro_Strdup(info);
 
-    lr->core.optionCategoryCount++;
+    lr->core.optionCategoriesCount++;
 }
 
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
@@ -124,7 +133,7 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
 
     // Categories
     if (lr->core.optionCategories) {
-        for (unsigned i = 0; i < lr->core.optionCategoryCount; i++) {
+        for (unsigned i = 0; i < lr->core.optionCategoriesCount; i++) {
             SDL_free((void*)lr->core.optionCategories[i].key);
             SDL_free((void*)lr->core.optionCategories[i].desc);
             SDL_free((void*)lr->core.optionCategories[i].info);
@@ -132,8 +141,8 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
         SDL_free(lr->core.optionCategories);
         lr->core.optionCategories = NULL;
     }
-    lr->core.optionCategoryCount = 0;
-    lr->core.optionCategoryCapacity = 0;
+    lr->core.optionCategoriesCount = 0;
+    lr->core.optionCategoriesCapacity = 0;
 }
 
 /**
@@ -187,8 +196,12 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
         }
     }
 
+    // Allocate before freeing so a failed allocation never leaves opt->value
+    // NULL (which GET_VARIABLE would then hand to the core).
+    char* dup = SDL_strdup(value);
+    if (!dup) return false;
     SDL_free((void*)opt->value);
-    opt->value = SDL_strdup(value);
+    opt->value = dup;
     lr->core.optionsDirty = true;
     return true;
 }
@@ -244,12 +257,17 @@ bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direct
 
 /**
  * Reset a core option to its default value.
+ *
+ * @param lr the libretro context.
+ * @param key the key to revert to the default value.
  */
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
     if (!opt) return false;
+    char* dupicateValue = SDL_Libretro_Strdup(opt->defaultValue);
+    if (!dupicateValue) return false;
     SDL_free((void*)opt->value);
-    opt->value = SDL_strdup(opt->defaultValue);
+    opt->value = dupicateValue;
     lr->core.optionsDirty = true;
     return true;
 }
@@ -261,8 +279,10 @@ void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
     if (!lr) return;
     for (unsigned i = 0; i < lr->core.optionCount; i++) {
         SDL_LibretroOption* opt = &lr->core.options[i];
+        char* dupicateValue = SDL_Libretro_Strdup(opt->defaultValue);
+        if (!dupicateValue) continue; // keep the previous value rather than nulling it
         SDL_free((void*)opt->value);
-        opt->value = SDL_strdup(opt->defaultValue);
+        opt->value = dupicateValue;
     }
     lr->core.optionsDirty = true;
 }
@@ -286,7 +306,7 @@ bool SDL_Libretro_UpdateOptionVisibility(SDL_Libretro* lr) {
  * Get the number of option categories registered by the core.
  */
 unsigned SDL_Libretro_GetCategoryCount(const SDL_Libretro* lr) {
-    return lr ? lr->core.optionCategoryCount : 0;
+    return lr ? lr->core.optionCategoriesCount : 0;
 }
 
 /**
@@ -294,7 +314,7 @@ unsigned SDL_Libretro_GetCategoryCount(const SDL_Libretro* lr) {
  */
 const SDL_LibretroCategory* SDL_Libretro_GetCategory(const SDL_Libretro* lr, const char* key) {
     if (!lr || !key) return NULL;
-    for (unsigned i = 0; i < lr->core.optionCategoryCount; i++) {
+    for (unsigned i = 0; i < lr->core.optionCategoriesCount; i++) {
         if (lr->core.optionCategories[i].key && SDL_strcmp(lr->core.optionCategories[i].key, key) == 0) {
             return &lr->core.optionCategories[i];
         }
@@ -306,7 +326,7 @@ const SDL_LibretroCategory* SDL_Libretro_GetCategory(const SDL_Libretro* lr, con
  * Retrieve an option category by index, or NULL if out of range.
  */
 const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* lr, unsigned index) {
-    if (!lr || index >= lr->core.optionCategoryCount) return NULL;
+    if (!lr || index >= lr->core.optionCategoriesCount) return NULL;
     return &lr->core.optionCategories[index];
 }
 
