@@ -47,6 +47,29 @@ function(download_nightly_cores BASE_URL EXT)
     download_cores(${URLS})
 endfunction()
 
+# Downloads pre-built wasm SIDE_MODULE cores.
+# https://github.com/konsumer/libretro-wasm-cores
+function(download_wasm_cores BASE_URL)
+    file(MAKE_DIRECTORY "${CORES_DIR}")
+    foreach(CORE IN LISTS CORES)
+        set(WASM_URL "${BASE_URL}/${CORE}_libretro.wasm")
+        set(WASM_DST "${CORES_DIR}/${CORE}_libretro.wasm")
+        if(NOT EXISTS "${WASM_DST}")
+            message(STATUS "Downloading wasm core: ${CORE}")
+            file(DOWNLOAD "${WASM_URL}" "${WASM_DST}"
+                STATUS DOWNLOAD_STATUS
+                SHOW_PROGRESS
+            )
+            list(GET DOWNLOAD_STATUS 0 STATUS_CODE)
+            list(GET DOWNLOAD_STATUS 1 STATUS_MSG)
+            if(NOT STATUS_CODE EQUAL 0)
+                message(WARNING "Failed to download ${CORE}: ${STATUS_MSG}")
+                file(REMOVE "${WASM_DST}")
+            endif()
+        endif()
+    endforeach()
+endfunction()
+
 set(CORE_INFO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-core-info")
 function(copy_core_info)
     file(MAKE_DIRECTORY "${CORES_DIR}")
@@ -62,7 +85,9 @@ function(copy_core_info)
     endforeach()
 endfunction()
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+if(EMSCRIPTEN)
+    download_wasm_cores("https://github.com/konsumer/libretro-wasm-cores/releases/download/nightly")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "aarch64")
         download_nightly_cores("https://buildbot.libretro.com/nightly/linux/aarch64/latest" ".so")
     elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")

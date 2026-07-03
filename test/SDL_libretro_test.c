@@ -10,8 +10,8 @@ static int SDLCALL test_CreateDestroy(void *arg) {
 
     // Defaults
     SDLTest_AssertCheck(lr->volume == 1.0f, "Default volume is 1.0");
-    SDLTest_AssertCheck(lr->speed == 1.0f, "Default speed is 1.0");
-    SDLTest_AssertCheck(SDL_strcmp(lr->username, "SDL_libretro") == 0, "Default username is SDL_libretro");
+    SDLTest_AssertCheck(lr->core.speed == 1.0f, "Default speed is 1.0");
+    SDLTest_AssertCheck(SDL_strcmp(lr->username, "SDL_Libretro") == 0, "Default username is SDL_Libretro");
 
     // Default Keyboard Mappings
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_Z, "B mapped to Z");
@@ -31,7 +31,7 @@ static int SDLCALL test_StateQueries(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == false, "IsCoreReady false on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "IsGameReady false on fresh context");
-    SDLTest_AssertCheck(SDL_Libretro_IsShutdown(lr) == false, "ShouldClose false on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(lr) == false, "ShouldClose false on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "GetTexture NULL on fresh context");
     SDL_Libretro_GetSize(lr, &w, &h);
     SDLTest_AssertCheck(w == 0 && h == 0, "GetSize returns 0x0, got %dx%d", w, h);
@@ -42,6 +42,7 @@ static int SDLCALL test_StateQueries(void *arg) {
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreVersion(lr), "") == 0, "GetCoreVersion empty on fresh context");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "") == 0, "GetValidExtensions empty on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 0, "GetStateSize 0 on fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(lr) == RETRO_SAVESTATE_CONTEXT_NORMAL, "GetSavestateContext NORMAL on fresh context");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 0, "GetOptionCount 0 on fresh context");
 
     SDL_Libretro_Destroy(lr);
@@ -53,7 +54,7 @@ static int SDLCALL test_NullSafety(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(NULL) == false, "IsCoreReady(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(NULL) == false, "IsGameReady(NULL) false");
-    SDLTest_AssertCheck(SDL_Libretro_IsShutdown(NULL) == false, "ShouldClose(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(NULL) == false, "ShouldClose(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(NULL) == NULL, "GetTexture(NULL) NULL");
     SDL_Libretro_GetSize(NULL, &w, &h);
     SDLTest_AssertCheck(w == 0 && h == 0, "GetSize(NULL) returns 0x0, got %dx%d", w, h);
@@ -64,6 +65,7 @@ static int SDLCALL test_NullSafety(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(NULL) == 0.0f, "GetVolume(NULL) 0.0");
     SDLTest_AssertCheck(SDL_Libretro_GetSpeed(NULL) == 1.0f, "GetSpeed(NULL) 1.0");
     SDLTest_AssertCheck(SDL_Libretro_GetStateSize(NULL) == 0, "GetStateSize(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(NULL) == RETRO_SAVESTATE_CONTEXT_NORMAL, "GetSavestateContext(NULL) NORMAL");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(NULL) == 0, "GetOptionCount(NULL) 0");
     SDLTest_AssertCheck(SDL_Libretro_GetOption(NULL, "foo") == NULL, "GetOption(NULL) NULL");
     SDLTest_AssertCheck(SDL_Libretro_GetOptionByIndex(NULL, 0) == NULL, "GetOptionByIndex(NULL) NULL");
@@ -138,9 +140,13 @@ static int SDLCALL test_Input(void *arg) {
     SDL_Libretro_SetKeyboardMapping(NULL, 0, SDL_SCANCODE_Z);
 
     SDL_Libretro_SetVirtualButton(lr, 0, RETRO_DEVICE_ID_JOYPAD_A, true);
-    SDLTest_AssertCheck(lr->core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_A] == true, "Virtual button A pressed");
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[0][RETRO_DEVICE_ID_JOYPAD_A] == true, "Virtual button A pressed");
     SDL_Libretro_SetVirtualButton(lr, 0, RETRO_DEVICE_ID_JOYPAD_A, false);
-    SDLTest_AssertCheck(lr->core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_A] == false, "Virtual button A released");
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[0][RETRO_DEVICE_ID_JOYPAD_A] == false, "Virtual button A released");
+    /* Virtual buttons are now per-port: port 1 must not alias port 0. */
+    SDL_Libretro_SetVirtualButton(lr, 1, RETRO_DEVICE_ID_JOYPAD_B, true);
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[1][RETRO_DEVICE_ID_JOYPAD_B] == true, "Virtual button on port 1 set");
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[0][RETRO_DEVICE_ID_JOYPAD_B] == false, "Port 1 does not alias port 0");
     SDL_Libretro_SetVirtualButton(lr, 16, 0, true);
     SDL_Libretro_SetVirtualButton(lr, 0, 16, true);
     SDL_Libretro_SetVirtualButton(NULL, 0, 0, true);
@@ -148,7 +154,8 @@ static int SDLCALL test_Input(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_NONE, "Port 0 device defaults to NONE");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 0 true");
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_JOYPAD, "GetPortDevice returns stored device");
-    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 15, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 15 true");
+    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 1, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 1 true");
+    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 2, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 2 true");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 16, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice port 16 false");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(NULL, 0, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 16) == RETRO_DEVICE_NONE, "GetPortDevice out-of-range NONE");
@@ -179,6 +186,60 @@ static int SDLCALL test_Options(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Exercises the deprecated RETRO_ENVIRONMENT_SET_VARIABLES path directly, which
+   the test core (v2 only) never triggers. Drives the static env callback by
+   pointing SDL_Libretro_active at a bare context. */
+static int SDLCALL test_SetVariablesLegacy(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+
+    // Build a variable with more values than the old fixed cap to prove the
+    // dynamic parser doesn't truncate. "v0" is the default (first value).
+    const unsigned bigCount = RETRO_NUM_CORE_OPTION_VALUES_MAX + 50;
+    size_t bufSize = 32 + bigCount * 8;
+    char* big = (char*)SDL_malloc(bufSize);
+    size_t off = (size_t)SDL_snprintf(big, bufSize, "Big Option; ");
+    for (unsigned i = 0; i < bigCount; i++) {
+        off += (size_t)SDL_snprintf(big + off, bufSize - off, "%sv%u", i ? "|" : "", i);
+    }
+
+    struct retro_variable vars[] = {
+        // Extra spaces after ';' and around the standard single space are tolerated.
+        { "leg_bool", "Enable Feature;  enabled|disabled" },
+        { "leg_big", big },
+        { NULL, NULL },
+    };
+    bool ok = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_VARIABLES, vars);
+    SDLTest_AssertCheck(ok == true, "SET_VARIABLES returns true");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 2, "Two legacy options registered");
+
+    const SDL_LibretroOption* b = SDL_Libretro_GetOption(lr, "leg_bool");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->desc, "Enable Feature") == 0, "Label parsed, trailing space trimmed");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->value, "enabled") == 0, "First value is the default");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->defaultValue, "enabled") == 0, "Default value stored");
+    SDLTest_AssertCheck(b && b->valuesCount == 2, "Two values parsed");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->values[0].value, "enabled") == 0, "Value 0 is enabled");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->values[1].value, "disabled") == 0, "Value 1 is disabled");
+    SDLTest_AssertCheck(b && b->values[0].label == NULL, "Legacy values carry no label");
+
+    // The whole point of the dynamic array: no truncation past the old cap.
+    const SDL_LibretroOption* big_opt = SDL_Libretro_GetOption(lr, "leg_big");
+    SDLTest_AssertCheck(big_opt && big_opt->valuesCount == bigCount, "All values parsed (no truncation)");
+    SDLTest_AssertCheck(big_opt && SDL_strcmp(big_opt->value, "v0") == 0, "Big option default is v0");
+    SDLTest_AssertCheck(big_opt && SDL_strcmp(big_opt->values[bigCount - 1].value, "v177") == 0,
+        "Last value survives");
+
+    // Values are validated against the declared list, same as v2 options.
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "leg_bool", "disabled") == true, "Set declared value");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "leg_bool", "bogus") == false, "Reject undeclared value");
+
+    SDL_free(big);
+    SDL_Libretro_Destroy(lr);
+    SDL_Libretro_active = prevActive;
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -203,10 +264,10 @@ static int SDLCALL test_Rewind(void *arg) {
 
     // Negative speed only accepted when rewind is enabled.
     SDL_Libretro_SetSpeed(lr, -1.0f);
-    SDLTest_AssertCheck(lr->speed == 0.0f, "Negative speed clamped without rewind");
+    SDLTest_AssertCheck(lr->core.speed == 0.0f, "Negative speed clamped without rewind");
     SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
     SDL_Libretro_SetSpeed(lr, -1.0f);
-    SDLTest_AssertCheck(lr->speed == -1.0f, "Negative speed accepted with rewind");
+    SDLTest_AssertCheck(lr->core.speed == -1.0f, "Negative speed accepted with rewind");
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -368,6 +429,22 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "bogus") == false, "Set invalid value rejected");
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Value unchanged after rejected set");
 
+    // GetOptionValueLabel falls back to the raw value when no label was supplied.
+    SDLTest_AssertCheck(a && SDL_strcmp(SDL_Libretro_GetOptionValueLabel(lr, "test_option_a"), "off") == 0,
+        "GetOptionValueLabel returns raw value when unlabeled");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueLabel(lr, "nope") == NULL, "GetOptionValueLabel unknown NULL");
+
+    // CycleOptionValue walks the declared values and wraps at the ends.
+    SDL_Libretro_SetOptionValue(lr, "test_option_a", "on");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 1) == true, "Cycle forward succeeds");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Cycle forward on -> off");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 1) == true, "Cycle forward wraps");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "on") == 0, "Cycle forward off -> on (wrap)");
+    SDL_Libretro_CycleOptionValue(lr, "test_option_a", -1);
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Cycle backward on -> off (wrap)");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 0) == false, "Cycle 0 direction fails");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "nope", 1) == false, "Cycle unknown option fails");
+
     // ResetAllOptions restores defaults and marks options dirty.
     SDL_Libretro_AreOptionsDirty(lr); // clear the dirty flag set by SetOptionValue
     SDL_Libretro_ResetAllOptions(lr);
@@ -426,6 +503,11 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "txt") == 0, "Valid extensions is txt");
     SDLTest_AssertCheck(SDL_Libretro_GetPerformanceLevel(lr) == 2, "Performance level reported by core is 2");
     SDLTest_AssertCheck(SDL_Libretro_GetPerformanceLevel(NULL) == 0, "GetPerformanceLevel(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(lr) == RETRO_SAVESTATE_CONTEXT_NORMAL, "Savestate context defaults to NORMAL");
+    SDL_Libretro_SetSavestateContext(lr, RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_INSTANCE);
+    SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(lr) == RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_INSTANCE, "Savestate context set to RUNAHEAD");
+    SDL_Libretro_SetSavestateContext(lr, RETRO_SAVESTATE_CONTEXT_NORMAL);
+    SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(lr) == RETRO_SAVESTATE_CONTEXT_NORMAL, "Savestate context restored to NORMAL");
 
     // With a core loaded but no game, game-state operations no-op safely.
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready with core but no game");
@@ -455,9 +537,10 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game is ready after load");
 
     int w = 0, h = 0;
@@ -467,8 +550,8 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture created");
     SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 128, "Serialize size is 128");
 
-    SDL_Libretro_RunFrame(lr);
-    SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_Update(lr);
+    SDL_Libretro_Update(lr);
 
     SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == true, "SaveState succeeds");
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
@@ -492,8 +575,9 @@ static int SDLCALL test_GameInfoExt(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
-    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer);
+    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
 
     // The test core probes GET_GAME_INFO_EXT during load and exposes the result
     // via SYSTEM_RAM, verifying the frontend populated the extended game info.
@@ -526,20 +610,21 @@ static int SDLCALL test_LoadGameNoContent(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
     // The test core opts into no-content, so a NULL load runs.
     SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == false, "Core does not require content");
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL, renderer) == true, "LoadGame succeeds with NULL content");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == true, "LoadGame succeeds with NULL content");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready with no content");
 
-    SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_Update(lr);
     SDL_Libretro_UnloadGame(lr);
 
     // A core that requires content must reject a NULL load (and not disturb state).
     lr->core.supportNoGame = false;
     SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == true, "Core now reports content required");
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL, renderer) == false, "LoadGame(NULL) rejected when content is required");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == false, "LoadGame(NULL) rejected when content is required");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready after a rejected NULL load");
 
     SDL_Libretro_Destroy(lr);
@@ -561,10 +646,11 @@ static int SDLCALL test_LoadGameFailure(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
     // A missing ".txt" file fails the load (the core wants the data buffer).
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "definitely_missing.txt", renderer) == false,
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "definitely_missing.txt") == false,
         "LoadGame fails for a missing content file");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready after a failed load");
 
@@ -579,7 +665,7 @@ static int SDLCALL test_LoadGameFailure(void *arg) {
         "Save path falls back to the core name, not the failed content: %s", path);
 
     // The context still works: a real load afterward succeeds.
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true,
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true,
         "LoadGame succeeds after a prior failure");
 
     SDL_Libretro_Destroy(lr);
@@ -607,8 +693,9 @@ static int SDLCALL test_Memory(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
-    SDL_Libretro_LoadGame(lr, NULL, renderer);
+    SDL_Libretro_LoadGame(lr, NULL);
 
     // GetMemoryData: SAVE_RAM is exposed at 64 bytes; an unsupported type is not.
     size_t sz = 123;
@@ -696,15 +783,16 @@ static int SDLCALL test_SavePath(void *arg) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
     SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
     SDL_Libretro_SetSaveDirectory(lr, "test_saves");
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
-    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer);
+    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
 
     SDLTest_AssertCheck(SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) > 0, "GetSavePath derives a path with content");
     SDLTest_AssertCheck(SDL_strstr(path, "test_saves") != NULL && SDL_strstr(path, ".srm") != NULL, "Derived path uses save dir and extension: %s", path);
 
     // LoadGame again should unload the existing game and reload cleanly.
-    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH, renderer) == true, "LoadGame again succeeds (reloads over existing game)");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame again succeeds (reloads over existing game)");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after reload");
 
     SDL_Libretro_Destroy(lr);
@@ -760,6 +848,157 @@ static int SDLCALL test_ExtensionInList(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_LoadGameNoRenderer(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+
+    // Load a game with NO renderer set: the game runs and video is deferred.
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == NULL, "No renderer set initially");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == true, "LoadGame succeeds without a renderer");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after renderer-less load");
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "No texture until a renderer is set");
+    SDLTest_AssertCheck(SDL_Libretro_Render(NULL, lr, NULL) == false, "Render fails with a NULL renderer");
+
+    // The core still runs with no video attached.
+    SDL_Libretro_Update(lr);
+    SDL_Libretro_Update(lr);
+
+    // Rendering with a renderer adopts it and builds the texture (deferred init).
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+    SDLTest_AssertCheck(SDL_Libretro_Render(renderer, lr, NULL) == true, "Render adopts the renderer and draws");
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == renderer, "Render stored the renderer");
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture created via Render's deferred init");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+// Drive the pointer input callback for a rotation and assert POINTER_X/Y map as
+// expected (within a rounding unit). renderDstRect and the mouse must be set first.
+static void CheckPointer(SDL_Libretro* lr, int rot, int16_t expectX, int16_t expectY) {
+    lr->core.rotation = rot;
+    int16_t x = SDL_Libretro_InputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_X);
+    int16_t y = SDL_Libretro_InputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_Y);
+    SDLTest_AssertCheck(SDL_abs(x - expectX) <= 2, "rot %d POINTER_X ~%d, got %d", rot, expectX, x);
+    SDLTest_AssertCheck(SDL_abs(y - expectY) <= 2, "rot %d POINTER_Y ~%d, got %d", rot, expectY, y);
+}
+
+static int SDLCALL test_Rotation(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL); // 320x240 (4:3) core, no content
+
+    // --- renderDstRect fit under rotation, into the full 320x240 output ---
+    // 0deg: a 4:3 frame fills the 4:3 window.
+    lr->core.rotation = 0;
+    SDL_Libretro_Render(renderer, lr, NULL);
+    SDL_FRect r0 = lr->core.renderDstRect;
+    SDLTest_AssertCheck(SDL_fabsf(r0.w - 320.0f) < 1.0f && SDL_fabsf(r0.h - 240.0f) < 1.0f,
+        "0deg fills 320x240, got %gx%g", r0.w, r0.h);
+
+    // 90deg: the on-screen extents swap, so the fit is portrait (aspect inverted
+    // to 3:4), centered and within the window bounds.
+    lr->core.rotation = 1;
+    SDL_Libretro_Render(renderer, lr, NULL);
+    SDL_FRect r1 = lr->core.renderDstRect;
+    SDLTest_AssertCheck(r1.w < r1.h, "90deg is portrait (w<h), got %gx%g", r1.w, r1.h);
+    SDLTest_AssertCheck(SDL_fabsf(r1.w / r1.h - 0.75f) < 0.01f, "90deg aspect ~3:4, got %g", r1.w / r1.h);
+    SDLTest_AssertCheck(r1.x >= 0.0f && r1.y >= 0.0f &&
+        r1.x + r1.w <= 321.0f && r1.y + r1.h <= 241.0f, "90deg fit stays within the window");
+
+    // --- POINTER_X/Y map through the inverse of the display rotation ---
+    // Known on-screen rect and mouse at sx=0.25, sy=0.75.
+    lr->core.renderDstRect = (SDL_FRect){ 0.0f, 0.0f, 100.0f, 200.0f };
+    lr->core.inputMouseX = 25.0f;
+    lr->core.inputMouseY = 150.0f;
+    const int16_t LO = -16383, HI = 16383; // (0.25*2-1)*0x7FFF and (0.75*2-1)*0x7FFF
+    CheckPointer(lr, 0, LO, HI); // u=sx=.25,   v=sy=.75
+    CheckPointer(lr, 1, LO, LO); // u=1-sy=.25, v=sx=.25   (90deg CCW)
+    CheckPointer(lr, 2, HI, LO); // u=1-sx=.75, v=1-sy=.25 (180deg)
+    CheckPointer(lr, 3, HI, HI); // u=sy=.75,   v=1-sx=.75 (270deg CCW)
+
+    // --- CreateSurface reads back the frame at its native size ---
+    lr->core.rotation = 0;
+    SDL_Libretro_Update(lr);
+    SDL_Surface* shot = SDL_Libretro_CreateSurface(lr);
+    SDLTest_AssertCheck(shot != NULL, "CreateSurface returns a surface");
+    if (shot) {
+        SDLTest_AssertCheck(shot->w == 320 && shot->h == 240,
+            "CreateSurface is native size, got %dx%d", shot->w, shot->h);
+        SDL_DestroySurface(shot);
+    }
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_SetRenderer(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* w1 = SDL_CreateWindow("test1", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* r1 = SDL_CreateRenderer(w1, NULL);
+    SDL_Window* w2 = SDL_CreateWindow("test2", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* r2 = SDL_CreateRenderer(w2, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // NULL is rejected for both the context and the renderer.
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(lr, NULL) == false, "SetRenderer(NULL renderer) rejected");
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(NULL, r1) == false, "SetRenderer(NULL context) rejected");
+
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(lr, r1) == true, "SetRenderer(r1) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == r1, "GetRenderer returns r1");
+
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL);
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture built on r1");
+
+    // Swapping renderers rebuilds the texture against the new renderer.
+    SDLTest_AssertCheck(SDL_Libretro_SetRenderer(lr, r2) == true, "SetRenderer(r2) swap succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == r2, "GetRenderer returns r2 after swap");
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture rebuilt on r2");
+    SDLTest_AssertCheck(SDL_Libretro_Render(r2, lr, NULL) == true, "Render works on the swapped renderer");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(r1);
+    SDL_DestroyWindow(w1);
+    SDL_DestroyRenderer(r2);
+    SDL_DestroyWindow(w2);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -773,6 +1012,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
+    LIBRETRO_TEST_CASE(test_SetVariablesLegacy, "Legacy SET_VARIABLES parsing without truncation"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),
@@ -783,6 +1023,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
+    LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
+    LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),
+    LIBRETRO_TEST_CASE(test_Rotation,          "Rotation-aware fit rect and pointer mapping"),
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),

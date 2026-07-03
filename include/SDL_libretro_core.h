@@ -7,15 +7,28 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CORE_IMPL_ONCE)
 #define SDL_LIBRETRO_CORE_IMPL_ONCE
 
+/**
+ * Load a required core symbol in \c lr->core.
+ *
+ * On failure, unload the shared object and reset lr->core so
+ * no handle leaks and no half-initialized state is left behind.
+ */
 #define LOAD_SYM(sym) do { \
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
     SDL_memcpy(&lr->core.symbols.sym, &fp, sizeof(fp)); \
     if (!fp) { \
         SDL_SetError("[SDL_Libretro] Failed to load symbol '%s'", #sym); \
+        SDL_UnloadObject(lr->core.symbols.handle); \
+        SDL_memset(&lr->core, 0, sizeof(lr->core)); \
         return false; \
     } \
 } while (0)
 
+/**
+ * Builds a libretro context.
+ *
+ * @see SDL_Libretro_LoadCore()
+ */
 SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro* lr = (SDL_Libretro*)SDL_calloc(1, sizeof(SDL_Libretro));
     if (!lr) {
@@ -23,20 +36,16 @@ SDL_Libretro* SDL_Libretro_Create(void) {
         return NULL;
     }
 
-    // Set the initial SDL3 VFS callbacks.
-    SDL_Libretro_SetVFS(lr, NULL);
-
-    lr->volume = 1.0f;
-    lr->speed = 1.0f;
+    // Initial state (the calloc above already zeroed the struct).
     lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
-    SDL_strlcpy(lr->username, "SDL_libretro", sizeof(lr->username));
-    SDL_strlcpy(lr->coreDirectory, "cores", sizeof(lr->coreDirectory));
-    SDL_strlcpy(lr->saveDirectory, "saves", sizeof(lr->saveDirectory));
-    SDL_strlcpy(lr->systemDirectory, "system", sizeof(lr->systemDirectory));
-    SDL_strlcpy(lr->coreAssetsDirectory, "assets", sizeof(lr->coreAssetsDirectory));
+    SDL_Libretro_SetVFS(lr, NULL);
+    SDL_Libretro_SetVolume(lr, 1.0f);
+    SDL_Libretro_SetSpeed(lr, 1.0f);
+    SDL_Libretro_SetUsername(lr, "SDL_Libretro");
 
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]      = SDL_SCANCODE_Z;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y]      = SDL_SCANCODE_A;
+    // Keyboard Mappings
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]       = SDL_SCANCODE_Z;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y]       = SDL_SCANCODE_A;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_SELECT]  = SDL_SCANCODE_RSHIFT;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START]   = SDL_SCANCODE_RETURN;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_UP]      = SDL_SCANCODE_UP;
@@ -66,13 +75,14 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_Libretro_UnloadGame(lr);
     SDL_Libretro_UnloadCore(lr);
 
-    for (unsigned i = 0; i < 16; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
         if (lr->gamepads[i]) {
             SDL_CloseGamepad(lr->gamepads[i]);
             lr->gamepads[i] = NULL;
         }
     }
 
+    SDL_Libretro_FreeCoreLibrary(lr);
     SDL_Libretro_FreeMessages(lr);
     SDL_Libretro_CloseConfig(lr);
 
@@ -80,10 +90,35 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
 }
 
 /**
- * Loads a libretro core.
+ * Retrieve the core path based on its core name from the library.
+ *
+ * @param lr the libretro context.
+ * @param coreName the name of the core to retrieve the path for.
+ * @returns the path to the core, or NULL if it wasn't found or the coreName is a path.
  */
-bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
-    if (!lr || !corePath) {
+static const char* SDL_Libretro_GetCorePathFromName(const SDL_Libretro* lr, const char* coreName) {
+    if (!lr || !coreName || !lr->coreLibrary || SDL_strrchr(coreName, '.') != NULL) {
+        return NULL;
+    }
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        if (lr->coreLibrary[i].corename && SDL_strcasecmp(lr->coreLibrary[i].corename, coreName) == 0) {
+            return lr->coreLibrary[i].path;
+        }
+    }
+    return NULL;
+}
+
+/**
+ * Loads a libretro core.
+ *
+ * @param lr the libretro context.
+ * @param core Either the path to the core to load, or a name of the core within the core directory.
+ *
+ * @see SDL_Libretro_Create()
+ * @see SDL_Libretro_UnloadCore()
+ */
+bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
+    if (!lr || !core) {
         SDL_SetError("[SDL_Libretro] Invalid arguments");
         return false;
     }
@@ -93,15 +128,19 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
         return false;
     }
 
-    if (lr->core.loaded) {
-        SDL_Libretro_UnloadCore(lr);
+    // Make sure the old core is unloaded.
+    SDL_Libretro_UnloadCore(lr);
+
+    // If the corePath is just a name, see if it lives in the loaded coreLibrary.
+    const char* path = SDL_Libretro_GetCorePathFromName(lr, core);
+    if (path) {
+        core = path;
     }
 
-    SDL_memset(&lr->core, 0, sizeof(lr->core));
-
-    lr->core.symbols.handle = SDL_LoadObject(corePath);
+    // Load the core handle.
+    lr->core.symbols.handle = SDL_LoadObject(core);
     if (!lr->core.symbols.handle) {
-        SDL_SetError("[SDL_Libretro] Failed to load core '%s': %s", corePath, SDL_GetError());
+        SDL_SetError("[SDL_Libretro] Failed to load core '%s': %s", core, SDL_GetError());
         return false;
     }
 
@@ -140,12 +179,18 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     LOAD_SYM(retro_get_memory_data);
     LOAD_SYM(retro_get_memory_size);
 
-    SDL_strlcpy(lr->core.corePath, corePath, sizeof(lr->core.corePath));
+    SDL_strlcpy(lr->core.corePath, core, sizeof(lr->core.corePath));
+
+    // Default to normal speed for the freshly loaded core (lr->core was zeroed
+    // above, so speed does not carry over from a previously loaded core).
+    lr->core.speed = 1.0f;
 
     SDL_Libretro_active = lr;
 
+    // Tell the core that we should call our own enviornment callback.
     lr->core.symbols.retro_set_environment(SDL_Libretro_EnvironmentCallback);
 
+    // Grab the initial system info from the core.
     struct retro_system_info sysinfo = {0};
     lr->core.symbols.retro_get_system_info(&sysinfo);
     SDL_strlcpy(lr->core.libraryName, sysinfo.library_name ? sysinfo.library_name : "", sizeof(lr->core.libraryName));
@@ -159,6 +204,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     // Config
     SDL_Libretro_LoadCoreConfig(lr);
 
+    // Initialize the core
     lr->core.symbols.retro_init();
     lr->core.loaded = true;
 
@@ -203,7 +249,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
         SDL_Libretro_active = NULL;
     }
 
-    SDL_Log("[SDL_Libretro] Core unloaded");
+    SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core unloaded");
 }
 
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
@@ -256,12 +302,17 @@ size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, c
     if (!dst || dstSize == 0) return 0;
     dst[0] = '\0';
     if (!lr || lr->core.contentName[0] == '\0') return 0;
-    if (!extension) extension = "";
+
+    if (!extension) {
+        extension = "";
+    }
+
     if (lr->saveDirectory[0] != '\0') {
         SDL_snprintf(dst, dstSize, "%s/%s%s", lr->saveDirectory, lr->core.contentName, extension);
     } else {
         SDL_snprintf(dst, dstSize, "%s%s", lr->core.contentName, extension);
     }
+
     return SDL_strlen(dst);
 }
 
@@ -367,14 +418,61 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
 }
 
 /**
+ * Given a game path, load the core that supported its file extension.
+ *
+ * @return True if the core was successfully loaded.
+ */
+static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath) {
+    if (!lr || !gamePath) return false;
+
+    // The game's file extension.
+    const char* dot = SDL_strrchr(gamePath, '.');
+    const char* extension = dot ? dot + 1 : "";
+    if (extension[0] == '\0') {
+        SDL_SetError("[SDL_Libretro] Game path '%s' has no file extension", gamePath);
+        return false;
+    }
+
+    // Try to load cores that match the extension.
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        // Check if the extension is in the lr->coreLibrary[i] list.
+        if (!SDL_Libretro_ExtensionInList(extension, lr->coreLibrary[i].supported_extensions)) {
+            continue;
+        }
+
+        // A candidate core claims this extension, try loading it.
+        if (SDL_Libretro_LoadCore(lr, lr->coreLibrary[i].path)) {
+            return true;
+        }
+    }
+
+    SDL_SetError("[SDL_Libretro] No core found for extension '%s'", extension);
+    return false;
+}
+
+/**
  * Loads a game at the given path.
  *
+ * A renderer is not required to load a game. If none has been set via
+ * SDL_Libretro_SetRenderer(), the game still loads and runs (audio and input
+ * work); video texture creation is deferred until a renderer is set, and until
+ * then rendered frames are dropped.
+ *
  * @see SDL_Libretro_UnloadGame()
+ * @see SDL_Libretro_SetRenderer()
  */
-bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer* renderer) {
-    if (!lr || !lr->core.loaded || !renderer) {
-        SDL_SetError("[SDL_Libretro] Core not loaded or invalid renderer");
-        return false;
+bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
+    if (!lr) return false;
+
+    // Switching content: unload any game that's already running first.
+    SDL_Libretro_UnloadGame(lr);
+
+    // Try to find what can be loaded with it.
+    if (!SDL_Libretro_IsCoreReady(lr)) {
+        if (!SDL_Libretro_LoadCoreForGame(lr, gamePath)) {
+            SDL_SetError("[SDL_Libretro] Core not loaded");
+            return false;
+        }
     }
 
     // A core that didn't opt into no-content (SET_SUPPORT_NO_GAME) can't run without a game.
@@ -382,14 +480,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
         SDL_SetError("[SDL_Libretro] This core requires content");
         return false;
     }
-
-    // Switching content: unload any game that's already running first.
-    if (lr->core.gameLoaded) {
-        SDL_Libretro_UnloadGame(lr);
-    }
-
-    lr->core.renderer = renderer;
-    lr->core.window = SDL_GetRenderWindow(renderer);
 
     struct retro_game_info gameInfo = {0};
     void* fileData = NULL;
@@ -477,15 +567,17 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath, SDL_Renderer*
     lr->core.sampleRate = avInfo.timing.sample_rate;
     lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
 
-    // Initialize the Video.
-    if (!SDL_Libretro_InitVideo(lr)) {
-        SDL_Libretro_UnloadGame(lr);
-        return false;
+    // Failed video initialization should not fail loading the game. It will
+    // hopefully initialize itself on the first render.
+    if (lr->renderer) {
+        if (!SDL_Libretro_InitVideo(lr)) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Video failed to initialize: %s", SDL_GetError());
+        }
     }
 
     // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
     if (!SDL_Libretro_InitAudio(lr)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio unavailable: %s", SDL_GetError());
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio failed to initialize: %s", SDL_GetError());
     }
 
     SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
@@ -629,9 +721,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
-    return lr &&
-        lr->core.gameLoaded &&
-        lr->core.renderer != NULL;
+    return lr && lr->core.gameLoaded;
 }
 
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
@@ -686,7 +776,7 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
     }
 }
 
-void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
+void SDL_Libretro_Update(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded) return;
 
     // Pending Video Driver Reinit
@@ -702,10 +792,10 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     }
 
     // Paused: Do nothing when speed is zero.
-    if (lr->speed == 0.0f) return;
+    if (lr->core.speed == 0.0f) return;
 
     // Rewind mode: step backwards when speed is negative.
-    if (lr->speed < 0.0f && lr->rewindEnabled) {
+    if (lr->rewindEnabled && lr->core.speed < 0.0f) {
         Uint64 nowNS = SDL_GetTicksNS();
         if (lr->lastTickNS == 0) {
             lr->lastTickNS = nowNS;
@@ -716,7 +806,7 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
         // Each stored snapshot spans captureInterval real frames (a snapshot is taken every Nth frame), so a single rewind step undoes that many frames of game time. Scale the per-step wall-clock cost by the interval; otherwise speed -1 would rewind captureInterval times faster than speed +1 plays forward.
         unsigned interval = lr->rewindCaptureInterval > 0 ? lr->rewindCaptureInterval : 1;
         double stepPeriod = framePeriod * (double)interval;
-        lr->speedAccumulator += frameTime * (double)(-lr->speed);
+        lr->speedAccumulator += frameTime * (double)(-lr->core.speed);
         // Mute audio and neutralize input for the throwaway re-runs that produce the displayed frames while scrubbing backward.
         lr->rewindActive = true;
         while (lr->speedAccumulator >= stepPeriod) {
@@ -729,7 +819,7 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     }
 
     // Keep audio consumption locked to speed + nudge the queue toward its target fill. Done here, above all three return paths below, so it runs every frame.
-    SDL_Libretro_UpdateDRC(lr, lr->speed);
+    SDL_Libretro_UpdateDRC(lr, lr->core.speed);
 
     // Wall-clock delta since the previous RunFrame.
     Uint64 nowNS = SDL_GetTicksNS();
@@ -749,20 +839,20 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
 
     // Reference frame-time the core is told about, in microseconds.
-    retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)lr->speed);
+    retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)lr->core.speed);
 
     // At normal speed, when the loop is already paced close to the core's frame rate (e.g. a vsync'd 60 Hz display with a ~60 fps core), run exactly one tick and discard the accumulator. This avoids the beat-frequency judder of occasionally emitting 0 or 2 ticks. Gating on the *measured* cadence keeps the core bounded when vsync is off / FPS uncapped.
     double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
-    if (lr->speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
+    if (lr->core.speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
         lr->speedAccumulator = 0.0;
         SDL_Libretro_Tick(lr, referenceUsec);
         return;
     }
 
-    lr->speedAccumulator += frameTime * (double)lr->speed;
+    lr->speedAccumulator += frameTime * (double)lr->core.speed;
 
     // Cap iterations to avoid a spiral of death on slow hardware.
-    int maxTicks = (int)(lr->speed + 1.0f);
+    int maxTicks = (int)(lr->core.speed + 1.0f);
     if (maxTicks < 1) maxTicks = 1;
 
     // Clamp the accumulator so a frame-time spike (game load, window drag, menu pause) can't leave a backlog that runs the core fast afterwards.
@@ -778,18 +868,114 @@ void SDL_Libretro_RunFrame(SDL_Libretro* lr) {
     }
 }
 
-bool SDL_Libretro_IsShutdown(const SDL_Libretro* lr) {
+/**
+ * Indicates whether or not the core has requested to shutdown.
+ *
+ * @see RETRO_ENVIRONMENT_SHUTDOWN
+ */
+bool SDL_Libretro_ShouldQuit(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
+int SDL_Libretro_Version(void) {
+    return SDL_LIBRETRO_VERSION;
+}
+
 // Directory
+
+static void SDL_Libretro_FreeCoreLibrary(SDL_Libretro* lr) {
+    if (lr->coreLibrary) {
+        for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+            SDL_free(lr->coreLibrary[i].corename);
+            SDL_free(lr->coreLibrary[i].supported_extensions);
+            SDL_free(lr->coreLibrary[i].path);
+        }
+        SDL_free(lr->coreLibrary);
+        lr->coreLibrary = NULL;
+    }
+    lr->coreLibraryCount = 0;
+}
+
+// The file extension for the cores on this platform
+#if defined(SDL_PLATFORM_WINDOWS)
+#define SDL_LIBRETRO_CORE_EXTENSION ".dll"
+#elif defined(SDL_PLATFORM_APPLE)
+#define SDL_LIBRETRO_CORE_EXTENSION ".dylib"
+#elif defined(SDL_PLATFORM_EMSCRIPTEN)
+#define SDL_LIBRETRO_CORE_EXTENSION ".wasm"
+#else
+#define SDL_LIBRETRO_CORE_EXTENSION ".so"
+#endif
+
+static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void *userdata, const char *dirname, const char *fname) {
+    SDL_Libretro* lr = (SDL_Libretro*)userdata;
+
+    // Find all .info files in the core directory.
+    const char* dot = SDL_strrchr(fname, '.');
+    if (!dot || SDL_strcasecmp(dot, ".info") != 0) {
+        return SDL_ENUM_CONTINUE;
+    }
+
+    // Get the path.
+    char infoPath[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(infoPath, sizeof(infoPath), "%s%s", dirname, fname);
+
+    // Load the .ini file.
+    SDL_ini* ini = INI_Load(infoPath);
+    if (!ini) {
+        return SDL_ENUM_CONTINUE;
+    }
+
+    // Make sure it's a valid info file.
+    const char* corename = INI_GetString(ini, NULL, "corename", NULL);
+    if (!corename) {
+        INI_Destroy(ini);
+        return SDL_ENUM_CONTINUE;
+    }
+
+    // Grow the core library by one entry.
+    SDL_Libretro_CoreInfo* grown = (SDL_Libretro_CoreInfo*)SDL_realloc(
+        lr->coreLibrary, (lr->coreLibraryCount + 1) * sizeof(SDL_Libretro_CoreInfo));
+    if (!grown) {
+        INI_Destroy(ini);
+        return SDL_ENUM_CONTINUE;
+    }
+    lr->coreLibrary = grown;
+
+    // Build the SDL_Libretro_CoreInfo structure.
+    SDL_Libretro_CoreInfo* entry = &lr->coreLibrary[lr->coreLibraryCount];
+    entry->corename = SDL_strdup(corename);
+
+    const char* extensions = INI_GetString(ini, NULL, "supported_extensions", NULL);
+    entry->supported_extensions = extensions ? SDL_strdup(extensions) : NULL;
+    entry->needs_fullpath = INI_GetBoolean(ini, NULL, "needs_fullpath", false);
+    entry->supports_no_game = INI_GetBoolean(ini, NULL, "supports_no_game", false);
+
+    // Build the path for the core.
+    char base[SDL_LIBRETRO_MAX_PATH];
+    size_t baseLen = (size_t)(dot - fname);
+    SDL_strlcpy(base, fname, (baseLen < sizeof(base)) ? baseLen + 1 : sizeof(base));
+    char corePath[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(corePath, sizeof(corePath), "%s%s%s", dirname, base, SDL_LIBRETRO_CORE_EXTENSION);
+    entry->path = SDL_strdup(corePath);
+
+    lr->coreLibraryCount++;
+
+    INI_Destroy(ini);
+    return SDL_ENUM_CONTINUE;
+}
 
 /**
  * Sets the associated libretro core directory, where the default set of cores will be loaded from.
  */
 bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
-    SDL_strlcpy(lr->coreDirectory, path ? path : "", sizeof(lr->coreDirectory));
+    const char* newPath = path ? path : "";
+    SDL_strlcpy(lr->coreDirectory, newPath, sizeof(lr->coreDirectory));
+
+    // When the core directory changed, rebuild the core library.
+    SDL_Libretro_FreeCoreLibrary(lr);
+    SDL_EnumerateDirectory(lr->coreDirectory, &SDL_Libretro_SetCoreDirectory_Iterator, (void*)lr);
     return true;
 }
 
@@ -860,8 +1046,10 @@ float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     if (!lr) return;
 
+    if (lr->core.fastforwardOverrideActive && lr->core.fastforwardOverride.inhibit_toggle) return;
+
     if (speed < 0.0f && lr->rewindEnabled) {
-        lr->speed = speed;
+        lr->core.speed = speed;
         if (lr->core.audioStream) {
             lr->core.drcAdjustment = 1.0f;
             lr->core.drcDriftAvg = 0.0;
@@ -871,18 +1059,22 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
             SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, -speed);
         }
     } else {
-        lr->speed = SDL_max(speed, 0.0f);
+        lr->core.speed = SDL_max(speed, 0.0f);
     }
 
-    if (lr->core.audioStream && lr->speed > 0.0f) {
+    if (lr->core.audioStream && lr->core.speed > 0.0f) {
         lr->core.drcAdjustment = 1.0f;
         lr->core.drcDriftAvg = 0.0;
-        SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->speed * lr->core.drcAdjustment);
+        SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->core.speed * lr->core.drcAdjustment);
     }
 }
 
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
-    return lr ? lr->speed : 1.0f;
+    return lr ? lr->core.speed : 1.0f;
+}
+
+bool SDL_Libretro_IsFastforwardOverrideActive(const SDL_Libretro* lr) {
+    return lr && lr->core.fastforwardOverrideActive;
 }
 
 /**
@@ -901,6 +1093,9 @@ void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level) {
     }
 }
 
+/**
+ * Retrieve the threshold for logs that will be posted.
+ */
 SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
     if (!lr) return SDL_LOG_PRIORITY_INVALID;
     switch (lr->logLevel) {
@@ -943,6 +1138,14 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
  */
 unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr) {
     return lr ? lr->core.performanceLevel : 0;
+}
+
+enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro* lr) {
+    return lr ? lr->core.savestateContext : RETRO_SAVESTATE_CONTEXT_NORMAL;
+}
+
+void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context) {
+    if (lr) lr->core.savestateContext = context;
 }
 
 /**

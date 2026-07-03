@@ -1,32 +1,19 @@
 # SDL_libretro
 
-An [SDL3](https://libsdl.org/)-based [libretro](https://www.libretro.com/) frontend library.
+A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libsdl.org/).
 
 ## Features
 
 - Header-only C99 library
-- Context-based design (`SDL_Libretro*`)
-- Audio via SDL_AudioStream with dynamic rate control
-- Gamepad, keyboard, mouse, lightgun, and pointer input
+- Audio via `SDL_AudioStream` with dynamic rate control
+- Input with gamepad, keyboard, mouse, lightgun, or pointer
 - Save states and SRAM
 - Memory access and memory-map descriptors (cheats, debuggers, RAM watching)
 - Core options
-- Rewind with delta compression
 - Fast-forward and slow-motion
-- Rumble feedback
+- Rewind with delta compression
+- Rumble
 - On-screen display messages
-
-## Build
-
-```sh
-git clone --recurse-submodules https://github.com/RobLoach/SDL_libretro.git
-cd SDL_libretro
-mkdir build && cd build
-cmake ..
-cmake --build .
-```
-
-SDL3 is fetched automatically via CMake FetchContent if not already installed on the system.
 
 ## Usage
 
@@ -47,44 +34,61 @@ SDL_Window* window = SDL_CreateWindow("SDL_libretro", 800, 600, SDL_WINDOW_RESIZ
 SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
 
 SDL_Libretro* lr = SDL_Libretro_Create();
-SDL_Libretro_SetSystemDirectory(lr, "system");
-SDL_Libretro_SetSaveDirectory(lr, "saves");
 SDL_Libretro_LoadCore(lr, "core.so");
-SDL_Libretro_LoadGame(lr, "game.rom", renderer);
+SDL_Libretro_LoadGame(lr, "game.rom");
 
-while (!SDL_Libretro_IsShutdown(lr)) {
+while (!SDL_Libretro_ShouldQuit(lr)) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
         SDL_Libretro_HandleEvent(lr, &event);
     }
 
-    SDL_Libretro_RunFrame(lr);
+    SDL_Libretro_Update(lr);
 
     SDL_RenderClear(renderer);
-    SDL_Libretro_Render(lr, NULL);
+    SDL_Libretro_Render(renderer, lr, NULL);
     SDL_RenderPresent(renderer);
 }
 
 SDL_Libretro_Destroy(lr);
 ```
 
-See [SDL_libretro_basic.c](example/SDL_libretro_basic.c) for an example.
+- [API Documentation](https://robloach.github.io/SDL_libretro/)
+- [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
+- [Demo](https://robloach.github.io/SDL_libretro/demo/)
+
+## Build
+
+```sh
+git clone --recurse-submodules https://github.com/RobLoach/SDL_libretro.git
+cd SDL_libretro
+mkdir build && cd build
+cmake ..
+cmake --build .
+```
+
+SDL3 is fetched automatically via CMake FetchContent if not already installed on the system.
+
+### Emscripten
+
+With the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) activated, configure through `emcmake`:
+
+```sh
+emcmake cmake -B build-web
+cmake --build build-web
+```
 
 ## Configuration
 
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
 
-```c
-// Enable the XOR delta between rewind frames to reduce
-// memory at the expense of performance.
-#define SDL_LIBRETRO_ENABLE_REWIND_DELTA
-```
-
+- `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
 
 ## Dependencies
 
 - [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
-- [libretro.h](https://github.com/libretro/libretro-common) (included as a submodule)
+- [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
+- [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
 
 ## License
 

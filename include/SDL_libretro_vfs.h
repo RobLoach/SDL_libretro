@@ -209,36 +209,31 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
         return 0;
     }
 
-    // Read the first `length` bytes, then rewrite the file. length == 0 (truncate to empty) needs no buffer.
-    Uint8* buf = NULL;
-    if (length > 0) {
-        buf = (Uint8*)SDL_malloc((size_t)length);
-        if (!buf) return -1;
 
-        if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_SET) < 0) { SDL_free(buf); return -1; }
-        size_t got = SDL_ReadIO(stream->io, buf, (size_t)length);
-        if ((int64_t)got != length) { SDL_free(buf); return -1; }
-    }
-
-    // Reopen with write access matching the original handle so subsequent reads/writes keep working.
+    // Shrink: read the bytes we're keeping into memory, then recreate the file
+    // with just them. Portable (no OS-specific truncate call) at the cost of
+    // buffering the kept prefix.
     bool canWrite = (stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
 
-    SDL_CloseIO(stream->io);
-    stream->io = SDL_IOFromFile(stream->path, "wb");
-    if (!stream->io) { SDL_free(buf); stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb"); return -1; }
-    // A short write would leave the file the wrong size; report that as failure.
-    if (length > 0 && (int64_t)SDL_WriteIO(stream->io, buf, (size_t)length) != length) {
-        SDL_free(buf);
-        SDL_CloseIO(stream->io);
-        stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb");
-        return -1;
+    void* kept = SDL_malloc(length > 0 ? (size_t)length : 1);
+    if (!kept) return -1;
+    if (length > 0) {
+        if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_SET) < 0 ||
+            SDL_ReadIO(stream->io, kept, (size_t)length) != (size_t)length) {
+            SDL_free(kept);
+            return -1;
+        }
     }
-    SDL_free(buf);
 
-    // Reopen in original mode for continued use.
+    // Recreate the file from scratch holding only the kept bytes (SDL_SaveFile
+    // opens with "wb", so this both discards the old contents and writes back).
     SDL_CloseIO(stream->io);
+    bool ok = SDL_SaveFile(stream->path, kept, (size_t)length);
+    SDL_free(kept);
+
+    // Reopen in the original mode for continued use.
     stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb");
-    if (!stream->io) return -1;
+    if (!ok || !stream->io) return -1;
 
     // Restore the position, clamped to the new (smaller) length.
     if (orig_pos >= 0) {
@@ -419,6 +414,7 @@ static int SDL_Libretro_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
 /**
  * Set the Virtual File System for libretro.
  *
+ * @param lr the libretro context.
  * @param vfs_interface A void* pointing to `struct retro_vfs_interface`. When set to NULL, will set the SDL3's File System.
  *
  * @see retro_vfs_interface

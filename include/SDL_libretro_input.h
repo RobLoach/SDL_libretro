@@ -304,15 +304,63 @@ static void SDL_Libretro_InputPoll(void) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
 
+    // Mouse Position
     lr->core.inputLastMouseX = lr->core.inputMouseX;
     lr->core.inputLastMouseY = lr->core.inputMouseY;
     SDL_GetMouseState(&lr->core.inputMouseX, &lr->core.inputMouseY);
+
+    // Mouse Wheel Accumulator
+    lr->core.inputWheelX = lr->core.inputWheelAccumX;
+    lr->core.inputWheelY = lr->core.inputWheelAccumY;
+    lr->core.inputWheelAccumX = 0.0f;
+    lr->core.inputWheelAccumY = 0.0f;
 }
 
 static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
     if (scancode == SDL_SCANCODE_UNKNOWN) return false;
     const bool* state = SDL_GetKeyboardState(NULL);
     return state[scancode];
+}
+
+/**
+ * Calculate the pointer coordinates based on the current mouse position.
+ *
+ * The libretro pointer/lightgun coordinates are [-0x7FFF, 0x7FFF],
+ * considering the render destination rectangle (letterbox/integer-scale),
+ * along with the rotation applied by SDL_Libretro_Render().
+ *
+ * @returns true if the cursor is inside the on-screen image, false if offscreen.
+ */
+static bool SDL_Libretro_PointerCoords(const SDL_Libretro* lr, int16_t* outX, int16_t* outY) {
+    float mx = lr->core.inputMouseX;
+    float my = lr->core.inputMouseY;
+    SDL_FRect r = lr->core.renderDstRect;
+    bool inside = r.w > 0.0f && r.h > 0.0f &&
+        mx >= r.x && mx < r.x + r.w &&
+        my >= r.y && my < r.y + r.h;
+
+    if (r.w <= 0.0f || r.h <= 0.0f) {
+        if (outX) *outX = 0;
+        if (outY) *outY = 0;
+        return false;
+    }
+
+    // Position within the on-screen image from 0 to 1.
+    float sx = (mx - r.x) / r.w;
+    float sy = (my - r.y) / r.h;
+
+    // Fix the coordinates based on the current rotation.
+    float u, v;
+    switch (lr->core.rotation & 3) {
+        case 1: u = 1.0f - sy; v = sx; break; // 90' CCW
+        case 2: u = 1.0f - sx; v = 1.0f - sy; break; // 180'
+        case 3: u = sy; v = 1.0f - sx; break; // 270' CCW
+        default: u = sx; v = sy; break; // 0'
+    }
+
+    if (outX) *outX = (int16_t)(SDL_clamp(u * 2.0f - 1.0f, -1.0f, 1.0f) * 0x7FFF);
+    if (outY) *outY = (int16_t)(SDL_clamp(v * 2.0f - 1.0f, -1.0f, 1.0f) * 0x7FFF);
+    return inside;
 }
 
 static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned index, unsigned id) {
@@ -337,21 +385,22 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
                 return mask;
             }
 
-            /* Virtual joypad (port 0 only) */
-            if (port == 0 && id < 16 && lr->core.virtualJoypadState[id]) {
+            // Virtual joypad (per-port)
+            if (port < SDL_LIBRETRO_MAX_GAMEPADS && id < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS &&
+                lr->core.virtualJoypadState[port][id]) {
                 return 1;
             }
 
-            /* Keyboard mapping (port 0) */
+            // Keyboard mapping (port 0)
             if (port == 0 && id <= RETRO_DEVICE_ID_JOYPAD_R3) {
                 if (SDL_Libretro_IsKeyDown(lr, lr->keyboardPlayer1[id])) {
                     return 1;
                 }
             }
 
-            /* Gamepad */
-            if (port < 16 && lr->gamepads[port]) {
-                /* L2/R2 are axes, not buttons */
+            // Gamepad
+            if (port < SDL_LIBRETRO_MAX_GAMEPADS && lr->gamepads[port]) {
+                // L2/R2 are axes, not buttons
                 if (id == RETRO_DEVICE_ID_JOYPAD_L2) {
                     Sint16 val = SDL_GetGamepadAxis(lr->gamepads[port], SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
                     return val > 8192 ? 1 : 0;
@@ -370,15 +419,31 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         }
 
         case RETRO_DEVICE_ANALOG: {
-            if (port < 16 && lr->gamepads[port]) {
-                SDL_GamepadAxis axis = SDL_GAMEPAD_AXIS_INVALID;
-                if (index == RETRO_DEVICE_INDEX_ANALOG_LEFT) {
-                    axis = (id == RETRO_DEVICE_ID_ANALOG_X) ? SDL_GAMEPAD_AXIS_LEFTX : SDL_GAMEPAD_AXIS_LEFTY;
-                } else if (index == RETRO_DEVICE_INDEX_ANALOG_RIGHT) {
-                    axis = (id == RETRO_DEVICE_ID_ANALOG_X) ? SDL_GAMEPAD_AXIS_RIGHTX : SDL_GAMEPAD_AXIS_RIGHTY;
+            if (port < SDL_LIBRETRO_MAX_GAMEPADS && lr->gamepads[port]) {
+                SDL_Gamepad* gp = lr->gamepads[port];
+                if (index == RETRO_DEVICE_INDEX_ANALOG_LEFT ||
+                    index == RETRO_DEVICE_INDEX_ANALOG_RIGHT) {
+                    SDL_GamepadAxis axis = SDL_GAMEPAD_AXIS_INVALID;
+                    if (index == RETRO_DEVICE_INDEX_ANALOG_LEFT) {
+                        axis = (id == RETRO_DEVICE_ID_ANALOG_X) ? SDL_GAMEPAD_AXIS_LEFTX : SDL_GAMEPAD_AXIS_LEFTY;
+                    } else {
+                        axis = (id == RETRO_DEVICE_ID_ANALOG_X) ? SDL_GAMEPAD_AXIS_RIGHTX : SDL_GAMEPAD_AXIS_RIGHTY;
+                    }
+                    return SDL_GetGamepadAxis(gp, axis);
                 }
-                if (axis != SDL_GAMEPAD_AXIS_INVALID) {
-                    return SDL_GetGamepadAxis(lr->gamepads[port], axis);
+                if (index == RETRO_DEVICE_INDEX_ANALOG_BUTTON) {
+                    // Per-button analog pressure. L2/R2 map to the trigger axes
+                    // (0..0x7FFF); every other button is digital (0 or 0x7FFF).
+                    if (id == RETRO_DEVICE_ID_JOYPAD_L2) {
+                        return SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
+                    }
+                    if (id == RETRO_DEVICE_ID_JOYPAD_R2) {
+                        return SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
+                    }
+                    SDL_GamepadButton btn = SDL_Libretro_RetroJoypadToGamepadButton(id);
+                    if (btn != SDL_GAMEPAD_BUTTON_INVALID && SDL_GetGamepadButton(gp, btn)) {
+                        return 0x7FFF;
+                    }
                 }
             }
             return 0;
@@ -407,59 +472,107 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
                     Uint32 state = SDL_GetMouseState(NULL, NULL);
                     return (state & SDL_BUTTON_MMASK) ? 1 : 0;
                 }
+                case RETRO_DEVICE_ID_MOUSE_BUTTON_4: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_X1MASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_MOUSE_BUTTON_5: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_X2MASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_MOUSE_WHEELUP:
+                    return lr->core.inputWheelY > 0.0f ? 1 : 0;
+                case RETRO_DEVICE_ID_MOUSE_WHEELDOWN:
+                    return lr->core.inputWheelY < 0.0f ? 1 : 0;
+                case RETRO_DEVICE_ID_MOUSE_HORIZ_WHEELUP:
+                    return lr->core.inputWheelX > 0.0f ? 1 : 0;
+                case RETRO_DEVICE_ID_MOUSE_HORIZ_WHEELDOWN:
+                    return lr->core.inputWheelX < 0.0f ? 1 : 0;
             }
             return 0;
         }
 
         case RETRO_DEVICE_POINTER: {
-            float mx = lr->core.inputMouseX;
-            float my = lr->core.inputMouseY;
-            SDL_FRect r = lr->core.renderDstRect;
-            bool inside = r.w > 0 && r.h > 0 &&
-                mx >= r.x && mx < r.x + r.w &&
-                my >= r.y && my < r.y + r.h;
-
             if (index > 0) return 0;
 
             switch (id) {
                 case RETRO_DEVICE_ID_POINTER_X: {
-                    if (r.w <= 0) return 0;
-                    float v = (mx - r.x) / r.w * 2.0f - 1.0f;
-                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                    int16_t x = 0;
+                    SDL_Libretro_PointerCoords(lr, &x, NULL);
+                    return x;
                 }
                 case RETRO_DEVICE_ID_POINTER_Y: {
-                    if (r.h <= 0) return 0;
-                    float v = (my - r.y) / r.h * 2.0f - 1.0f;
-                    return (int16_t)(SDL_clamp(v, -1.0f, 1.0f) * 0x7FFF);
+                    int16_t y = 0;
+                    SDL_Libretro_PointerCoords(lr, NULL, &y);
+                    return y;
                 }
-                case RETRO_DEVICE_ID_POINTER_PRESSED: {
-                    Uint32 state = SDL_GetMouseState(NULL, NULL);
-                    return (state & SDL_BUTTON_LMASK) ? 1 : 0;
-                }
+                case RETRO_DEVICE_ID_POINTER_PRESSED:
                 case RETRO_DEVICE_ID_POINTER_COUNT: {
                     Uint32 state = SDL_GetMouseState(NULL, NULL);
                     return (state & SDL_BUTTON_LMASK) ? 1 : 0;
                 }
                 case RETRO_DEVICE_ID_POINTER_IS_OFFSCREEN:
-                    return inside ? 0 : 1;
+                    return SDL_Libretro_PointerCoords(lr, NULL, NULL) ? 0 : 1;
             }
             return 0;
         }
 
         case RETRO_DEVICE_LIGHTGUN: {
-            if (id == RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X || id == RETRO_DEVICE_ID_LIGHTGUN_X) {
-                int w = 0, h = 0;
-                if (lr->core.window) SDL_GetWindowSize(lr->core.window, &w, &h);
-                if (w > 0) return (int16_t)((lr->core.inputMouseX / (float)w) * 32767.0f * 2.0f - 32767.0f);
-            }
-            if (id == RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y || id == RETRO_DEVICE_ID_LIGHTGUN_Y) {
-                int w = 0, h = 0;
-                if (lr->core.window) SDL_GetWindowSize(lr->core.window, &w, &h);
-                if (h > 0) return (int16_t)((lr->core.inputMouseY / (float)h) * 32767.0f * 2.0f - 32767.0f);
-            }
-            if (id == RETRO_DEVICE_ID_LIGHTGUN_TRIGGER) {
-                Uint32 state = SDL_GetMouseState(NULL, NULL);
-                return (state & SDL_BUTTON_LMASK) ? 1 : 0;
+            switch (id) {
+                // Aim maps through the render rect + rotation, like the pointer.
+                case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X:
+                case RETRO_DEVICE_ID_LIGHTGUN_X: {
+                    int16_t x = 0;
+                    SDL_Libretro_PointerCoords(lr, &x, NULL);
+                    return x;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_Y:
+                case RETRO_DEVICE_ID_LIGHTGUN_Y: {
+                    int16_t y = 0;
+                    SDL_Libretro_PointerCoords(lr, NULL, &y);
+                    return y;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN:
+                    return SDL_Libretro_PointerCoords(lr, NULL, NULL) ? 0 : 1;
+
+                // Buttons: mouse buttons drive trigger/reload/aux; keyboard maps
+                // start/select and the d-pad.
+                case RETRO_DEVICE_ID_LIGHTGUN_TRIGGER: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_LMASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_RELOAD: {
+                    // Reload is conventionally an offscreen trigger pull, and is
+                    // also exposed on the right mouse button.
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    if (state & SDL_BUTTON_RMASK) return 1;
+                    if ((state & SDL_BUTTON_LMASK) && !SDL_Libretro_PointerCoords(lr, NULL, NULL)) return 1;
+                    return 0;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_AUX_A: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_MMASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_AUX_B: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_X1MASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_AUX_C: {
+                    Uint32 state = SDL_GetMouseState(NULL, NULL);
+                    return (state & SDL_BUTTON_X2MASK) ? 1 : 0;
+                }
+                case RETRO_DEVICE_ID_LIGHTGUN_START:
+                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_RETURN) ? 1 : 0;
+                case RETRO_DEVICE_ID_LIGHTGUN_SELECT:
+                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_RSHIFT) ? 1 : 0;
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_UP:
+                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_UP) ? 1 : 0;
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_DOWN:
+                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_DOWN) ? 1 : 0;
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_LEFT:
+                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_LEFT) ? 1 : 0;
+                case RETRO_DEVICE_ID_LIGHTGUN_DPAD_RIGHT:
+                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_RIGHT) ? 1 : 0;
             }
             return 0;
         }
@@ -469,15 +582,25 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
     }
 }
 
+/**
+ * Call this function within the SDL_PollEvent() loop to ensure libretro knows of important events.
+ */
 void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
     if (!lr || !event) return;
 
     switch (event->type) {
+        case SDL_EVENT_MOUSE_WHEEL: {
+            // Accumulate wheel deltas; SDL_Libretro_InputPoll() snapshots and
+            // clears them so each is reported for one frame.
+            lr->core.inputWheelAccumX += event->wheel.x;
+            lr->core.inputWheelAccumY += event->wheel.y;
+            break;
+        }
         case SDL_EVENT_GAMEPAD_ADDED: {
             SDL_JoystickID jid = event->gdevice.which;
             SDL_Gamepad* gp = SDL_OpenGamepad(jid);
             if (gp) {
-                for (unsigned i = 0; i < 16; i++) {
+                for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
                     if (!lr->gamepads[i]) {
                         lr->gamepads[i] = gp;
                         const char* name = SDL_GetGamepadName(gp);
@@ -491,7 +614,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
         }
         case SDL_EVENT_GAMEPAD_REMOVED: {
             SDL_JoystickID jid = event->gdevice.which;
-            for (unsigned i = 0; i < 16; i++) {
+            for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
                 if (lr->gamepads[i] && SDL_GetGamepadID(lr->gamepads[i]) == jid) {
                     const char* name = SDL_GetGamepadName(lr->gamepads[i]);
                     SDL_Log("[SDL_Libretro] Gamepad removed: #%u %s", i + 1, name ? name : "");
@@ -526,7 +649,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
 }
 
 bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device) {
-    if (!lr || port >= 16) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return false;
     lr->core.portDeviceMap[port] = device;
     if (lr->core.loaded) {
         lr->core.symbols.retro_set_controller_port_device(port, device);
@@ -541,11 +664,13 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
  * or RETRO_DEVICE_NONE if none was set or the arguments are invalid.
  *
  * @param lr the libretro context.
- * @param port the controller port, in [0, 16).
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_GAMEPADS.
  * @returns the assigned RETRO_DEVICE_* type, or RETRO_DEVICE_NONE.
+ *
+ * @see SDL_LIBRETRO_MAX_GAMEPADS
  */
 unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port) {
-    if (!lr || port >= 16) return RETRO_DEVICE_NONE;
+    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return RETRO_DEVICE_NONE;
     return lr->core.portDeviceMap[port];
 }
 
@@ -555,8 +680,11 @@ void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scan
 }
 
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed) {
-    if (!lr || port >= 16 || button < 0 || button >= 16) return;
-    lr->core.virtualJoypadState[button] = pressed;
+    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS ||
+        button < 0 || button >= SDL_LIBRETRO_MAX_JOYPAD_BUTTONS) {
+        return;
+    }
+    lr->core.virtualJoypadState[port][button] = pressed;
 }
 
 // Input Descriptors
@@ -566,10 +694,10 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
  *
  * @param lr Pointer to an initialized SDL_Libretro instance. Must not be NULL.
  *
- * @see SDL_Libretro_GetInputDescriptor
+ * @see SDL_Libretro_GetInputDescriptor()
  */
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
-    return (lr && lr->core.loaded) ? lr->core.inputDescriptorCount : 0;
+    return (lr && lr->core.loaded) ? lr->core.inputDescriptorsCount : 0;
 }
 
 /**
@@ -591,7 +719,7 @@ unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
  * @see retro_input_descriptor
  */
 bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, unsigned* port, unsigned* device, unsigned* id, const char** description) {
-    if (!lr || !lr->core.loaded || index >= lr->core.inputDescriptorCount) return false;
+    if (!lr || !lr->core.loaded || index >= lr->core.inputDescriptorsCount) return false;
     const struct retro_input_descriptor* d = &lr->core.inputDescriptors[index];
     if (port) *port = d->port;
     if (device) *device = d->device;
@@ -619,7 +747,7 @@ static SDL_Sensor* SDL_Libretro_OpenSensorByType(SDL_SensorType type) {
 
 static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action action, unsigned rate) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_SENSOR_PORTS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_SENSOR_PORTS) return false;
     (void)rate;
 
     switch (action) {
@@ -657,7 +785,7 @@ static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action 
 
 static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_SENSOR_PORTS) return 0.0f;
+    if (!lr || port >= SDL_LIBRETRO_MAX_SENSOR_PORTS) return 0.0f;
 
     // Accelerometer
     if (id >= RETRO_SENSOR_ACCELEROMETER_X && id <= RETRO_SENSOR_ACCELEROMETER_Z && lr->core.sensorAccel[port]) {
@@ -689,7 +817,7 @@ static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
 static void SDL_Libretro_CloseSensors(SDL_Libretro* lr) {
     if (!lr) return;
 
-    for (unsigned i = 0; i < SDL_LIBRETRO_SENSOR_PORTS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_SENSOR_PORTS; i++) {
         // Accelerometer
         if (lr->core.sensorAccel[i]) {
             SDL_CloseSensor(lr->core.sensorAccel[i]);

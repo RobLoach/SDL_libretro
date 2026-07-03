@@ -7,44 +7,15 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CONFIG_IMPL_ONCE)
 #define SDL_LIBRETRO_CONFIG_IMPL_ONCE
 
-#ifndef SDL_LIBRETRO_NO_CONFIG
-#define SDL_INI_IMPLEMENTATION
-#include "SDL_ini.h"
-#endif
-
-#ifdef SDL_LIBRETRO_NO_CONFIG
-
-bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
-    (void)lr; (void)file;
-    return false;
-}
-
-bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app) {
-    (void)lr; (void)org; (void)app;
-    return false;
-}
-
-static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr) {
-    (void)lr;
-    return false;
-}
-
-static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
-    (void)lr;
-    return false;
-}
-
-static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
-    (void)lr;
-    return false;
-}
-
-#else /* !SDL_LIBRETRO_NO_CONFIG */
-
+/**
+ * Cleans up a core name to be used as an .ini section name.
+ */
 static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const char* name) {
+    // Replace [], new lines, and spaces with _.
+    // This will make `Genesis Plus GX` match with `genesis_plus_gx`
     SDL_strlcpy(dst, name, dstSize);
     for (char* p = dst; *p; ++p) {
-        if (*p == '[' || *p == ']' || *p == '\n' || *p == '\r') {
+        if (*p == '[' || *p == ']' || *p == '\n' || *p == '\r' || *p == ' ') {
             *p = '_';
         }
     }
@@ -52,6 +23,10 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
 
 /**
  * Initializes the config system based on the given file.
+ *
+ * Will load the configuration from the file, and save it when destroying the instance.
+ *
+ * @see SDL_Libretro_InitConfig()
  */
 bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     if (!lr || !file) return false;
@@ -84,8 +59,8 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         SDL_Libretro_SetUsername(lr, INI_GetString(ini, NULL, "username", SDL_Libretro_GetUsername(lr)));
     if (INI_HasValue(ini, NULL, "audiolatency"))
         SDL_Libretro_SetAudioLatency(lr, (unsigned)INI_GetInt(ini, NULL, "audiolatency", SDL_Libretro_GetAudioLatency(lr)));
-    if (INI_HasValue(ini, NULL, "scalemode"))
-        SDL_Libretro_SetScaleMode(lr, INI_GetInt(ini, NULL, "scalemode", SDL_Libretro_GetScaleMode(lr)));
+    if (INI_HasValue(ini, NULL, "fitmode"))
+        SDL_Libretro_SetFitMode(lr, INI_GetInt(ini, NULL, "fitmode", SDL_Libretro_GetFitMode(lr)));
     if (INI_HasValue(ini, NULL, "savedirectory"))
         SDL_Libretro_SetSaveDirectory(lr, INI_GetString(ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr)));
     if (INI_HasValue(ini, NULL, "systemdirectory"))
@@ -94,6 +69,8 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         SDL_Libretro_SetCoreDirectory(lr, INI_GetString(ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr)));
     if (INI_HasValue(ini, NULL, "coreassetsdirectory"))
         SDL_Libretro_SetCoreAssetsDirectory(lr, INI_GetString(ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr)));
+    if (INI_HasValue(ini, NULL, "rewindenabled"))
+        SDL_Libretro_SetRewindEnabled(lr, INI_GetBoolean(ini, NULL, "rewindenabled", false), 0, 0);
 
     return true;
 }
@@ -119,16 +96,29 @@ bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app)
     return SDL_Libretro_InitConfigFile(lr, path);
 }
 
+/**
+ * Callback to set the given config option as a core option.
+ */
 static void SDL_Libretro_SetCoreConfigOption(void *userdata, const SDL_ini *ini, const char* section, const char *key, const char *value) {
     (void)ini;
     (void)section;
     SDL_Libretro_SetOptionValue((SDL_Libretro*)userdata, key, value);
 }
 
+/**
+ * Loads the core options from the config, if it exists.
+ */
 static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
-    if (!lr->ini) return false;
-    char section[256];
+    if (!lr || !lr->ini || !SDL_Libretro_IsCoreReady(lr)) return false;
+
+    // Set the library name as the section name.
+    char section[128];
     SDL_Libretro_SanitizeSectionName(section, sizeof(section), lr->core.libraryName);
+
+    // Ensure there's a valid section name to enumerate.
+    if (section[0] == '\0') {
+        return false;
+    }
     INI_EnumerateKeys(lr->ini, section, &SDL_Libretro_SetCoreConfigOption, (void*)lr);
     return true;
 }
@@ -137,9 +127,12 @@ static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
  * Set the core options directly into the config.
  */
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
-    if (!lr->ini) return false;
-    char section[256];
+    if (!lr || !lr->ini || !SDL_Libretro_IsCoreReady(lr)) return false;
+    char section[128];
     SDL_Libretro_SanitizeSectionName(section, sizeof(section), lr->core.libraryName);
+    if (section[0] == '\0') {
+        return false;
+    }
     int count = SDL_Libretro_GetOptionCount(lr);
     for (int i = 0; i < count; i++) {
         const SDL_LibretroOption* option = SDL_Libretro_GetOptionByIndex(lr, i);
@@ -169,11 +162,12 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetFloat(lr->ini, NULL, "volume", SDL_Libretro_GetVolume(lr));
     INI_SetString(lr->ini, NULL, "username", SDL_Libretro_GetUsername(lr));
     INI_SetInt(lr->ini, NULL, "audiolatency", (Sint64)SDL_Libretro_GetAudioLatency(lr));
-    INI_SetInt(lr->ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetScaleMode(lr));
+    INI_SetInt(lr->ini, NULL, "fitmode", (Sint64)SDL_Libretro_GetFitMode(lr));
     INI_SetString(lr->ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr));
     INI_SetString(lr->ini, NULL, "systemdirectory", SDL_Libretro_GetSystemDirectory(lr));
     INI_SetString(lr->ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr));
     INI_SetString(lr->ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr));
+    INI_SetBoolean(lr->ini, NULL, "rewindenabled", SDL_Libretro_GetRewindEnabled(lr));
 
     return INI_Save(lr->ini, lr->iniFile);
 }
@@ -190,7 +184,5 @@ static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr) {
     lr->ini = NULL;
     return ok;
 }
-
-#endif /* SDL_LIBRETRO_NO_CONFIG */
 
 #endif

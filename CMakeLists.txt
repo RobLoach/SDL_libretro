@@ -41,6 +41,9 @@ option(SDL_LIBRETRO_BUILD_EXAMPLES "Build example applications" ON)
 if(SDL_LIBRETRO_BUILD_EXAMPLES)
     add_executable(SDL_libretro_basic example/SDL_libretro_basic.c)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
+
+    add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
+    target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro)
 endif()
 
 # Tests
@@ -53,21 +56,32 @@ if(SDL_LIBRETRO_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include)
     set_target_properties(test_core PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
 
-    add_executable(sdl_libretro_test test/sdl_libretro_test.c)
-    target_link_libraries(sdl_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
-    target_compile_definitions(sdl_libretro_test PRIVATE
+    add_executable(SDL_libretro_test test/SDL_libretro_test.c)
+    target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
+    target_compile_definitions(SDL_libretro_test PRIVATE
         TEST_CORE_PATH="$<TARGET_FILE:test_core>"
         TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt")
-    add_test(NAME sdl_libretro_test COMMAND sdl_libretro_test)
+    add_test(NAME SDL_libretro_test COMMAND SDL_libretro_test)
 endif()
 
 # Install (only when this is the top-level project)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     install(TARGETS SDL_libretro EXPORT SDL_libretroTargets)
-    install(FILES include/SDL_libretro.h DESTINATION include)
+
     # Implementation fragments + the libretro API header are part of the
     # shipped header set (needed by the TU that defines the macro).
-    install(DIRECTORY include/ DESTINATION include
-        FILES_MATCHING PATTERN "SDL_libretro_*.h")
+    install(
+        DIRECTORY include/
+        DESTINATION include
+        FILES_MATCHING PATTERN "SDL_*.h"
+    )
     install(FILES vendor/libretro-common/include/libretro.h DESTINATION include)
+endif()
+
+if(EMSCRIPTEN)
+    if(NOT SDL_LIBRETRO_DOWNLOAD_CORES)
+        message(FATAL_ERROR "Emscripten builds require SDL_LIBRETRO_DOWNLOAD_CORES=ON: "
+            "cores must be downloaded so they can be preloaded into the virtual filesystem.")
+    endif()
+    include(EmscriptenConfig)
 endif()

@@ -21,8 +21,7 @@
 
 #ifndef SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE
 /**
- * Fallback rate used when a core reports no audio sample rate (<= 0). The real
- * rate, if it arrives later via SET_SYSTEM_AV_INFO, triggers a reopen.
+ * Fallback rate used when a core reports no audio sample rate (<= 0).
  */
 #define SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE 48000
 #endif
@@ -57,6 +56,39 @@ static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const float* samples, int 
 }
 
 /**
+ * Scale interleaved int16 samples to normalized floats (-1, 1).
+ *
+ * @see SDL_Libretro_QueueAudioS16()
+ * @internal
+ */
+static void SDL_Libretro_ConvertS16ToFloat(const int16_t* src, float* dst, size_t samples) {
+    for (size_t i = 0; i < samples; i++) {
+        dst[i] = (float)src[i] * (1.0f / 32768.0f);
+    }
+}
+
+/**
+ * Convert `frames` interleaved stereo int16 frames to float and queue them.
+ *
+ * Chunked through a fixed float scratch buffer. Shared by the batch and
+ * single-sample flush paths.
+ *
+ * @see SDL_Libretro_ConvertS16ToFloat()
+ * @internal
+ */
+static void SDL_Libretro_QueueAudioS16(SDL_Libretro* lr, const int16_t* data, size_t frames) {
+    float convBuf[512 * 2];
+    size_t written = 0;
+    while (written < frames) {
+        size_t chunk = frames - written;
+        if (chunk > 512) chunk = 512;
+        SDL_Libretro_ConvertS16ToFloat(data + written * 2, convBuf, chunk * 2);
+        SDL_Libretro_QueueAudio(lr, convBuf, (int)(chunk * sizeof(float) * 2));
+        written += chunk;
+    }
+}
+
+/**
  * Convert and queue int16 stereo frames in reverse frame order.
  *
  * Used while rewinding: each captured frame's audio is emitted back-to-front,
@@ -72,9 +104,8 @@ static void SDL_Libretro_QueueAudioReversed(SDL_Libretro* lr, const int16_t* dat
     while (remaining > 0) {
         size_t chunk = remaining > 512 ? 512 : remaining;
         for (size_t i = 0; i < chunk; i++) {
-            size_t src = remaining - 1 - i; /* walk backward from the batch tail */
-            convBuf[i * 2]     = (float)data[src * 2]     * (1.0f / 32768.0f);
-            convBuf[i * 2 + 1] = (float)data[src * 2 + 1] * (1.0f / 32768.0f);
+            size_t src = remaining - 1 - i; // Walk backwards from the end.
+            SDL_Libretro_ConvertS16ToFloat(&data[src * 2], &convBuf[i * 2], 2);
         }
         SDL_Libretro_QueueAudio(lr, convBuf, (int)(chunk * sizeof(float) * 2));
         remaining -= chunk;
@@ -94,6 +125,10 @@ static void SDL_Libretro_QueueAudioReversed(SDL_Libretro* lr, const int16_t* dat
  */
 static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed) {
     if (!lr || !lr->core.audioStream || !lr->core.drcEnabled) return;
+
+    // There is no need to update DRC when the speed is <= 0, so leave
+    // the current ratio untouched while stopped.
+    if (speed <= 0.0f) return;
 
     // Without a valid fill target, there's nothing to tweak.
     if (lr->core.audioQueueThresholdBytes <= 0) {
@@ -180,7 +215,10 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr) {
     lr->core.audio_buffer_status.callback(active, occupancy, underrunLikely);
 }
 
-bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
+/**
+ * Initialize the audio for the given libretro context.
+ */
+static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     if (!lr || !lr->core.loaded) {
         SDL_SetError("[SDL_Libretro] No core loaded");
         return false;
@@ -215,7 +253,12 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     lr->core.drcAdjustment = 1.0f;
     lr->core.drcEnabled = true;
     lr->core.drcDriftAvg = 0.0;
-    SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->speed * lr->core.drcAdjustment);
+    if (!SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->core.speed * lr->core.drcAdjustment)) {
+        SDL_SetError("[SDL_Libretro] Failed to set audio frequency: %s", SDL_GetError());
+        SDL_DestroyAudioStream(lr->core.audioStream);
+        lr->core.audioStream = NULL;
+        return false;
+    }
 
     // Volume
     SDL_SetAudioStreamGain(lr->core.audioStream, lr->volume);
@@ -231,7 +274,7 @@ bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     return true;
 }
 
-void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
+static void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
     if (!lr) return;
 
     // Audio Callback
@@ -245,6 +288,11 @@ void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
     }
 }
 
+/**
+ * Set the desired minimum audio latency for the audio stream.
+ *
+ * @see SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS
+ */
 void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs) {
     if (!lr) return;
     lr->core.minimumAudioLatencyMs = latencyMs;
@@ -292,20 +340,7 @@ static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) 
         return frames;
     }
 
-    float convBuf[512 * 2];
-    size_t written = 0;
-    while (written < frames) {
-        size_t chunk = frames - written;
-        if (chunk > 512) chunk = 512;
-
-        for (size_t i = 0; i < chunk * 2; i++) {
-            convBuf[i] = (float)data[written * 2 + i] * (1.0f / 32768.0f);
-        }
-
-        SDL_Libretro_QueueAudio(lr, convBuf, (int)(chunk * sizeof(float) * 2));
-        written += chunk;
-    }
-
+    SDL_Libretro_QueueAudioS16(lr, data, frames);
     return frames;
 }
 
@@ -319,13 +354,7 @@ static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
         return;
     }
 
-    float convBuf[SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
-    for (size_t i = 0; i < lr->core.singleSampleCount * 2; i++) {
-        convBuf[i] = (float)lr->core.singleSampleBuffer[i] * (1.0f / 32768.0f);
-    }
-
-    SDL_Libretro_QueueAudio(lr, convBuf,
-        (int)(lr->core.singleSampleCount * sizeof(float) * 2));
+    SDL_Libretro_QueueAudioS16(lr, lr->core.singleSampleBuffer, lr->core.singleSampleCount);
     lr->core.singleSampleCount = 0;
 }
 
