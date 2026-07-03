@@ -219,9 +219,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY: {
-            if (!data) return false;
-            *(const char**)data = SDL_Libretro_GetDirectory(lr, RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY);
+        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_PLAYLIST_DIRECTORY:
+        case RETRO_ENVIRONMENT_GET_FILE_BROWSER_START_DIRECTORY: {
+            // If data is NULL, it's checking if the environment callback is available.
+            if (!data) return true;
+            *(const char**)data = SDL_Libretro_GetDirectory(lr, cmd);
             return true;
         }
 
@@ -248,7 +253,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
             const struct retro_input_descriptor* desc = (const struct retro_input_descriptor*)data;
-            if (!desc) return false;
+            if (!desc) return true;
             unsigned count = 0;
             for (const struct retro_input_descriptor* d = desc; d->description; d++) count++;
             SDL_free(lr->core.inputDescriptors);
@@ -265,7 +270,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_KEYBOARD_CALLBACK: {
-            if (!data) return false;
+            if (!data) return true;
             const struct retro_keyboard_callback* cb = (const struct retro_keyboard_callback*)data;
             lr->core.keyboard_event = cb->callback;
             return true;
@@ -273,7 +278,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE: {
             const struct retro_disk_control_callback* cb = (const struct retro_disk_control_callback*)data;
-            if (!cb) return false;
+            if (!cb) return true;
             SDL_memset(&lr->core.disk_control, 0, sizeof(lr->core.disk_control));
             lr->core.disk_control.set_eject_state = cb->set_eject_state;
             lr->core.disk_control.get_eject_state = cb->get_eject_state;
@@ -292,7 +297,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
-            if (!data) return false;
+            // When NULL data is passed, the core is checking if the environment callback is available.
+            if (!data) return true;
             struct retro_variable* var = (struct retro_variable*)data;
             if (!var->key) return false;
             const SDL_LibretroOption* o = SDL_Libretro_GetOption(lr, var->key);
@@ -304,6 +310,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_VARIABLE: {
+            // When NULL data is passed, it's just checking if the callback is available.
             if (!data) return true;
             const struct retro_variable* var = (const struct retro_variable*)data;
             if (!var->key || !var->value) return false;
@@ -311,52 +318,58 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_VARIABLES: {
-            if (!data) return false;
+            // When NULL data is passed, it's just checking if the callback is available.
+            if (!data) return true;
             const struct retro_variable* var = (const struct retro_variable*)data;
             for (; var->key; var++) {
-                char defaultVal[512] = {0};
-                char label[512] = {0};
-                char optsBuf[512] = {0};
-                // v0/v1 variables carry no per-value labels; only value strings.
-                struct retro_core_option_value values[RETRO_NUM_CORE_OPTION_VALUES_MAX] = {0};
-                if (var->value) {
-                    const char* semi = SDL_strchr(var->value, ';');
-                    if (semi) {
-                        size_t labelLen = (size_t)(semi - var->value);
-                        while (labelLen > 0 && var->value[labelLen - 1] == ' ') {
-                            labelLen--;
+                const char* label = "";
+                const char* defaultVal = "";
+                // Copy the value so that we can manipulate it as needed.
+                // Only needed until the end of this call.
+                char* valueBuffer = var->value ? SDL_strdup(var->value) : NULL;
+                struct retro_core_option_value* values = NULL;
+                unsigned vcount = 0;
+                if (valueBuffer) {
+                    char* semicolon = SDL_strchr(valueBuffer, ';');
+                    if (semicolon) {
+                        // Split off the label, trimming trailing spaces.
+                        *semicolon = '\0';
+                        char* labelEnd = semicolon;
+                        while (labelEnd > valueBuffer && labelEnd[-1] == ' ') {
+                            *(--labelEnd) = '\0';
                         }
-                        if (labelLen >= sizeof(label)) {
-                            labelLen = sizeof(label) - 1;
-                        }
-                        SDL_memcpy(label, var->value, labelLen);
+                        label = valueBuffer;
 
-                        const char* opts = semi + 1;
+                        char* opts = semicolon + 1;
                         while (*opts == ' ') {
                             opts++;
                         }
 
-                        const char* pipe = SDL_strchr(opts, '|');
-                        size_t len = pipe ? (size_t)(pipe - opts) : SDL_strlen(opts);
-                        if (len >= sizeof(defaultVal)) {
-                            len = sizeof(defaultVal) - 1;
+                        // Count the pipe-separated values so the array is sized exactly.
+                        unsigned count = *opts ? 1 : 0;
+                        for (const char* p = opts; *p; p++) {
+                            if (*p == '|') count++;
                         }
-                        SDL_memcpy(defaultVal, opts, len);
-
-                        // Parse the pipe-separated values into the values array.
-                        // optsBuf is the mutable backing store the pointers reference;
-                        // InitCoreOption deep-copies, so it only needs to live until that call.
-                        SDL_strlcpy(optsBuf, opts, sizeof(optsBuf));
-                        unsigned vcount = 0;
-                        char* tok = optsBuf;
-                        while (tok && *tok && vcount < RETRO_NUM_CORE_OPTION_VALUES_MAX - 1) {
-                            char* nextPipe = SDL_strchr(tok, '|');
-                            if (nextPipe) *nextPipe = '\0';
-                            values[vcount].value = tok;
-                            values[vcount].label = NULL;
-                            vcount++;
-                            tok = nextPipe ? nextPipe + 1 : NULL;
+                        if (count > 0) {
+                            // Extra trailing entry keeps a NULL sentinel for InitCoreOption.
+                            values = (struct retro_core_option_value*)SDL_calloc(count + 1, sizeof(*values));
                         }
+                        if (values) {
+                            // Version 1 and 2 of the variables API carry no per-value labels, only value strings.
+                            char* tok = opts;
+                            while (tok && *tok) {
+                                char* nextPipe = SDL_strchr(tok, '|');
+                                if (nextPipe) *nextPipe = '\0';
+                                values[vcount].value = tok;
+                                values[vcount].label = NULL;
+                                vcount++;
+                                tok = nextPipe ? nextPipe + 1 : NULL;
+                            }
+                        }
+                        // The first value is the default (terminate it in place).
+                        char* firstPipe = SDL_strchr(opts, '|');
+                        if (firstPipe) *firstPipe = '\0';
+                        defaultVal = opts;
                     }
                 }
                 SDL_Libretro_InitCoreOption(lr, var->key,
@@ -364,50 +377,53 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     label,
                     values,
                     NULL, NULL);
+                SDL_free(values);
+                SDL_free(valueBuffer);
             }
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
-            if (!data) return false;
+            if (!data) return true;
             *(bool*)data = lr->core.optionsDirty;
             lr->core.optionsDirty = false;
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME: {
-            if (!data) return false;
+            if (!data) return true;
             lr->core.supportNoGame = *(const bool*)data;
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_LIBRETRO_PATH: {
-            if (!data) return false;
+            if (!data) return true;
             *(const char**)data = lr->core.corePath[0] ? lr->core.corePath : NULL;
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK: {
-            if (!data) return false;
+            if (!data) return true;
             lr->core.runloop_frame_time = *(const struct retro_frame_time_callback*)data;
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_AUDIO_CALLBACK: {
-            if (!data) return false;
+            // When data is NULL, the core is checking if the environment callback is available.
+            if (!data) return true;
             lr->core.audio_callback = *(const struct retro_audio_callback*)data;
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE: {
-            if (!data) return false;
+            if (!data) return true;
             struct retro_rumble_interface* rumble = (struct retro_rumble_interface*)data;
             rumble->set_rumble_state = SDL_Libretro_SetRumbleState;
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_INPUT_DEVICE_CAPABILITIES: {
-            if (!data) return false;
+            if (!data) return true;
             *(uint64_t*)data =
                 (1 << RETRO_DEVICE_JOYPAD) |
                 (1 << RETRO_DEVICE_MOUSE) |
@@ -419,14 +435,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: {
-            if (!data) return false;
+            if (!data) return true;
             struct retro_log_callback* cb = (struct retro_log_callback*)data;
             cb->log = &SDL_Libretro_Logger;
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_PERF_INTERFACE: {
-            if (!data) return false;
+            if (!data) return true;
             struct retro_perf_callback* perf = (struct retro_perf_callback*)data;
             perf->get_time_usec = &SDL_Libretro_GetTimeUSEC;
             perf->get_cpu_features = &SDL_Libretro_GetCPUFeatures;
@@ -435,18 +451,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             perf->perf_start = &SDL_Libretro_PerfStart;
             perf->perf_stop = &SDL_Libretro_PerfStop;
             perf->perf_log = &SDL_Libretro_PerfLog;
-            return true;
-        }
-
-        case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: {
-            if (!data) return false;
-            *(const char**)data = SDL_Libretro_GetDirectory(lr, RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY);
-            return true;
-        }
-
-        case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY: {
-            if (!data) return false;
-            *(const char**)data = SDL_Libretro_GetDirectory(lr, RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY);
             return true;
         }
 
@@ -467,7 +471,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_GEOMETRY: {
-            if (!data) return false;
+            if (!data) return true;
             const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
             // Geometry updates during runtime are applied in SDL_Libretro_VideoRefresh().
             lr->core.aspectRatio = geom->aspect_ratio;
@@ -475,26 +479,26 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_USERNAME: {
-            if (!data) return false;
+            if (!data) return true;
             *(const char**)data = lr->username;
             return true;
         }
 
         case RETRO_ENVIRONMENT_GET_LANGUAGE: {
-            if (!data) return false;
+            if (!data) return true;
             *(unsigned*)data = RETRO_LANGUAGE_ENGLISH;
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: {
-            if (!data) return false;
+            if (!data) return true;
             lr->core.serializationQuirks = *(const uint64_t*)data;
             return true;
         }
 
         case 25:
         case RETRO_ENVIRONMENT_GET_SENSOR_INTERFACE: {
-            if (!data) return false;
+            if (!data) return true;
             struct retro_sensor_interface* sensor = (struct retro_sensor_interface*)data;
             sensor->set_sensor_state = SDL_Libretro_SetSensorState;
             sensor->get_sensor_input = SDL_Libretro_GetSensorInput;
@@ -503,21 +507,21 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case 47:
         case RETRO_ENVIRONMENT_GET_AUDIO_VIDEO_ENABLE: {
-            if (!data) return false;
+            if (!data) return true;
             *(int*)data = RETRO_AV_ENABLE_VIDEO | RETRO_AV_ENABLE_AUDIO;
             return true;
         }
 
         case 49:
         case RETRO_ENVIRONMENT_GET_FASTFORWARDING: {
-            if (!data) return false;
+            if (!data) return true;
             *(bool*)data = SDL_Libretro_GetSpeed(lr) > 1.0f;
             return true;
         }
 
         case 50:
         case RETRO_ENVIRONMENT_GET_TARGET_REFRESH_RATE: {
-            if (!data) return false;
+            if (!data) return true;
             *(float*)data = SDL_Libretro_GetTargetRefreshRate(lr);
             return true;
         }
@@ -577,7 +581,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
             const struct retro_controller_info* info = (const struct retro_controller_info*)data;
-            if (!info) return false;
+            if (!info) return true;
             SDL_free(lr->core.controllerInfo);
             lr->core.controllerInfo = NULL;
             lr->core.controllerPortCount = 0;
@@ -595,7 +599,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case 36:
         case RETRO_ENVIRONMENT_SET_MEMORY_MAPS: {
-            if (!data) return false;
+            if (!data) return true;
             const struct retro_memory_map* map = (const struct retro_memory_map*)data;
             SDL_Libretro_FreeMemoryMap(lr);
             if (map->num_descriptors > 0) {
@@ -617,14 +621,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_AUDIO_BUFFER_STATUS_CALLBACK: {
             // NULL data unregisters the callback.
             // @see SDL_Libretro_ReportAudioBufferStatus
-            const struct retro_audio_buffer_status_callback* cb =
-                (const struct retro_audio_buffer_status_callback*)data;
+            const struct retro_audio_buffer_status_callback* cb = (const struct retro_audio_buffer_status_callback*)data;
             lr->core.audio_buffer_status.callback = cb ? cb->callback : NULL;
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY: {
-            if (!data) return false;
+            if (!data) return true;
             lr->core.minimumAudioLatencyMs = *(const unsigned*)data;
             // Apply the new latency target live if audio is already running.
             if (lr->core.audioStream) {
@@ -656,13 +659,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_CORE_OPTIONS_VERSION: {
-            if (!data) return false;
+            if (!data) return true;
             *(unsigned*)data = 2;
             return true;
         }
 
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS: {
-            if (!data) return false;
+            if (!data) return true;
             const struct retro_core_option_definition* defs = (const struct retro_core_option_definition*)data;
             unsigned count = 0;
             while (defs[count].key) count++;
@@ -759,7 +762,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: {
-            if (!data) return false;
+            if (!data) return true;
             *(unsigned*)data = 1;
             return true;
         }
@@ -777,7 +780,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_SET_MESSAGE_EXT: {
             const struct retro_message_ext* msg = (const struct retro_message_ext*)data;
-            if (!msg || !msg->msg) return false;
+            if (!msg || !msg->msg) return true;
             double seconds = msg->duration / 1000.0;
 
             if (msg->target == RETRO_MESSAGE_TARGET_LOG || msg->target == RETRO_MESSAGE_TARGET_ALL) {
@@ -796,7 +799,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: {
-            if (!data) return false;
+            if (!data) return true;
             lr->core.disk_control = *(const struct retro_disk_control_ext_callback*)data;
             lr->core.diskControlActive = true;
             return true;
@@ -834,7 +837,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case 45:
         case RETRO_ENVIRONMENT_GET_VFS_INTERFACE: {
-            if (!data) return false;
+            if (!data) return true;
             struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
             if (info->required_interface_version > 4) {
                 SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
@@ -865,7 +868,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case 77:
         case RETRO_ENVIRONMENT_GET_DEVICE_POWER: {
-            if (!data) return false;
+            if (!data) return true;
             struct retro_device_power* power = (struct retro_device_power*)data;
             int percent;
             SDL_PowerState sdl_state = SDL_GetPowerInfo(&power->seconds, &percent);
@@ -891,7 +894,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case 81:
         case RETRO_ENVIRONMENT_GET_TARGET_SAMPLE_RATE: {
-            if (!data) return false;
+            if (!data) return true;
             SDL_AudioSpec spec;
             if (lr->core.audioStream && SDL_GetAudioStreamFormat(lr->core.audioStream, NULL, &spec) && spec.freq > 0) {
                 // Active Device

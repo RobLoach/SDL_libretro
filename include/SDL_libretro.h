@@ -194,10 +194,6 @@ void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t*
 
 // Core Options
 
-#ifndef SDL_LIBRETRO_OPTION_VALUES_MAX
-#define SDL_LIBRETRO_OPTION_VALUES_MAX 128 /** Maximum selectable values per option (mirrors libretro's limit). */
-#endif
-
 /**
  * One selectable value for a core option.
  */
@@ -217,8 +213,9 @@ typedef struct SDL_LibretroOption {
     const char* defaultValue; /** The default value. */
     const char* category;     /** Key of the category it belongs to; empty if none. */
     bool visible;             /** Whether the frontend should display it. */
-    unsigned valuesCount;      /** The number of entries in values. */
-    SDL_LibretroOptionValue values[SDL_LIBRETRO_OPTION_VALUES_MAX]; /** The selectable values; the first valuesCount entries are populated. */
+    unsigned valuesCount;     /** The number of populated entries in values. */
+    SDL_LibretroOptionValue* values; /** The selectable values; dynamically allocated. */
+    unsigned valuesCapacity;  /** Allocated capacity of the values array. */
 } SDL_LibretroOption;
 
 /**
@@ -235,6 +232,8 @@ const SDL_LibretroOption* SDL_Libretro_GetOption(const SDL_Libretro* lr, const c
 const SDL_LibretroOption* SDL_Libretro_GetOptionByIndex(const SDL_Libretro* lr, unsigned index);
 bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* value);
 const char* SDL_Libretro_GetOptionValue(SDL_Libretro* lr, const char* key);
+const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key);
+bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direction);
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key);
 void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr);
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr);
