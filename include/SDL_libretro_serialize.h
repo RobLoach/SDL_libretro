@@ -34,7 +34,7 @@
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
-    if (!lr || !lr->core.gameLoaded) return false;
+    if (!lr || !lr->core.gameLoaded || !code) return false;
     lr->core.symbols.retro_cheat_set(index, enabled, code);
     return true;
 }

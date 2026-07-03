@@ -62,7 +62,9 @@ static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
             lr->osdQueue[i].msg = NULL;
             continue;
         }
-        if (dst != i) lr->osdQueue[dst] = lr->osdQueue[i];
+        if (dst != i) {
+            lr->osdQueue[dst] = lr->osdQueue[i];
+        }
         if (best == -1 || lr->osdQueue[dst].priority > bestPri) {
             bestPri = lr->osdQueue[dst].priority;
             best = dst;
@@ -85,6 +87,10 @@ static void SDL_Libretro_FreeMessages(SDL_Libretro* lr) {
 
 /**
  * Add a message to be displayed within the libretro context.
+ *
+ * @param the libretro context.
+ * @param msg The message to display.
+ * @param duration The amount of time in seconds to display the message.
  */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
     if (!lr) return;
@@ -100,6 +106,8 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
 
 /**
  * Gets the most relevent libretro message to display from the queue.
+ *
+ * @return A string for the message, or NULL if there isn't a message to display.
  */
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
     if (!lr || lr->osdQueueCount == 0) return NULL;
@@ -128,11 +136,21 @@ unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr) {
     return (unsigned)lr->osdQueueCount;
 }
 
-bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, unsigned index,
+/**
+ * Retrieves all message details for the given message index.
+ *
+ * @param index The index of the message to retrieve. If -1, will get the most relevent message.
+ */
+bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index,
     const char** msg, int* progress, int* type) {
     if (!lr) return false;
-    SDL_Libretro_OsdFindTop(lr);
-    if (index >= (unsigned)lr->osdQueueCount) return false;
+    if (index < 0) {
+        index = SDL_Libretro_OsdFindTop(lr);
+    }
+    else {
+        SDL_Libretro_OsdFindTop(lr);
+    }
+    if (index < 0 || index >= lr->osdQueueCount) return false;
     if (msg) *msg = lr->osdQueue[index].msg;
     if (progress) *progress = lr->osdQueue[index].progress;
     if (type) *type = (int)lr->osdQueue[index].type;

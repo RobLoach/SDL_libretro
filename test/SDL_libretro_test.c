@@ -138,9 +138,13 @@ static int SDLCALL test_Input(void *arg) {
     SDL_Libretro_SetKeyboardMapping(NULL, 0, SDL_SCANCODE_Z);
 
     SDL_Libretro_SetVirtualButton(lr, 0, RETRO_DEVICE_ID_JOYPAD_A, true);
-    SDLTest_AssertCheck(lr->core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_A] == true, "Virtual button A pressed");
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[0][RETRO_DEVICE_ID_JOYPAD_A] == true, "Virtual button A pressed");
     SDL_Libretro_SetVirtualButton(lr, 0, RETRO_DEVICE_ID_JOYPAD_A, false);
-    SDLTest_AssertCheck(lr->core.virtualJoypadState[RETRO_DEVICE_ID_JOYPAD_A] == false, "Virtual button A released");
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[0][RETRO_DEVICE_ID_JOYPAD_A] == false, "Virtual button A released");
+    /* Virtual buttons are now per-port: port 1 must not alias port 0. */
+    SDL_Libretro_SetVirtualButton(lr, 1, RETRO_DEVICE_ID_JOYPAD_B, true);
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[1][RETRO_DEVICE_ID_JOYPAD_B] == true, "Virtual button on port 1 set");
+    SDLTest_AssertCheck(lr->core.virtualJoypadState[0][RETRO_DEVICE_ID_JOYPAD_B] == false, "Port 1 does not alias port 0");
     SDL_Libretro_SetVirtualButton(lr, 16, 0, true);
     SDL_Libretro_SetVirtualButton(lr, 0, 16, true);
     SDL_Libretro_SetVirtualButton(NULL, 0, 0, true);
@@ -148,7 +152,8 @@ static int SDLCALL test_Input(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_NONE, "Port 0 device defaults to NONE");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 0 true");
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_JOYPAD, "GetPortDevice returns stored device");
-    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 15, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 15 true");
+    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 1, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 1 true");
+    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 2, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 2 true");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 16, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice port 16 false");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(NULL, 0, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 16) == RETRO_DEVICE_NONE, "GetPortDevice out-of-range NONE");
@@ -926,6 +931,17 @@ static int SDLCALL test_Rotation(void *arg) {
     CheckPointer(lr, 1, LO, LO); // u=1-sy=.25, v=sx=.25   (90deg CCW)
     CheckPointer(lr, 2, HI, LO); // u=1-sx=.75, v=1-sy=.25 (180deg)
     CheckPointer(lr, 3, HI, HI); // u=sy=.75,   v=1-sx=.75 (270deg CCW)
+
+    // --- CreateSurface reads back the frame at its native size ---
+    lr->core.rotation = 0;
+    SDL_Libretro_Update(lr);
+    SDL_Surface* shot = SDL_Libretro_CreateSurface(lr);
+    SDLTest_AssertCheck(shot != NULL, "CreateSurface returns a surface");
+    if (shot) {
+        SDLTest_AssertCheck(shot->w == 320 && shot->h == 240,
+            "CreateSurface is native size, got %dx%d", shot->w, shot->h);
+        SDL_DestroySurface(shot);
+    }
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);

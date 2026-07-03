@@ -190,68 +190,78 @@ SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
  * The Surface must be destroyed after use with SDL_DestroySurface().
  */
 SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
-    if (!lr || !lr->core.texture) return NULL;
+    if (!lr || !lr->core.texture || !lr->renderer) return NULL;
 
-    void* pixels = NULL;
-    int pitch = 0;
-    if (!SDL_LockTexture(lr->core.texture, NULL, &pixels, &pitch)) return NULL;
+    // Blit the current frame 1:1 into an offscreen target texture
+    // and read it back.
+    SDL_Renderer* renderer = lr->renderer;
+    int w = (int)lr->core.width;
+    int h = (int)lr->core.height;
 
-    SDL_PixelFormat fmt = SDL_Libretro_GetTextureFormat(lr->core.pixelFormat);
-    SDL_Surface* ref = SDL_CreateSurfaceFrom((int)lr->core.width, (int)lr->core.height, fmt, pixels, pitch);
+    SDL_Texture* target = SDL_CreateTexture(renderer,
+        SDL_Libretro_GetTextureFormat(lr->core.pixelFormat),
+        SDL_TEXTUREACCESS_TARGET, w, h);
+    if (!target) return NULL;
+
+    SDL_Texture* prevTarget = SDL_GetRenderTarget(renderer);
     SDL_Surface* out = NULL;
-    if (ref) {
-        out = SDL_CreateSurface((int)lr->core.width, (int)lr->core.height, fmt);
-        if (out) SDL_BlitSurface(ref, NULL, out, NULL);
-        SDL_DestroySurface(ref);
+    if (SDL_SetRenderTarget(renderer, target)) {
+        // Draw the frame unscaled and unrotated into the target, then read it.
+        if (SDL_RenderTexture(renderer, lr->core.texture, NULL, NULL)) {
+            out = SDL_RenderReadPixels(renderer, NULL);
+        }
+        SDL_SetRenderTarget(renderer, prevTarget);
     }
 
-    SDL_UnlockTexture(lr->core.texture);
+    SDL_DestroyTexture(target);
     return out;
 }
 
 /**
- * Shrink `*rect` from the available area to the on-screen rectangle the core's
- * frame occupies: letterboxed to the aspect ratio (inverted for a 90/270 turn,
- * per `rotated`) and, in integer-scale mode, snapped to a whole multiple of the
- * native size.
+ * Shrink `*rect` from the available area to the on-screen rectangle.
+ *
+ * Letterboxed to the aspect ratio, inverted for a 90/270 turn when
+ * `rotated`. Considers the integer-scale mode, snapped to a whole
+ * multiple of the native size.
  *
  * @internal
  */
 static void SDL_Libretro_FitRect(const SDL_Libretro* lr, SDL_FRect* rect, bool rotated) {
     SDL_FRect avail = *rect;
 
-    if (lr->fitMode != SDL_LIBRETRO_FIT_STRETCH) {
-        // Content aspect ratio, falling back to the frame dimensions.
-        float srcAspect = lr->core.aspectRatio;
-        if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
-            srcAspect = (float)lr->core.width / (float)lr->core.height;
-        }
+    // Nothing to fit into a zero-size area, or when we're stretching it.
+    if (avail.w <= 0.0f || avail.h <= 0.0f || lr->fitMode == SDL_LIBRETRO_FIT_STRETCH) return;
 
-        // Letterbox to the effective aspect ratio within the available area.
-        float aspect = (rotated && srcAspect > 0.0f) ? 1.0f / srcAspect : srcAspect;
-        if (aspect > 0.0f) {
-            if (aspect > avail.w / avail.h) {
-                rect->h = avail.w / aspect;
-                rect->y = avail.y + (avail.h - rect->h) * 0.5f;
-            } else {
-                rect->w = avail.h * aspect;
-                rect->x = avail.x + (avail.w - rect->w) * 0.5f;
-            }
-        }
+    // Fix the aspect ratio.
+    float srcAspect = lr->core.aspectRatio;
+    if (srcAspect <= 0.0f && lr->core.width > 0 && lr->core.height > 0) {
+        srcAspect = (float)lr->core.width / (float)lr->core.height;
+    }
 
-        // Integer scaling: a quarter turn maps the core's width to the vertical
-        // extent and its height to the horizontal.
-        if (lr->fitMode == SDL_LIBRETRO_FIT_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
-            float coreW = rotated ? (float)lr->core.height : (float)lr->core.width;
-            float coreH = rotated ? (float)lr->core.width : (float)lr->core.height;
-            int scale = SDL_max(1, SDL_min((int)(rect->w / coreW), (int)(rect->h / coreH)));
-            float w = coreW * (float)scale;
-            float h = coreH * (float)scale;
-            rect->x += (rect->w - w) * 0.5f;
-            rect->y += (rect->h - h) * 0.5f;
-            rect->w = w;
-            rect->h = h;
+    // Letterbox to the effective aspect ratio within the available area.
+    float aspect = (rotated && srcAspect > 0.0f) ? 1.0f / srcAspect : srcAspect;
+    if (aspect > 0.0f) {
+        if (aspect > avail.w / avail.h) {
+            rect->h = avail.w / aspect;
+            rect->y = avail.y + (avail.h - rect->h) * 0.5f;
+        } else {
+            rect->w = avail.h * aspect;
+            rect->x = avail.x + (avail.w - rect->w) * 0.5f;
         }
+    }
+
+    // Integer scaling: a quarter turn maps the core's width to the vertical
+    // extent and its height to the horizontal.
+    if (lr->fitMode == SDL_LIBRETRO_FIT_INTEGER && lr->core.width > 0 && lr->core.height > 0) {
+        float coreW = rotated ? (float)lr->core.height : (float)lr->core.width;
+        float coreH = rotated ? (float)lr->core.width : (float)lr->core.height;
+        int scale = SDL_max(1, SDL_min((int)(rect->w / coreW), (int)(rect->h / coreH)));
+        float w = coreW * (float)scale;
+        float h = coreH * (float)scale;
+        rect->x += (rect->w - w) * 0.5f;
+        rect->y += (rect->h - h) * 0.5f;
+        rect->w = w;
+        rect->h = h;
     }
 }
 
