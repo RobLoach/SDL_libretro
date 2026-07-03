@@ -205,8 +205,8 @@ const char* SDL_Libretro_GetOptionValue(SDL_Libretro* lr, const char* key) {
 /**
  * Get the human-readable label for a core option's current value.
  *
- * Falls back to the raw value when the core supplied no label (as with v0/v1
- * variables), and to NULL when there's no such option.
+ * Falls back to the raw value when the core supplied no label, like in
+ * core option variables API version 0 or 1.
  */
 const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key) {
     const SDL_LibretroOption* opt = SDL_Libretro_GetOption(lr, key);
@@ -220,9 +220,7 @@ const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key) 
 }
 
 /**
- * Advance a core option to the next (direction > 0) or previous (direction < 0)
- * value the core declared, wrapping around at the ends. Useful for L/R cycling
- * in an options menu. Fails for options with no declared values.
+ * Advance a core option to the next (+1) or previous (-1) value.
  */
 bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direction) {
     if (direction == 0) return false;
