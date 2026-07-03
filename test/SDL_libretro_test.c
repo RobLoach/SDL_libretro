@@ -179,6 +179,60 @@ static int SDLCALL test_Options(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Exercises the deprecated RETRO_ENVIRONMENT_SET_VARIABLES path directly, which
+   the test core (v2 only) never triggers. Drives the static env callback by
+   pointing SDL_Libretro_active at a bare context. */
+static int SDLCALL test_SetVariablesLegacy(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+
+    // Build a variable with more values than the old fixed cap to prove the
+    // dynamic parser doesn't truncate. "v0" is the default (first value).
+    const unsigned bigCount = RETRO_NUM_CORE_OPTION_VALUES_MAX + 50;
+    size_t bufSize = 32 + bigCount * 8;
+    char* big = (char*)SDL_malloc(bufSize);
+    size_t off = (size_t)SDL_snprintf(big, bufSize, "Big Option; ");
+    for (unsigned i = 0; i < bigCount; i++) {
+        off += (size_t)SDL_snprintf(big + off, bufSize - off, "%sv%u", i ? "|" : "", i);
+    }
+
+    struct retro_variable vars[] = {
+        // Extra spaces after ';' and around the standard single space are tolerated.
+        { "leg_bool", "Enable Feature;  enabled|disabled" },
+        { "leg_big", big },
+        { NULL, NULL },
+    };
+    bool ok = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_VARIABLES, vars);
+    SDLTest_AssertCheck(ok == true, "SET_VARIABLES returns true");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 2, "Two legacy options registered");
+
+    const SDL_LibretroOption* b = SDL_Libretro_GetOption(lr, "leg_bool");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->desc, "Enable Feature") == 0, "Label parsed, trailing space trimmed");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->value, "enabled") == 0, "First value is the default");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->defaultValue, "enabled") == 0, "Default value stored");
+    SDLTest_AssertCheck(b && b->valuesCount == 2, "Two values parsed");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->values[0].value, "enabled") == 0, "Value 0 is enabled");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->values[1].value, "disabled") == 0, "Value 1 is disabled");
+    SDLTest_AssertCheck(b && b->values[0].label == NULL, "Legacy values carry no label");
+
+    // The whole point of the dynamic array: no truncation past the old cap.
+    const SDL_LibretroOption* big_opt = SDL_Libretro_GetOption(lr, "leg_big");
+    SDLTest_AssertCheck(big_opt && big_opt->valuesCount == bigCount, "All values parsed (no truncation)");
+    SDLTest_AssertCheck(big_opt && SDL_strcmp(big_opt->value, "v0") == 0, "Big option default is v0");
+    SDLTest_AssertCheck(big_opt && SDL_strcmp(big_opt->values[bigCount - 1].value, "v177") == 0,
+        "Last value survives");
+
+    // Values are validated against the declared list, same as v2 options.
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "leg_bool", "disabled") == true, "Set declared value");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "leg_bool", "bogus") == false, "Reject undeclared value");
+
+    SDL_free(big);
+    SDL_Libretro_Destroy(lr);
+    SDL_Libretro_active = prevActive;
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -367,6 +421,22 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Held pointer reflects updated value");
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "bogus") == false, "Set invalid value rejected");
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Value unchanged after rejected set");
+
+    // GetOptionValueLabel falls back to the raw value when no label was supplied.
+    SDLTest_AssertCheck(a && SDL_strcmp(SDL_Libretro_GetOptionValueLabel(lr, "test_option_a"), "off") == 0,
+        "GetOptionValueLabel returns raw value when unlabeled");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionValueLabel(lr, "nope") == NULL, "GetOptionValueLabel unknown NULL");
+
+    // CycleOptionValue walks the declared values and wraps at the ends.
+    SDL_Libretro_SetOptionValue(lr, "test_option_a", "on");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 1) == true, "Cycle forward succeeds");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Cycle forward on -> off");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 1) == true, "Cycle forward wraps");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "on") == 0, "Cycle forward off -> on (wrap)");
+    SDL_Libretro_CycleOptionValue(lr, "test_option_a", -1);
+    SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Cycle backward on -> off (wrap)");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 0) == false, "Cycle 0 direction fails");
+    SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "nope", 1) == false, "Cycle unknown option fails");
 
     // ResetAllOptions restores defaults and marks options dirty.
     SDL_Libretro_AreOptionsDirty(lr); // clear the dirty flag set by SetOptionValue
@@ -919,6 +989,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
+    LIBRETRO_TEST_CASE(test_SetVariablesLegacy, "Legacy SET_VARIABLES parsing without truncation"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),

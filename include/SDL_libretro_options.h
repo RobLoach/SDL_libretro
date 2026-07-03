@@ -16,7 +16,9 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     const char* info, const char* categoryKey) {
     if (!lr || !key) return;
 
-    // Check if already registered
+    // Check if already registered. Re-registration is intentionally ignored:
+    // the first definition wins, so an option's declared values and default stay
+    // stable for the life of the core.
     if (SDL_Libretro_GetOption(lr, key)) {
         return;
     }
@@ -40,12 +42,16 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     slot->category = SDL_Libretro_Strdup(categoryKey);
     slot->visible = true;
 
+    // The available values.
     slot->values = NULL;
     slot->valuesCount = 0;
     slot->valuesCapacity = 0;
     if (values) {
+        // Count how many values there are available for the option.
         unsigned count = 0;
         while (values[count].value) count++;
+
+        // Build the available values.
         if (count > 0) {
             slot->values = (SDL_LibretroOptionValue*)SDL_calloc(count, sizeof(SDL_LibretroOptionValue));
             if (slot->values) {
@@ -194,6 +200,48 @@ const char* SDL_Libretro_GetOptionValue(SDL_Libretro* lr, const char* key) {
     const SDL_LibretroOption* opt = SDL_Libretro_GetOption(lr, key);
     if (!opt) return NULL;
     return opt->value;
+}
+
+/**
+ * Get the human-readable label for a core option's current value.
+ *
+ * Falls back to the raw value when the core supplied no label (as with v0/v1
+ * variables), and to NULL when there's no such option.
+ */
+const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key) {
+    const SDL_LibretroOption* opt = SDL_Libretro_GetOption(lr, key);
+    if (!opt || !opt->value) return NULL;
+    for (unsigned v = 0; v < opt->valuesCount; v++) {
+        if (opt->values[v].value && SDL_strcmp(opt->values[v].value, opt->value) == 0) {
+            return opt->values[v].label ? opt->values[v].label : opt->values[v].value;
+        }
+    }
+    return opt->value;
+}
+
+/**
+ * Advance a core option to the next (direction > 0) or previous (direction < 0)
+ * value the core declared, wrapping around at the ends. Useful for L/R cycling
+ * in an options menu. Fails for options with no declared values.
+ */
+bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direction) {
+    if (direction == 0) return false;
+    SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
+    if (!opt || opt->valuesCount == 0) return false;
+
+    // Find the current value's index; default to 0 if it isn't in the list.
+    unsigned current = 0;
+    for (unsigned v = 0; v < opt->valuesCount; v++) {
+        if (opt->values[v].value && opt->value && SDL_strcmp(opt->values[v].value, opt->value) == 0) {
+            current = v;
+            break;
+        }
+    }
+
+    unsigned count = opt->valuesCount;
+    unsigned step = (direction > 0) ? 1 : count - 1;
+    unsigned next = (current + step) % count;
+    return SDL_Libretro_SetOptionValue(lr, key, opt->values[next].value);
 }
 
 /**

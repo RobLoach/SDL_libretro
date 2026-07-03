@@ -232,6 +232,8 @@ const SDL_LibretroOption* SDL_Libretro_GetOption(const SDL_Libretro* lr, const c
 const SDL_LibretroOption* SDL_Libretro_GetOptionByIndex(const SDL_Libretro* lr, unsigned index);
 bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* value);
 const char* SDL_Libretro_GetOptionValue(SDL_Libretro* lr, const char* key);
+const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key);
+bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direction);
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key);
 void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr);
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr);
