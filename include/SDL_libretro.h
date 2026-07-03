@@ -245,12 +245,19 @@ const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* 
 
 // Subsystems
 
+typedef struct SDL_LibretroSubsystemMemoryInfo {
+    const char* extension; /** The file extension the frontend should use to save this memory region, e.g. "srm". */
+    unsigned type; /** The memory type id passed to retro_get_memory_data()/retro_get_memory_size(). */
+} SDL_LibretroSubsystemMemoryInfo;
+
 typedef struct SDL_LibretroSubsystemRomInfo {
     const char* desc;
     const char* validExtensions;
     bool needFullpath;
     bool blockExtract;
     bool required;
+    SDL_LibretroSubsystemMemoryInfo* memory; /** Memory regions this ROM type uses; NULL when numMemory is 0. */
+    unsigned numMemory; /** The number of entries in memory. */
 } SDL_LibretroSubsystemRomInfo;
 
 typedef struct SDL_LibretroSubsystemInfo {
@@ -263,7 +270,8 @@ typedef struct SDL_LibretroSubsystemInfo {
 
 unsigned SDL_Libretro_GetSubsystemCount(const SDL_Libretro* lr);
 const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystem(const SDL_Libretro* lr, unsigned index);
-bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths, SDL_Renderer* renderer);
+const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId);
+bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths);
 
 // Cheats
 

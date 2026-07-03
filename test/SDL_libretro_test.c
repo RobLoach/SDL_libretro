@@ -526,6 +526,48 @@ static int SDLCALL test_LoadCore(void *arg) {
 #endif
 }
 
+static int SDLCALL test_Subsystem(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystemCount(lr) == 1, "One subsystem registered");
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystem(lr, 1) == NULL, "GetSubsystem out of range NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystemById(lr, 999) == NULL, "GetSubsystemById unknown NULL");
+
+    const SDL_LibretroSubsystemInfo* sub = SDL_Libretro_GetSubsystemById(lr, 1);
+    SDLTest_AssertCheck(sub != NULL, "GetSubsystemById(1) found");
+    if (sub) {
+        SDLTest_AssertCheck(SDL_strcmp(sub->desc, "Super Game Boy") == 0, "Subsystem desc matches");
+        SDLTest_AssertCheck(SDL_strcmp(sub->ident, "sgb") == 0, "Subsystem ident matches");
+        SDLTest_AssertCheck(sub->numRoms == 2, "Subsystem has 2 roms");
+        SDLTest_AssertCheck(sub == SDL_Libretro_GetSubsystem(lr, 0), "ById and index agree");
+
+        // First ROM carries a single memory descriptor (srm / 0x100).
+        SDLTest_AssertCheck(sub->roms[0].required == true, "Rom 0 required");
+        SDLTest_AssertCheck(sub->roms[0].needFullpath == false, "Rom 0 need_fullpath false");
+        SDLTest_AssertCheck(sub->roms[0].numMemory == 1, "Rom 0 has 1 memory region");
+        if (sub->roms[0].numMemory == 1) {
+            SDLTest_AssertCheck(SDL_strcmp(sub->roms[0].memory[0].extension, "srm") == 0, "Rom 0 memory extension srm");
+            SDLTest_AssertCheck(sub->roms[0].memory[0].type == 0x100, "Rom 0 memory type 0x100");
+        }
+
+        // Second ROM has no memory descriptors.
+        SDLTest_AssertCheck(sub->roms[1].needFullpath == true, "Rom 1 need_fullpath true");
+        SDLTest_AssertCheck(sub->roms[1].numMemory == 0, "Rom 1 has no memory regions");
+        SDLTest_AssertCheck(sub->roms[1].memory == NULL, "Rom 1 memory NULL");
+    }
+
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystemCount(NULL) == 0, "GetSubsystemCount(NULL) 0");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LoadGame(void *arg) {
 #if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
@@ -1020,6 +1062,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
+    LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),

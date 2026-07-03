@@ -341,6 +341,12 @@ static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr) {
                 for (unsigned r = 0; r < lr->core.subsystems[i].numRoms; r++) {
                     SDL_free((void*)lr->core.subsystems[i].roms[r].desc);
                     SDL_free((void*)lr->core.subsystems[i].roms[r].validExtensions);
+                    if (lr->core.subsystems[i].roms[r].memory) {
+                        for (unsigned m = 0; m < lr->core.subsystems[i].roms[r].numMemory; m++) {
+                            SDL_free((void*)lr->core.subsystems[i].roms[r].memory[m].extension);
+                        }
+                        SDL_free(lr->core.subsystems[i].roms[r].memory);
+                    }
                 }
                 SDL_free(lr->core.subsystems[i].roms);
             }
@@ -358,6 +364,16 @@ unsigned SDL_Libretro_GetSubsystemCount(const SDL_Libretro* lr) {
 const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystem(const SDL_Libretro* lr, unsigned index) {
     if (!lr || index >= lr->core.subsystemCount) return NULL;
     return &lr->core.subsystems[index];
+}
+
+const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId) {
+    if (!lr) return NULL;
+    for (unsigned i = 0; i < lr->core.subsystemCount; i++) {
+        if (lr->core.subsystems[i].id == subsystemId) {
+            return &lr->core.subsystems[i];
+        }
+    }
+    return NULL;
 }
 
 /**
@@ -451,6 +467,62 @@ static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath)
 }
 
 /**
+ * Wire the core's audio/video/input callbacks.
+ *
+ * The symbols must be loaded prior.
+ *
+ * @internal
+ */
+static void SDL_Libretro_SetCoreCallbacks(SDL_Libretro* lr) {
+    if (!lr) return;
+    if (lr->core.symbols.retro_set_video_refresh) lr->core.symbols.retro_set_video_refresh(SDL_Libretro_VideoRefresh);
+    if (lr->core.symbols.retro_set_audio_sample) lr->core.symbols.retro_set_audio_sample(SDL_Libretro_AudioSample);
+    if (lr->core.symbols.retro_set_audio_sample_batch) lr->core.symbols.retro_set_audio_sample_batch(SDL_Libretro_AudioSampleBatch);
+    if (lr->core.symbols.retro_set_input_poll) lr->core.symbols.retro_set_input_poll(SDL_Libretro_InputPoll);
+    if (lr->core.symbols.retro_set_input_state) lr->core.symbols.retro_set_input_state(SDL_Libretro_InputState);
+}
+
+/**
+ * Once the core is loaded, we can finalize loading.
+ *
+ * Set up the Audio Video information, initialize it if available, and
+ * allocate the rewind buffer.
+ */
+static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
+    lr->core.gameLoaded = true;
+
+    // Grab the Audio/Video data.
+    struct retro_system_av_info avInfo = {0};
+    lr->core.symbols.retro_get_system_av_info(&avInfo);
+    lr->core.width = avInfo.geometry.base_width;
+    lr->core.height = avInfo.geometry.base_height;
+    lr->core.fps = avInfo.timing.fps;
+    lr->core.sampleRate = avInfo.timing.sample_rate;
+    lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
+
+    // Failed video initialization should not fail loading the game. Video is
+    // deferred until a renderer is set via SDL_Libretro_SetRenderer().
+    if (lr->renderer && !SDL_Libretro_InitVideo(lr)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "[SDL_Libretro] Video failed to initialize: %s", SDL_GetError());
+    }
+
+    // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
+    if (!SDL_Libretro_InitAudio(lr)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio failed to initialize: %s", SDL_GetError());
+    }
+
+    SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
+        lr->core.width, lr->core.height, lr->core.fps);
+
+    // Allocate rewind buffer now that serialize size is known.
+    if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
+        SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
+    }
+
+    return true;
+}
+
+/**
  * Loads a game at the given path.
  *
  * A renderer is not required to load a game. If none has been set via
@@ -534,12 +606,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
         lr->core.gameInfoExt.persistent_data = persistData;
     }
 
-    // Set the callbacks.
-    lr->core.symbols.retro_set_video_refresh(SDL_Libretro_VideoRefresh);
-    lr->core.symbols.retro_set_audio_sample(SDL_Libretro_AudioSample);
-    lr->core.symbols.retro_set_audio_sample_batch(SDL_Libretro_AudioSampleBatch);
-    lr->core.symbols.retro_set_input_poll(SDL_Libretro_InputPoll);
-    lr->core.symbols.retro_set_input_state(SDL_Libretro_InputState);
+    SDL_Libretro_SetCoreCallbacks(lr);
 
     bool result = lr->core.symbols.retro_load_game(gamePath ? &gameInfo : NULL);
 
@@ -556,62 +623,20 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
         return false;
     }
 
-    lr->core.gameLoaded = true;
-
-    // Grab the Audio/Video data.
-    struct retro_system_av_info avInfo = {0};
-    lr->core.symbols.retro_get_system_av_info(&avInfo);
-    lr->core.width = avInfo.geometry.base_width;
-    lr->core.height = avInfo.geometry.base_height;
-    lr->core.fps = avInfo.timing.fps;
-    lr->core.sampleRate = avInfo.timing.sample_rate;
-    lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
-
-    // Failed video initialization should not fail loading the game. It will
-    // hopefully initialize itself on the first render.
-    if (lr->renderer) {
-        if (!SDL_Libretro_InitVideo(lr)) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Video failed to initialize: %s", SDL_GetError());
-        }
-    }
-
-    // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
-    if (!SDL_Libretro_InitAudio(lr)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio failed to initialize: %s", SDL_GetError());
-    }
-
-    SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
-        lr->core.width, lr->core.height, lr->core.fps);
-
-    // Allocate rewind buffer now that serialize size is known.
-    if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
-        SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
-    }
-
+    SDL_Libretro_FinishGameLoad(lr);
     return true;
 }
 
-bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths, SDL_Renderer* renderer) {
-    if (!lr || !lr->core.loaded || !renderer || !paths || numPaths == 0) {
+bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths) {
+    if (!lr || !lr->core.loaded || !paths || numPaths == 0) {
         SDL_SetError("[SDL_Libretro] Invalid arguments for LoadGameSpecial");
         return false;
     }
 
-    if (lr->core.gameLoaded) {
-        SDL_Libretro_UnloadGame(lr);
-    }
-
-    lr->core.renderer = renderer;
-    lr->core.window = SDL_GetRenderWindow(renderer);
+    SDL_Libretro_UnloadGame(lr);
 
     // Find the subsystem info to determine per-ROM need_fullpath.
-    const SDL_LibretroSubsystemInfo* subsys = NULL;
-    for (unsigned i = 0; i < lr->core.subsystemCount; i++) {
-        if (lr->core.subsystems[i].id == subsystemId) {
-            subsys = &lr->core.subsystems[i];
-            break;
-        }
-    }
+    const SDL_LibretroSubsystemInfo* subsys = SDL_Libretro_GetSubsystemById(lr, subsystemId);
 
     struct retro_game_info* gameInfos = (struct retro_game_info*)SDL_calloc(numPaths, sizeof(struct retro_game_info));
     void** fileBuffers = (void**)SDL_calloc(numPaths, sizeof(void*));
@@ -646,12 +671,7 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const 
         }
     }
 
-    // Set callbacks before the load.
-    lr->core.symbols.retro_set_video_refresh(SDL_Libretro_VideoRefresh);
-    lr->core.symbols.retro_set_audio_sample(SDL_Libretro_AudioSample);
-    lr->core.symbols.retro_set_audio_sample_batch(SDL_Libretro_AudioSampleBatch);
-    lr->core.symbols.retro_set_input_poll(SDL_Libretro_InputPoll);
-    lr->core.symbols.retro_set_input_state(SDL_Libretro_InputState);
+    SDL_Libretro_SetCoreCallbacks(lr);
 
     bool result = lr->core.symbols.retro_load_game_special(subsystemId, gameInfos, numPaths);
 
@@ -672,32 +692,7 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const 
         SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
     }
 
-    lr->core.gameLoaded = true;
-
-    struct retro_system_av_info avInfo = {0};
-    lr->core.symbols.retro_get_system_av_info(&avInfo);
-    lr->core.width = avInfo.geometry.base_width;
-    lr->core.height = avInfo.geometry.base_height;
-    lr->core.fps = avInfo.timing.fps;
-    lr->core.sampleRate = avInfo.timing.sample_rate;
-    lr->core.aspectRatio = avInfo.geometry.aspect_ratio;
-
-    if (!SDL_Libretro_InitVideo(lr)) {
-        SDL_Libretro_UnloadGame(lr);
-        return false;
-    }
-
-    if (!SDL_Libretro_InitAudio(lr)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio unavailable: %s", SDL_GetError());
-    }
-
-    SDL_Log("[SDL_Libretro] Special game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
-        lr->core.width, lr->core.height, lr->core.fps);
-
-    if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
-        SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
-    }
-
+    SDL_Libretro_FinishGameLoad(lr);
     return true;
 }
 

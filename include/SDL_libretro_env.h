@@ -605,7 +605,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: {
-            if (!data) return false;
+            if (!data) return true;
             const struct retro_subsystem_info* info = (const struct retro_subsystem_info*)data;
             SDL_Libretro_FreeSubsystems(lr);
             unsigned count = 0;
@@ -631,6 +631,18 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                                     lr->core.subsystems[i].roms[r].needFullpath = info[i].roms[r].need_fullpath;
                                     lr->core.subsystems[i].roms[r].blockExtract = info[i].roms[r].block_extract;
                                     lr->core.subsystems[i].roms[r].required = info[i].roms[r].required;
+                                    if (info[i].roms[r].num_memory > 0 && info[i].roms[r].memory) {
+                                        lr->core.subsystems[i].roms[r].memory = (SDL_LibretroSubsystemMemoryInfo*)SDL_calloc(
+                                            info[i].roms[r].num_memory, sizeof(SDL_LibretroSubsystemMemoryInfo));
+                                        if (lr->core.subsystems[i].roms[r].memory) {
+                                            lr->core.subsystems[i].roms[r].numMemory = info[i].roms[r].num_memory;
+                                            for (unsigned m = 0; m < info[i].roms[r].num_memory; m++) {
+                                                lr->core.subsystems[i].roms[r].memory[m].extension = SDL_strdup(
+                                                    info[i].roms[r].memory[m].extension ? info[i].roms[r].memory[m].extension : "");
+                                                lr->core.subsystems[i].roms[r].memory[m].type = info[i].roms[r].memory[m].type;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
