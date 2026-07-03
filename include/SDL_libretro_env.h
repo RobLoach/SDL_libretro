@@ -533,13 +533,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             // Bypass SDL_Libretro_SetSpeed so the inhibit_toggle guard doesn't block the core's own request.
             if (lr->core.fastforwardOverride.fastforward) {
                 float ratio = lr->core.fastforwardOverride.ratio;
-                lr->speed = ratio > 1.0f ? ratio : 10.0f;
+                lr->core.speed = ratio > 1.0f ? ratio : 10.0f;
             } else {
-                lr->speed = 1.0f;
+                lr->core.speed = 1.0f;
             }
             if (lr->core.fastforwardOverride.notification) {
                 SDL_Libretro_SetMessage(lr, lr->core.fastforwardOverride.fastforward
-                    ? "Fast-forward (core)" : "Normal speed", 2.0);
+                    ? "Fast-Forward" : "Normal Speed", 3.0);
             }
             return true;
         }
@@ -568,7 +568,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             struct retro_throttle_state* throttle = (struct retro_throttle_state*)data;
 
             double fps = lr->core.fps > 0.0 ? lr->core.fps : 60.0;
-            float speed = lr->speed;
+            float speed = lr->core.speed;
             if (speed == 0.0f) {
                 throttle->mode = RETRO_THROTTLE_FRAME_STEPPING;
                 throttle->rate = 0.0f;

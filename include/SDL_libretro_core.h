@@ -181,6 +181,10 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
 
     SDL_strlcpy(lr->core.corePath, core, sizeof(lr->core.corePath));
 
+    // Default to normal speed for the freshly loaded core (lr->core was zeroed
+    // above, so speed does not carry over from a previously loaded core).
+    lr->core.speed = 1.0f;
+
     SDL_Libretro_active = lr;
 
     // Tell the core that we should call our own enviornment callback.
@@ -649,10 +653,10 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     }
 
     // Paused: Do nothing when speed is zero.
-    if (lr->speed == 0.0f) return;
+    if (lr->core.speed == 0.0f) return;
 
     // Rewind mode: step backwards when speed is negative.
-    if (lr->rewindEnabled && lr->speed < 0.0f) {
+    if (lr->rewindEnabled && lr->core.speed < 0.0f) {
         Uint64 nowNS = SDL_GetTicksNS();
         if (lr->lastTickNS == 0) {
             lr->lastTickNS = nowNS;
@@ -663,7 +667,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         // Each stored snapshot spans captureInterval real frames (a snapshot is taken every Nth frame), so a single rewind step undoes that many frames of game time. Scale the per-step wall-clock cost by the interval; otherwise speed -1 would rewind captureInterval times faster than speed +1 plays forward.
         unsigned interval = lr->rewindCaptureInterval > 0 ? lr->rewindCaptureInterval : 1;
         double stepPeriod = framePeriod * (double)interval;
-        lr->speedAccumulator += frameTime * (double)(-lr->speed);
+        lr->speedAccumulator += frameTime * (double)(-lr->core.speed);
         // Mute audio and neutralize input for the throwaway re-runs that produce the displayed frames while scrubbing backward.
         lr->rewindActive = true;
         while (lr->speedAccumulator >= stepPeriod) {
@@ -676,7 +680,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     }
 
     // Keep audio consumption locked to speed + nudge the queue toward its target fill. Done here, above all three return paths below, so it runs every frame.
-    SDL_Libretro_UpdateDRC(lr, lr->speed);
+    SDL_Libretro_UpdateDRC(lr, lr->core.speed);
 
     // Wall-clock delta since the previous RunFrame.
     Uint64 nowNS = SDL_GetTicksNS();
@@ -696,20 +700,20 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
 
     // Reference frame-time the core is told about, in microseconds.
-    retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)lr->speed);
+    retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)lr->core.speed);
 
     // At normal speed, when the loop is already paced close to the core's frame rate (e.g. a vsync'd 60 Hz display with a ~60 fps core), run exactly one tick and discard the accumulator. This avoids the beat-frequency judder of occasionally emitting 0 or 2 ticks. Gating on the *measured* cadence keeps the core bounded when vsync is off / FPS uncapped.
     double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
-    if (lr->speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
+    if (lr->core.speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
         lr->speedAccumulator = 0.0;
         SDL_Libretro_Tick(lr, referenceUsec);
         return;
     }
 
-    lr->speedAccumulator += frameTime * (double)lr->speed;
+    lr->speedAccumulator += frameTime * (double)lr->core.speed;
 
     // Cap iterations to avoid a spiral of death on slow hardware.
-    int maxTicks = (int)(lr->speed + 1.0f);
+    int maxTicks = (int)(lr->core.speed + 1.0f);
     if (maxTicks < 1) maxTicks = 1;
 
     // Clamp the accumulator so a frame-time spike (game load, window drag, menu pause) can't leave a backlog that runs the core fast afterwards.
@@ -906,7 +910,7 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     if (lr->core.fastforwardOverrideActive && lr->core.fastforwardOverride.inhibit_toggle) return;
 
     if (speed < 0.0f && lr->rewindEnabled) {
-        lr->speed = speed;
+        lr->core.speed = speed;
         if (lr->core.audioStream) {
             lr->core.drcAdjustment = 1.0f;
             lr->core.drcDriftAvg = 0.0;
@@ -916,18 +920,18 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
             SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, -speed);
         }
     } else {
-        lr->speed = SDL_max(speed, 0.0f);
+        lr->core.speed = SDL_max(speed, 0.0f);
     }
 
-    if (lr->core.audioStream && lr->speed > 0.0f) {
+    if (lr->core.audioStream && lr->core.speed > 0.0f) {
         lr->core.drcAdjustment = 1.0f;
         lr->core.drcDriftAvg = 0.0;
-        SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->speed * lr->core.drcAdjustment);
+        SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->core.speed * lr->core.drcAdjustment);
     }
 }
 
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
-    return lr ? lr->speed : 1.0f;
+    return lr ? lr->core.speed : 1.0f;
 }
 
 bool SDL_Libretro_IsFastforwardOverrideActive(const SDL_Libretro* lr) {

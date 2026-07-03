@@ -10,7 +10,7 @@ static int SDLCALL test_CreateDestroy(void *arg) {
 
     // Defaults
     SDLTest_AssertCheck(lr->volume == 1.0f, "Default volume is 1.0");
-    SDLTest_AssertCheck(lr->speed == 1.0f, "Default speed is 1.0");
+    SDLTest_AssertCheck(lr->core.speed == 1.0f, "Default speed is 1.0");
     SDLTest_AssertCheck(SDL_strcmp(lr->username, "SDL_Libretro") == 0, "Default username is SDL_Libretro");
 
     // Default Keyboard Mappings
@@ -264,10 +264,10 @@ static int SDLCALL test_Rewind(void *arg) {
 
     // Negative speed only accepted when rewind is enabled.
     SDL_Libretro_SetSpeed(lr, -1.0f);
-    SDLTest_AssertCheck(lr->speed == 0.0f, "Negative speed clamped without rewind");
+    SDLTest_AssertCheck(lr->core.speed == 0.0f, "Negative speed clamped without rewind");
     SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
     SDL_Libretro_SetSpeed(lr, -1.0f);
-    SDLTest_AssertCheck(lr->speed == -1.0f, "Negative speed accepted with rewind");
+    SDLTest_AssertCheck(lr->core.speed == -1.0f, "Negative speed accepted with rewind");
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;

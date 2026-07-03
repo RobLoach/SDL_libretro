@@ -404,6 +404,7 @@ typedef struct SDL_LibretroCoreData {
     bool loaded;     /** A core is currently loaded. */
     bool gameLoaded; /** A game is currently loaded into the core (content or no-content). */
     bool shutdown; /** Whether or not the core has requested to shutdown. */
+    float speed; /** The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */
     unsigned width, height;
     double fps;
     double sampleRate;
@@ -533,7 +534,6 @@ typedef struct SDL_LibretroRewindDelta {
 struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /** The audio volume. */
-    float speed; /** The speed that the libretro context is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. */
     SDL_LibretroFitMode fitMode;
     double speedAccumulator;
     Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */
