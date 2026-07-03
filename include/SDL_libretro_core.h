@@ -7,11 +7,19 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_CORE_IMPL_ONCE)
 #define SDL_LIBRETRO_CORE_IMPL_ONCE
 
+/**
+ * Load a required core symbol in \c lr->core.
+ *
+ * On failure, unload the shared object and reset lr->core so
+ * no handle leaks and no half-initialized state is left behind.
+ */
 #define LOAD_SYM(sym) do { \
     SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
     SDL_memcpy(&lr->core.symbols.sym, &fp, sizeof(fp)); \
     if (!fp) { \
         SDL_SetError("[SDL_Libretro] Failed to load symbol '%s'", #sym); \
+        SDL_UnloadObject(lr->core.symbols.handle); \
+        SDL_memset(&lr->core, 0, sizeof(lr->core)); \
         return false; \
     } \
 } while (0)
@@ -67,13 +75,12 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_Libretro_UnloadGame(lr);
     SDL_Libretro_UnloadCore(lr);
 
-    for (unsigned i = 0; i < 16; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
         if (lr->gamepads[i]) {
             SDL_CloseGamepad(lr->gamepads[i]);
             lr->gamepads[i] = NULL;
         }
     }
-
 
     SDL_Libretro_FreeCoreLibrary(lr);
     SDL_Libretro_FreeMessages(lr);
@@ -105,13 +112,13 @@ static const char* SDL_Libretro_GetCorePathFromName(const SDL_Libretro* lr, cons
  * Loads a libretro core.
  *
  * @param lr the libretro context.
- * @param corePath Either the path to the core to load, or a name of the core within the core directory.
+ * @param core Either the path to the core to load, or a name of the core within the core directory.
  *
  * @see SDL_Libretro_Create()
  * @see SDL_Libretro_UnloadCore()
  */
-bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
-    if (!lr || !corePath) {
+bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
+    if (!lr || !core) {
         SDL_SetError("[SDL_Libretro] Invalid arguments");
         return false;
     }
@@ -125,15 +132,15 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     SDL_Libretro_UnloadCore(lr);
 
     // If the corePath is just a name, see if it lives in the loaded coreLibrary.
-    const char* path = SDL_Libretro_GetCorePathFromName(lr, corePath);
+    const char* path = SDL_Libretro_GetCorePathFromName(lr, core);
     if (path) {
-        corePath = path;
+        core = path;
     }
 
     // Load the core handle.
-    lr->core.symbols.handle = SDL_LoadObject(corePath);
+    lr->core.symbols.handle = SDL_LoadObject(core);
     if (!lr->core.symbols.handle) {
-        SDL_SetError("[SDL_Libretro] Failed to load core '%s': %s", corePath, SDL_GetError());
+        SDL_SetError("[SDL_Libretro] Failed to load core '%s': %s", core, SDL_GetError());
         return false;
     }
 
@@ -172,7 +179,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* corePath) {
     LOAD_SYM(retro_get_memory_data);
     LOAD_SYM(retro_get_memory_size);
 
-    SDL_strlcpy(lr->core.corePath, corePath, sizeof(lr->core.corePath));
+    SDL_strlcpy(lr->core.corePath, core, sizeof(lr->core.corePath));
 
     SDL_Libretro_active = lr;
 
@@ -988,6 +995,14 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
  */
 unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr) {
     return lr ? lr->core.performanceLevel : 0;
+}
+
+enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro* lr) {
+    return lr ? lr->core.savestateContext : RETRO_SAVESTATE_CONTEXT_NORMAL;
+}
+
+void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context) {
+    if (lr) lr->core.savestateContext = context;
 }
 
 /**

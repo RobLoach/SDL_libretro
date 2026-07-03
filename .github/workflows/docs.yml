@@ -31,6 +31,7 @@ jobs:
       - name: Setup Emscripten
         uses: mymindstorm/setup-emsdk@v14
         with:
+          version: 6.0.2
           actions-cache-folder: emsdk-cache
 
       - name: Cache SDL3 (Emscripten)
@@ -38,12 +39,12 @@ jobs:
         uses: actions/cache@v4
         with:
           path: sdl3-install
-          key: sdl3-emscripten-3.4.4
+          key: sdl3-emscripten-3.4.12
 
       - name: Build SDL3 with Emscripten
         if: steps.sdl3-cache.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 --branch release-3.4.4 https://github.com/libsdl-org/SDL.git sdl3-src
+          git clone --depth 1 --branch release-3.4.12 https://github.com/libsdl-org/SDL.git sdl3-src
           emcmake cmake -B sdl3-build -S sdl3-src \
             -DCMAKE_BUILD_TYPE=Release \
             -DSDL_SHARED=OFF \
