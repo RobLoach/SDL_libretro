@@ -649,7 +649,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     if (captureInterval == 0) captureInterval = 1;
 
     // Allow enabling rewind, when a core isn't loaded.
-    if (!lr->core.loaded) {
+    if (!SDL_Libretro_IsCoreReady(lr)) {
         lr->rewindEnabled = true;
         lr->rewindCapacity = bufferFrames;
         lr->rewindCaptureInterval = captureInterval;
@@ -802,7 +802,7 @@ bool SDL_Libretro_SetRewindMemoryDuration(SDL_Libretro* lr, double seconds) {
     // Per-snapshot worst-case size. Prefer the size the rewind buffer is already
     // using; otherwise query the core directly so this works before rewind is enabled.
     size_t slotSize = lr->rewindSlotSize;
-    if (slotSize == 0 && lr->core.loaded && lr->core.symbols.retro_serialize_size) {
+    if (slotSize == 0 && SDL_Libretro_IsCoreReady(lr) && lr->core.symbols.retro_serialize_size) {
         slotSize = lr->core.symbols.retro_serialize_size();
     }
     if (slotSize == 0) {

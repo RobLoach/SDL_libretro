@@ -406,7 +406,6 @@ typedef struct SDL_LibretroMicrophone {
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
-    bool loaded;     /** A core is currently loaded. */
     bool gameLoaded; /** A game is currently loaded into the core (content or no-content). */
     bool shutdown; /** Whether or not the core has requested to shutdown. */
     float speed; /** The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */

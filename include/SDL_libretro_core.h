@@ -206,7 +206,6 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
 
     // Initialize the core
     lr->core.symbols.retro_init();
-    lr->core.loaded = true;
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
@@ -221,17 +220,20 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
  * @see SD_Libretro_UnloadGame()
  */
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) return;
+    if (!lr) return;
 
     SDL_Libretro_UnloadGame(lr);
-    SDL_Libretro_SaveCoreConfig(lr);
 
-    // Deinitialize the core.
-    lr->core.symbols.retro_deinit();
-    if (lr->core.symbols.handle) {
+    // Tear down the loaded core module, if one is present.
+    if (SDL_Libretro_IsCoreReady(lr)) {
+        SDL_Libretro_SaveCoreConfig(lr);
+        lr->core.symbols.retro_deinit();
         SDL_UnloadObject(lr->core.symbols.handle);
     }
 
+    // Free frontend-owned resources regardless of whether a module was
+    // loaded, so state registered through the environment callback is
+    // never leaked.
     SDL_Libretro_CloseSensors(lr);
     SDL_Libretro_CloseMicrophone(lr);
     SDL_Libretro_FreeCoreOptions(lr);
@@ -254,7 +256,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
 }
 
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
-    return lr && lr->core.loaded;
+    return lr && lr->core.symbols.handle != NULL;
 }
 
 /**
@@ -451,6 +453,48 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
 }
 
 /**
+ * Populate the content identity from a path.
+ *
+ * This will fill in the core's path, base name, lower-case ext, directory,
+ * etc. It gets it from a content file path, and point gameInfoExt's
+ * string fields at them.
+ *
+ * The caller must have cleared gameInfoExt beforehand and is responsible for
+ * gameInfoExt.data / .size / .persistent_data.
+ *
+ * @returns the raw-case extension (a pointer into contentPath) for
+ *          need_fullpath / persistent-data lookups.
+ * @internal
+ */
+static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char* path) {
+    SDL_strlcpy(lr->core.contentPath, path, sizeof(lr->core.contentPath));
+
+    // Content base name (no extension) and lower-case extension.
+    SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), path, false);
+    const char* ext = SDL_Libretro_GetContentExtension(lr);
+    SDL_strlcpy(lr->core.contentExt, ext, sizeof(lr->core.contentExt));
+    for (char* c = lr->core.contentExt; *c; c++)
+        *c = (char)SDL_tolower((unsigned char)*c);
+
+    // Directory containing the content file.
+    SDL_strlcpy(lr->core.contentDir, path, sizeof(lr->core.contentDir));
+    char* sep = SDL_strrchr(lr->core.contentDir, '/');
+    if (!sep) sep = SDL_strrchr(lr->core.contentDir, '\\');
+    if (sep)
+        *sep = '\0';
+    else
+        lr->core.contentDir[0] = '\0';
+
+    // Initial gameInfoExt.
+    lr->core.gameInfoExt.full_path = lr->core.contentPath;
+    lr->core.gameInfoExt.dir       = lr->core.contentDir;
+    lr->core.gameInfoExt.name      = lr->core.contentName;
+    lr->core.gameInfoExt.ext       = lr->core.contentExt;
+
+    return ext;
+}
+
+/**
  * Given a game path, load the core that supported its file extension.
  *
  * @return True if the core was successfully loaded.
@@ -578,23 +622,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
     if (gamePath) {
-        SDL_strlcpy(lr->core.contentPath, gamePath, sizeof(lr->core.contentPath));
-
-        // Content base name (no extension) and lower-case extension.
-        SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), gamePath, false);
-        const char* ext = SDL_Libretro_GetContentExtension(lr);
-        SDL_strlcpy(lr->core.contentExt, ext, sizeof(lr->core.contentExt));
-        for (char* c = lr->core.contentExt; *c; c++)
-            *c = (char)SDL_tolower((unsigned char)*c);
-
-        // Directory containing the content file.
-        SDL_strlcpy(lr->core.contentDir, gamePath, sizeof(lr->core.contentDir));
-        char* sep = SDL_strrchr(lr->core.contentDir, '/');
-        if (!sep) sep = SDL_strrchr(lr->core.contentDir, '\\');
-        if (sep)
-            *sep = '\0';
-        else
-            lr->core.contentDir[0] = '\0';
+        const char* ext = SDL_Libretro_SetContentIdentity(lr, gamePath);
 
         bool needFullpath = SDL_Libretro_ContentNeedsFullpath(lr, ext);
         persistData = SDL_Libretro_ContentPersistData(lr, ext);
@@ -613,11 +641,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
             gameInfo.size = fileSize;
         }
 
-        // Update the game info.
-        lr->core.gameInfoExt.full_path       = lr->core.contentPath;
-        lr->core.gameInfoExt.dir             = lr->core.contentDir;
-        lr->core.gameInfoExt.name            = lr->core.contentName;
-        lr->core.gameInfoExt.ext             = lr->core.contentExt;
+        // The string fields are set above; fill in the content buffer.
         lr->core.gameInfoExt.data            = gameInfo.data;
         lr->core.gameInfoExt.size            = gameInfo.size;
         lr->core.gameInfoExt.persistent_data = persistData;
@@ -660,7 +684,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
  * @see SDL_Libretro_LoadGameSpecial
  */
 bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths) {
-    if (!lr || !lr->core.loaded || !paths || numPaths == 0) {
+    if (!SDL_Libretro_IsCoreReady(lr) || !paths || numPaths == 0) {
         SDL_SetError("[SDL_Libretro] Invalid arguments for LoadGameSpecial");
         return false;
     }
@@ -708,25 +732,34 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
         }
     }
 
+    // Populate the game info from the primary path, so
+    // GET_GAME_INFO_EXT is valid while loading the game.
+    SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
+    if (paths[0]) {
+        SDL_Libretro_SetContentIdentity(lr, paths[0]);
+        lr->core.gameInfoExt.data            = gameInfos[0].data;
+        lr->core.gameInfoExt.size            = gameInfos[0].size;
+        lr->core.gameInfoExt.persistent_data = false;
+    } else {
+        SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
+    }
+
     SDL_Libretro_SetCoreCallbacks(lr);
 
     bool result = lr->core.symbols.retro_load_game_special(subsystemId, gameInfos, numPaths);
 
+    // The frontend owns the ROM buffers for the load only, free them
+    // and drop gameInfoExt.
     for (unsigned i = 0; i < numPaths; i++) SDL_free(fileBuffers[i]);
     SDL_free(fileBuffers);
     SDL_free(gameInfos);
+    lr->core.gameInfoExt.data = NULL;
+    lr->core.gameInfoExt.size = 0;
 
     if (!result) {
+        SDL_Libretro_ResetContentState(lr);
         SDL_SetError("[SDL_Libretro] Core failed to load the special game");
         return false;
-    }
-
-    // Use the first path for the content identity.
-    if (paths[0]) {
-        SDL_strlcpy(lr->core.contentPath, paths[0], sizeof(lr->core.contentPath));
-        SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), paths[0], false);
-    } else {
-        SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
     }
 
     SDL_Libretro_FinishGameLoad(lr);
@@ -1170,21 +1203,21 @@ SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
  * Retrieve the name of the libretro core that's actively loaded.
  */
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
-    return (lr && lr->core.loaded) ? lr->core.libraryName : "";
+    return SDL_Libretro_IsCoreReady(lr) ? lr->core.libraryName : "";
 }
 
 /**
  * Retrieves the version of the libretro core that's actively loaded.
  */
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr) {
-    return (lr && lr->core.loaded) ? lr->core.libraryVersion : "";
+    return SDL_Libretro_IsCoreReady(lr) ? lr->core.libraryVersion : "";
 }
 
 /**
  * Gets the default set of valid extensions associated with the core, seperated by a "|".
  */
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
-    return (lr && lr->core.loaded) ? lr->core.validExtensions : "";
+    return SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : "";
 }
 
 /**

@@ -338,7 +338,9 @@ static int SDLCALL test_RewindBuffer(void *arg) {
 
     // End-to-end: capture a few states through a stub core, then rewind.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    lr->core.loaded = true;
+    // Give the context a fake module handle so SDL_Libretro_IsCoreReady() is true
+    // for the stub core below (cleared before Destroy so teardown is skipped).
+    lr->core.symbols.handle = (SDL_SharedObject*)lr;
     lr->core.gameLoaded = true;
     lr->core.fps = 60.0;
     lr->core.symbols.retro_run = rewind_stub_run;
@@ -370,7 +372,7 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(NULL, 1.0) == false, "NULL context rejected");
 
     SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
-    lr->core.loaded = false; /* let Destroy skip the unset core teardown symbols */
+    lr->core.symbols.handle = NULL; /* let Destroy skip core teardown (stub has no real module/symbols) */
     lr->core.gameLoaded = false;
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -721,6 +723,13 @@ static int SDLCALL test_LoadGameSpecial(void *arg) {
     SDLTest_AssertCheck(sram != NULL && sramSize >= sizeof(rom0Bytes), "SAVE_RAM available");
     if (sram && sramSize >= sizeof(rom0Bytes)) {
         SDLTest_AssertCheck(SDL_memcmp(sram, rom0Bytes, sizeof(rom0Bytes)) == 0, "ROM 0 bytes reached the core in memory");
+    }
+    // The core probed GET_GAME_INFO_EXT during the load; SYSTEM_RAM exposes the result.
+    const unsigned char* probe = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SYSTEM_RAM, NULL);
+    SDLTest_AssertCheck(probe != NULL, "GET_GAME_INFO_EXT probe available");
+    if (probe) {
+        SDLTest_AssertCheck(SDL_strcmp((const char*)probe, "gb") == 0, "Core saw primary ROM ext 'gb', got '%s'", (const char*)probe);
+        SDLTest_AssertCheck(probe[17] == 1, "Core saw non-NULL game info data");
     }
     SDL_Libretro_UnloadGame(lr);
 

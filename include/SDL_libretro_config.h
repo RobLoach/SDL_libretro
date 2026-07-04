@@ -127,7 +127,7 @@ static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
  * Set the core options directly into the config.
  */
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
-    if (!lr || !lr->ini || !SDL_Libretro_IsCoreReady(lr)) return false;
+    if (!SDL_Libretro_IsCoreReady(lr) || !lr->ini) return false;
     char section[128];
     SDL_Libretro_SanitizeSectionName(section, sizeof(section), lr->core.libraryName);
     if (section[0] == '\0') {
@@ -155,9 +155,7 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     if (!lr || !lr->ini || !lr->iniFile) return false;
 
     // Save the core options if needed.
-    if (lr->core.loaded) {
-        SDL_Libretro_SaveCoreConfig(lr);
-    }
+    SDL_Libretro_SaveCoreConfig(lr);
 
     INI_SetFloat(lr->ini, NULL, "volume", SDL_Libretro_GetVolume(lr));
     INI_SetString(lr->ini, NULL, "username", SDL_Libretro_GetUsername(lr));

@@ -215,6 +215,15 @@ RETRO_API bool retro_load_game_special(unsigned type, const struct retro_game_in
         size_t n = info[0].size < sizeof(save_ram) ? info[0].size : sizeof(save_ram);
         memcpy(save_ram, info[0].data, n);
     }
+
+    // Probe the extended game info the frontend published for the primary ROM.
+    memset(game_info_probe, 0, sizeof(game_info_probe));
+    const struct retro_game_info_ext *ext = NULL;
+    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_GAME_INFO_EXT, &ext) && ext) {
+        if (ext->ext) strncpy((char *)game_info_probe, ext->ext, 15);
+        game_info_probe[16] = ext->persistent_data ? 1 : 0;
+        game_info_probe[17] = ext->data != NULL ? 1 : 0;
+    }
     return true;
 }
 
