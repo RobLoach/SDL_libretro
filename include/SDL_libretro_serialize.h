@@ -131,11 +131,15 @@ bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
         SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
         return false;
     }
-    unsigned newIndex = lr->core.disk_control.get_num_images() - 1;
+    unsigned count = lr->core.disk_control.get_num_images();
+    if (count == 0) {
+        SDL_SetError("[SDL_Libretro] Core reported no disk images after add");
+        return false;
+    }
     struct retro_game_info info;
     SDL_memset(&info, 0, sizeof(info));
     info.path = path;
-    return lr->core.disk_control.replace_image_index(newIndex, &info);
+    return lr->core.disk_control.replace_image_index(count - 1, &info);
 }
 
 /**
@@ -164,22 +168,76 @@ bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool clos
         if (closeio) SDL_CloseIO(src);
         return false;
     }
-    if (!lr->core.disk_control.add_image_index()) {
-        SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
-        if (closeio) SDL_CloseIO(src);
-        return false;
-    }
-    unsigned newIndex = lr->core.disk_control.get_num_images() - 1;
+    // Load the image data before mutating the core's disk list, so a failed
+    // read does not leave a dangling empty slot behind.
     size_t size = 0;
     void* data = SDL_LoadFile_IO(src, &size, closeio);
     if (!data) return false;
+    if (!lr->core.disk_control.add_image_index()) {
+        SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
+        SDL_free(data);
+        return false;
+    }
+    unsigned count = lr->core.disk_control.get_num_images();
+    if (count == 0) {
+        SDL_SetError("[SDL_Libretro] Core reported no disk images after add");
+        SDL_free(data);
+        return false;
+    }
     struct retro_game_info info;
     SDL_memset(&info, 0, sizeof(info));
     info.data = data;
     info.size = size;
-    bool ok = lr->core.disk_control.replace_image_index(newIndex, &info);
+    bool ok = lr->core.disk_control.replace_image_index(count - 1, &info);
     SDL_free(data);
     return ok;
+}
+
+/**
+ * Retrieves the human-readable label of a disk image.
+ *
+ * Requires a core that provides the extended disk control interface.
+ *
+ * @param lr The libretro instance.
+ * @param index The zero-based disk image index.
+ * @param label Buffer to receive the null-terminated label.
+ * @param len Size of the label buffer in bytes.
+ * @return true on success, false if labels are not available.
+ */
+bool SDL_Libretro_GetDiskLabel(const SDL_Libretro* lr, unsigned index, char* label, size_t len) {
+    if (!SDL_Libretro_IsGameReady(lr) || !label || len == 0) {
+        SDL_SetError("[SDL_Libretro] Invalid GetDiskLabel arguments");
+        return false;
+    }
+    if (!lr->core.disk_control.get_image_label) {
+        SDL_SetError("[SDL_Libretro] Disk labels not available");
+        return false;
+    }
+    label[0] = '\0';
+    return lr->core.disk_control.get_image_label(index, label, len);
+}
+
+/**
+ * Sets the disk image to insert once content is loaded.
+ *
+ * This must be called before the game is loaded so the core can restore the
+ * correct disk, like a M3U playlist, or a save state.
+ *
+ * @param lr The libretro instance.
+ * @param index The zero-based disk image index.
+ * @param path File path of the expected disk image, used by the core to verify the index.
+ * @return true on success, false if the extended disk control interface is not available.
+ */
+bool SDL_Libretro_SetInitialDisk(SDL_Libretro* lr, unsigned index, const char* path) {
+    if (!lr || !path) {
+        SDL_SetError("[SDL_Libretro] Invalid SetInitialDisk arguments");
+        return false;
+    }
+    if (!lr->core.disk_control.set_initial_image) {
+        SDL_SetError("[SDL_Libretro] Disk control not available");
+        return false;
+    }
+    return lr->core.disk_control.set_initial_image(index, path);
 }
 
 // Cheats

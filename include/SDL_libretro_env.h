@@ -287,7 +287,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             lr->core.disk_control.get_num_images = cb->get_num_images;
             lr->core.disk_control.replace_image_index = cb->replace_image_index;
             lr->core.disk_control.add_image_index = cb->add_image_index;
-            lr->core.diskControlActive = true;
             return true;
         }
 
@@ -876,7 +875,6 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_DISK_CONTROL_EXT_INTERFACE: {
             if (!data) return true;
             lr->core.disk_control = *(const struct retro_disk_control_ext_callback*)data;
-            lr->core.diskControlActive = true;
             return true;
         }
 
