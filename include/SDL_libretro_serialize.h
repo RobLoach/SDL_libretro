@@ -33,16 +33,37 @@
 
 // Disk Control
 
+/**
+ * Returns the number of disk images available to the loaded core.
+ *
+ * @param lr The libretro instance.
+ * @return The number of disk images, or 0 if disk control is not available.
+ */
 unsigned SDL_Libretro_GetDiskCount(const SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.get_num_images) return 0;
     return lr->core.disk_control.get_num_images();
 }
 
+/**
+ * Returns the index of the currently inserted disk image.
+ *
+ * @param lr The libretro instance.
+ * @return The current disk index, or 0 if disk control is not available.
+ */
 unsigned SDL_Libretro_GetDiskIndex(const SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.get_image_index) return 0;
     return lr->core.disk_control.get_image_index();
 }
 
+/**
+ * Sets the disk image index to insert into the emulated drive.
+ *
+ * The disk tray must be ejected before calling this function.
+ *
+ * @param lr The libretro instance.
+ * @param index The zero-based disk image index.
+ * @return true on success, false if the core rejected the change or disk control is not available.
+ */
 bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index) {
     if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_image_index) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
@@ -55,6 +76,12 @@ bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index) {
     return lr->core.disk_control.set_image_index(index);
 }
 
+/**
+ * Ejects the disk tray, allowing the disk image to be changed.
+ *
+ * @param lr The libretro instance.
+ * @return true on success, false on failure.
+ */
 bool SDL_Libretro_EjectDisk(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_eject_state) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
@@ -63,6 +90,12 @@ bool SDL_Libretro_EjectDisk(SDL_Libretro* lr) {
     return lr->core.disk_control.set_eject_state(true);
 }
 
+/**
+ * Closes the disk tray after a disk change.
+ *
+ * @param lr The libretro instance.
+ * @return true on success, false on failure.
+ */
 bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_eject_state) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
@@ -71,6 +104,15 @@ bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
     return lr->core.disk_control.set_eject_state(false);
 }
 
+/**
+ * Appends a new disk image from a file path.
+ *
+ * The disk tray must be ejected before calling this function.
+ *
+ * @param lr The libretro instance.
+ * @param path File path to the disk image.
+ * @return true on success, false on failure.
+ */
 bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
     if (!lr || !lr->core.gameLoaded || !path) {
         SDL_SetError("[SDL_Libretro] Invalid AddDiskImage arguments");
@@ -95,6 +137,16 @@ bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
     return lr->core.disk_control.replace_image_index(newIndex, &info);
 }
 
+/**
+ * Appends a new disk image from an SDL_IOStream.
+ *
+ * The disk tray must be ejected before calling this function.
+ *
+ * @param lr The libretro instance.
+ * @param src IOStream containing the disk image data.
+ * @param closeio If true, the IOStream is closed after reading.
+ * @return true on success, false on failure.
+ */
 bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
     if (!lr || !lr->core.gameLoaded || !src) {
         SDL_SetError("[SDL_Libretro] Invalid AddDiskImage_IO arguments");
@@ -131,6 +183,9 @@ bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool clos
 
 // Cheats
 
+/**
+ * Set a cheat code either enabled or disabled within the libretro context.
+ */
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
     if (!lr || !lr->core.gameLoaded || !code) return false;
     lr->core.symbols.retro_cheat_set(index, enabled, code);
