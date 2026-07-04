@@ -248,6 +248,74 @@ const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* 
 bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const char** paths, unsigned numPaths);
 bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths);
 
+// Disk Control
+
+/**
+ * Returns the number of disk images available to the loaded core.
+ *
+ * @param lr The libretro instance.
+ * @return The number of disk images, or 0 if disk control is not available.
+ */
+unsigned SDL_Libretro_GetDiskCount(const SDL_Libretro* lr);
+
+/**
+ * Returns the index of the currently inserted disk image.
+ *
+ * @param lr The libretro instance.
+ * @return The current disk index, or 0 if disk control is not available.
+ */
+unsigned SDL_Libretro_GetDiskIndex(const SDL_Libretro* lr);
+
+/**
+ * Sets the disk image index to insert into the emulated drive.
+ *
+ * The disk tray must be ejected before calling this function.
+ *
+ * @param lr The libretro instance.
+ * @param index The zero-based disk image index.
+ * @return true on success, false if the core rejected the change or disk control is not available.
+ */
+bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index);
+
+/**
+ * Ejects the disk tray, allowing the disk image to be changed.
+ *
+ * @param lr The libretro instance.
+ * @return true on success, false on failure.
+ */
+bool SDL_Libretro_EjectDisk(SDL_Libretro* lr);
+
+/**
+ * Closes the disk tray after a disk change.
+ *
+ * @param lr The libretro instance.
+ * @return true on success, false on failure.
+ */
+bool SDL_Libretro_InsertDisk(SDL_Libretro* lr);
+
+/**
+ * Appends a new disk image from a file path.
+ *
+ * The disk tray must be ejected before calling this function.
+ *
+ * @param lr The libretro instance.
+ * @param path File path to the disk image.
+ * @return true on success, false on failure.
+ */
+bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path);
+
+/**
+ * Appends a new disk image from an SDL_IOStream.
+ *
+ * The disk tray must be ejected before calling this function.
+ *
+ * @param lr The libretro instance.
+ * @param src IOStream containing the disk image data.
+ * @param closeio If true, the IOStream is closed after reading.
+ * @return true on success, false on failure.
+ */
+bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
+
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code);

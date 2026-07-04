@@ -1116,6 +1116,60 @@ static int SDLCALL test_SetRenderer(void *arg) {
 #endif
 }
 
+static int SDLCALL test_DiskControl(void *arg) {
+    (void)arg;
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // No core loaded: all disk functions return safe defaults.
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == 0, "GetDiskCount 0 without core");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskIndex(lr) == 0, "GetDiskIndex 0 without core");
+    SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == false, "EjectDisk false without core");
+    SDLTest_AssertCheck(SDL_Libretro_InsertDisk(lr) == false, "InsertDisk false without core");
+    SDLTest_AssertCheck(SDL_Libretro_SetDiskIndex(lr, 0) == false, "SetDiskIndex false without core");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, "foo.bin") == false, "AddDiskImage false without core");
+
+    // NULL safety.
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(NULL) == 0, "GetDiskCount(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskIndex(NULL) == 0, "GetDiskIndex(NULL) 0");
+    SDLTest_AssertCheck(SDL_Libretro_EjectDisk(NULL) == false, "EjectDisk(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_InsertDisk(NULL) == false, "InsertDisk(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(NULL, "foo.bin") == false, "AddDiskImage(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, NULL) == false, "AddDiskImage(lr, NULL) false");
+
+    // Load a core that provides disk control.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+
+    // The test core starts with 1 disk.
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == 1, "Initial disk count is 1");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskIndex(lr) == 0, "Initial disk index is 0");
+
+    // Can't change index without ejecting first.
+    SDLTest_AssertCheck(SDL_Libretro_SetDiskIndex(lr, 0) == false, "SetDiskIndex fails while inserted");
+
+    // Eject, then change index.
+    SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == true, "EjectDisk succeeds");
+
+    // Add a new disk image.
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, TEST_CONTENT_PATH) == true, "AddDiskImage succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == 2, "Disk count is now 2");
+
+    // Switch to the new disk.
+    SDLTest_AssertCheck(SDL_Libretro_SetDiskIndex(lr, 1) == true, "SetDiskIndex to 1 succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskIndex(lr) == 1, "Disk index is now 1");
+
+    // Insert the disk.
+    SDLTest_AssertCheck(SDL_Libretro_InsertDisk(lr) == true, "InsertDisk succeeds");
+
+    // Out-of-range index fails.
+    SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == true, "EjectDisk again");
+    SDLTest_AssertCheck(SDL_Libretro_SetDiskIndex(lr, 99) == false, "SetDiskIndex(99) fails");
+    SDLTest_AssertCheck(SDL_Libretro_InsertDisk(lr) == true, "InsertDisk again");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -1148,6 +1202,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
+    LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
     NULL
 };
 

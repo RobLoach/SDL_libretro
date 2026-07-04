@@ -16,6 +16,40 @@ static uint8_t save_ram[64];
 static uint8_t state_data[128];
 static bool game_loaded;
 
+#define MAX_DISK_IMAGES 8
+static unsigned disk_count = 1;
+static unsigned disk_index = 0;
+static bool disk_ejected = false;
+
+static bool RETRO_CALLCONV disk_set_eject_state(bool ejected) {
+    disk_ejected = ejected;
+    return true;
+}
+static bool RETRO_CALLCONV disk_get_eject_state(void) {
+    return disk_ejected;
+}
+static unsigned RETRO_CALLCONV disk_get_image_index(void) {
+    return disk_index;
+}
+static bool RETRO_CALLCONV disk_set_image_index(unsigned index) {
+    if (!disk_ejected || index >= disk_count) return false;
+    disk_index = index;
+    return true;
+}
+static unsigned RETRO_CALLCONV disk_get_num_images(void) {
+    return disk_count;
+}
+static bool RETRO_CALLCONV disk_replace_image_index(unsigned index, const struct retro_game_info *info) {
+    (void)info;
+    if (index >= disk_count) return false;
+    return true;
+}
+static bool RETRO_CALLCONV disk_add_image_index(void) {
+    if (disk_count >= MAX_DISK_IMAGES) return false;
+    disk_count++;
+    return true;
+}
+
 /* Captures what GET_GAME_INFO_EXT returns during retro_load_game so the
  * frontend test can verify the extended-game-info wiring. Exposed as
  * SYSTEM_RAM: [0..15] lower-case ext, [16] persistent_data, [17] data != NULL. */
@@ -90,6 +124,17 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
         test_update_display_callback
     };
     cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK, (void *)&update_cb);
+
+    static const struct retro_disk_control_callback disk_cb = {
+        disk_set_eject_state,
+        disk_get_eject_state,
+        disk_get_image_index,
+        disk_set_image_index,
+        disk_get_num_images,
+        disk_replace_image_index,
+        disk_add_image_index,
+    };
+    cb(RETRO_ENVIRONMENT_SET_DISK_CONTROL_INTERFACE, (void *)&disk_cb);
 }
 
 RETRO_API void retro_set_video_refresh(retro_video_refresh_t cb) { video_cb = cb; }

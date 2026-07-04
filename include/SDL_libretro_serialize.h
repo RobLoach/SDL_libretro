@@ -31,6 +31,104 @@
 #define SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES ((size_t)256 * 1024 * 1024)
 #endif
 
+// Disk Control
+
+unsigned SDL_Libretro_GetDiskCount(const SDL_Libretro* lr) {
+    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.get_num_images) return 0;
+    return lr->core.disk_control.get_num_images();
+}
+
+unsigned SDL_Libretro_GetDiskIndex(const SDL_Libretro* lr) {
+    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.get_image_index) return 0;
+    return lr->core.disk_control.get_image_index();
+}
+
+bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index) {
+    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_image_index) {
+        SDL_SetError("[SDL_Libretro] Disk control not available");
+        return false;
+    }
+    if (!lr->core.disk_control.get_eject_state || !lr->core.disk_control.get_eject_state()) {
+        SDL_SetError("[SDL_Libretro] Disk tray must be ejected before changing index");
+        return false;
+    }
+    return lr->core.disk_control.set_image_index(index);
+}
+
+bool SDL_Libretro_EjectDisk(SDL_Libretro* lr) {
+    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_eject_state) {
+        SDL_SetError("[SDL_Libretro] Disk control not available");
+        return false;
+    }
+    return lr->core.disk_control.set_eject_state(true);
+}
+
+bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
+    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_eject_state) {
+        SDL_SetError("[SDL_Libretro] Disk control not available");
+        return false;
+    }
+    return lr->core.disk_control.set_eject_state(false);
+}
+
+bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
+    if (!lr || !lr->core.gameLoaded || !path) {
+        SDL_SetError("[SDL_Libretro] Invalid AddDiskImage arguments");
+        return false;
+    }
+    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index) {
+        SDL_SetError("[SDL_Libretro] Disk control not available");
+        return false;
+    }
+    if (!lr->core.disk_control.get_eject_state || !lr->core.disk_control.get_eject_state()) {
+        SDL_SetError("[SDL_Libretro] Disk tray must be ejected before adding a disk image");
+        return false;
+    }
+    if (!lr->core.disk_control.add_image_index()) {
+        SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
+        return false;
+    }
+    unsigned newIndex = lr->core.disk_control.get_num_images() - 1;
+    struct retro_game_info info;
+    SDL_memset(&info, 0, sizeof(info));
+    info.path = path;
+    return lr->core.disk_control.replace_image_index(newIndex, &info);
+}
+
+bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
+    if (!lr || !lr->core.gameLoaded || !src) {
+        SDL_SetError("[SDL_Libretro] Invalid AddDiskImage_IO arguments");
+        if (closeio && src) SDL_CloseIO(src);
+        return false;
+    }
+    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index) {
+        SDL_SetError("[SDL_Libretro] Disk control not available");
+        if (closeio) SDL_CloseIO(src);
+        return false;
+    }
+    if (!lr->core.disk_control.get_eject_state || !lr->core.disk_control.get_eject_state()) {
+        SDL_SetError("[SDL_Libretro] Disk tray must be ejected before adding a disk image");
+        if (closeio) SDL_CloseIO(src);
+        return false;
+    }
+    if (!lr->core.disk_control.add_image_index()) {
+        SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
+        if (closeio) SDL_CloseIO(src);
+        return false;
+    }
+    unsigned newIndex = lr->core.disk_control.get_num_images() - 1;
+    size_t size = 0;
+    void* data = SDL_LoadFile_IO(src, &size, closeio);
+    if (!data) return false;
+    struct retro_game_info info;
+    SDL_memset(&info, 0, sizeof(info));
+    info.data = data;
+    info.size = size;
+    bool ok = lr->core.disk_control.replace_image_index(newIndex, &info);
+    SDL_free(data);
+    return ok;
+}
+
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
