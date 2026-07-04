@@ -1116,6 +1116,160 @@ static int SDLCALL test_SetRenderer(void *arg) {
 #endif
 }
 
+static int SDLCALL test_AudioLatency(void *arg) {
+    (void)arg;
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // Default latency reports the compile-time default (100ms).
+    SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(lr) == 100, "Default audio latency is 100");
+
+    // Set and read back.
+    SDL_Libretro_SetAudioLatency(lr, 64);
+    SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(lr) == 64, "Audio latency set to 64");
+
+    // Setting to 0 reverts to default.
+    SDL_Libretro_SetAudioLatency(lr, 0);
+    SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(lr) == 100, "Audio latency reverts to default");
+
+    // NULL safety.
+    SDL_Libretro_SetAudioLatency(NULL, 100);
+    SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(NULL) == 0, "GetAudioLatency(NULL) 0");
+
+    // Sample rate returns the default fallback without a core.
+    SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(lr) == 0.0, "SampleRate 0.0 without core");
+    SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(NULL) == 48000.0, "SampleRate(NULL) returns default");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
+static int SDLCALL test_PixelFormats(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL);
+
+    // The test core sets RGB565.
+    SDL_Texture* tex = SDL_Libretro_GetTexture(lr);
+    SDLTest_AssertCheck(tex != NULL, "Texture created for RGB565");
+
+    // Manually switch to XRGB8888 and trigger a re-init.
+    lr->core.pixelFormat = RETRO_PIXEL_FORMAT_XRGB8888;
+    lr->core.videoReinitPending = true;
+    SDL_Libretro_Update(lr);
+    tex = SDL_Libretro_GetTexture(lr);
+    SDLTest_AssertCheck(tex != NULL, "Texture recreated for XRGB8888");
+
+    // Switch to 0RGB1555.
+    lr->core.pixelFormat = RETRO_PIXEL_FORMAT_0RGB1555;
+    lr->core.videoReinitPending = true;
+    SDL_Libretro_Update(lr);
+    tex = SDL_Libretro_GetTexture(lr);
+    SDLTest_AssertCheck(tex != NULL, "Texture recreated for 0RGB1555");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_Cheats(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // Cheats without a loaded core should fail gracefully.
+    SDLTest_AssertCheck(SDL_Libretro_SetCheat(lr, 0, true, "ABC123") == false, "SetCheat fails without core");
+    SDL_Libretro_ResetCheats(lr);
+
+    // NULL safety.
+    SDLTest_AssertCheck(SDL_Libretro_SetCheat(NULL, 0, true, "ABC123") == false, "SetCheat(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_SetCheat(lr, 0, true, NULL) == false, "SetCheat(NULL code) false");
+    SDL_Libretro_ResetCheats(NULL);
+
+    // Load core and game; cheats should now succeed.
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_SetCheat(lr, 0, true, "DEADBEEF") == true, "SetCheat succeeds with core");
+    SDLTest_AssertCheck(SDL_Libretro_SetCheat(lr, 1, false, "00FF00") == true, "SetCheat second code");
+    SDL_Libretro_ResetCheats(lr);
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_OSD(void *arg) {
+    (void)arg;
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // Empty queue.
+    SDLTest_AssertCheck(SDL_Libretro_GetMessage(lr) == NULL, "No message initially");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 0, "Message count 0 initially");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageProgress(lr) == -1, "Progress -1 with no message");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageType(lr) == 0, "Type 0 with no message");
+
+    // NULL safety.
+    SDLTest_AssertCheck(SDL_Libretro_GetMessage(NULL) == NULL, "GetMessage(NULL) NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(NULL) == 0, "GetMessageCount(NULL) 0");
+    SDL_Libretro_SetMessage(NULL, "test", 1.0);
+
+    // Push a message with a long duration so it doesn't expire during the test.
+    SDL_Libretro_SetMessage(lr, "Hello", 60.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 1, "Message count is 1");
+    const char* msg = SDL_Libretro_GetMessage(lr);
+    SDLTest_AssertCheck(msg != NULL && SDL_strcmp(msg, "Hello") == 0, "Message is 'Hello'");
+
+    // Push a second message.
+    SDL_Libretro_SetMessage(lr, "World", 60.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 2, "Message count is 2");
+
+    // GetMessageByIndex.
+    const char* byIdx = NULL;
+    int prog = -1, typ = -1;
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, 0, &byIdx, &prog, &typ) == true, "GetMessageByIndex(0) succeeds");
+    SDLTest_AssertCheck(byIdx != NULL && SDL_strcmp(byIdx, "Hello") == 0, "Index 0 is 'Hello'");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, 1, &byIdx, NULL, NULL) == true, "GetMessageByIndex(1) succeeds");
+    SDLTest_AssertCheck(byIdx != NULL && SDL_strcmp(byIdx, "World") == 0, "Index 1 is 'World'");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, 99, &byIdx, NULL, NULL) == false, "GetMessageByIndex(99) fails");
+
+    // GetMessageByIndex with -1 returns top message.
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, -1, &byIdx, NULL, NULL) == true, "GetMessageByIndex(-1) succeeds");
+
+    // Duplicate message reuses the existing slot.
+    SDL_Libretro_SetMessage(lr, "Hello", 60.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 2, "Duplicate 'Hello' doesn't add a third");
+
+    // Clear messages by setting NULL/empty.
+    SDL_Libretro_SetMessage(lr, NULL, 0.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessage(lr) == NULL, "Messages cleared after SetMessage(NULL)");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 0, "Message count 0 after clear");
+
+    // Empty string also clears.
+    SDL_Libretro_SetMessage(lr, "Temp", 60.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 1, "One message added");
+    SDL_Libretro_SetMessage(lr, "", 0.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 0, "Empty string clears messages");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -1148,6 +1302,10 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
+    LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
+    LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
+    LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
+    LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
     NULL
 };
 
