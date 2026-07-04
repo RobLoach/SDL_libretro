@@ -9,8 +9,34 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+#define NK_INCLUDE_FIXED_TYPES
+#define NK_INCLUDE_STANDARD_VARARGS
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
+#define NK_INCLUDE_COMMAND_USERDATA
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_BUTTON_TRIGGER_ON_RELEASE
+#define NK_IMPLEMENTATION
+#include "nuklear.h"
+
+#define NK_SDL3_RENDERER_IMPLEMENTATION
+#include "nuklear_sdl3_renderer.h"
+
+#define NK_GAMEPAD_IMPLEMENTATION
+#include "nuklear_gamepad.h"
+#include "nuklear_gamepad_sdl3.h"
+
+#define NK_CONSOLE_IMPLEMENTATION
+#include "nuklear_console.h"
+#include "nuklear_console_sdl.h"
+
 #define SDL_LIBRETRO_IMPLEMENTATION
 #include "SDL_libretro.h"
+
+#define SDL_LIBRETRO_MENU_IMPLEMENTATION
+#include "SDL_libretro_menu.h"
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -20,6 +46,7 @@ typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Libretro* lr;
+    SDL_LibretroMenu* menu;
 } AppContext;
 
 /**
@@ -123,6 +150,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 #endif
 
+    app->menu = SDL_Libretro_CreateMenu(lr);
+
     return SDL_APP_CONTINUE;
 }
 
@@ -134,8 +163,13 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_SUCCESS;
     }
 
+    // Let the menu handle the event first (toggle and consume input when open).
+    if (SDL_Libretro_MenuHandleEvent(app->menu, event)) {
+        return SDL_APP_CONTINUE;
+    }
+
     // Fast Forward
-    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
         SDL_Libretro_SetSpeed(lr, 2.0f);
     }
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F) {
@@ -207,8 +241,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         return SDL_APP_SUCCESS;
     }
 
-    // Update the context
-    SDL_Libretro_Update(lr);
+    // Update the context (skip when menu is open to pause the core).
+    if (!SDL_Libretro_IsMenuOpen(app->menu)) {
+        SDL_Libretro_Update(lr);
+    }
 
     // Clear the screen
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -217,17 +253,24 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     // Draw the libretro context
     SDL_Libretro_Render(renderer, lr, NULL);
 
-    // Tell them they can drop a file
-    if (!SDL_Libretro_IsGameReady(lr)) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_RenderDebugText(renderer, 19.0f, 19.0f, "Drag & Drop a game to play");
+    // Menu overlay
+    if (SDL_Libretro_IsMenuOpen(app->menu)) {
+        SDL_Libretro_UpdateMenu(app->menu);
+        SDL_Libretro_RenderMenu(app->menu);
     }
+    else {
+        // Tell them they can drop a file
+        if (!SDL_Libretro_IsGameReady(lr)) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderDebugText(renderer, 19.0f, 19.0f, "Drag & Drop a game to play (F1 for menu)");
+        }
 
-    // Draw the current OSD message, if there is one.
-    const char* message = SDL_Libretro_GetMessage(lr);
-    if (message) {
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_RenderDebugText(renderer, 19.0f, 27.0f, message);
+        // Draw the current OSD message, if there is one.
+        const char* message = SDL_Libretro_GetMessage(lr);
+        if (message) {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+            SDL_RenderDebugText(renderer, 19.0f, 27.0f, message);
+        }
     }
 
     SDL_RenderPresent(renderer);
@@ -236,8 +279,10 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 }
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+    (void)result;
     AppContext* app = appstate;
     if (app) {
+        SDL_Libretro_DestroyMenu(app->menu);
         SDL_Libretro_Destroy(app->lr);
         SDL_DestroyRenderer(app->renderer);
         SDL_DestroyWindow(app->window);

@@ -8,3 +8,6 @@
 	url = https://github.com/libretro/libretro-core-info.git
     ignore = dirty
     branch = master
+[submodule "vendor/nuklear_console"]
+	path = vendor/nuklear_console
+	url = https://github.com/RobLoach/nuklear_console.git

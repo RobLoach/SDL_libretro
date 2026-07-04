@@ -44,6 +44,16 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
 
     add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
     target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro)
+    target_include_directories(SDL_libretro_demo PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_console/vendor/Nuklear
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_console/vendor/Nuklear/demo/sdl3_renderer
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_console/vendor/nuklear_gamepad
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_console/vendor/c-vector
+        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_console
+    )
+    target_compile_definitions(SDL_libretro_demo PRIVATE
+        NK_GAMEPAD_SDL3
+    )
 endif()
 
 # Tests
