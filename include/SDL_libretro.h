@@ -248,6 +248,18 @@ const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* 
 bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const char** paths, unsigned numPaths);
 bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths);
 
+// Disk Control
+
+unsigned SDL_Libretro_GetDiskCount(const SDL_Libretro* lr);
+unsigned SDL_Libretro_GetDiskIndex(const SDL_Libretro* lr);
+bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index);
+bool SDL_Libretro_EjectDisk(SDL_Libretro* lr);
+bool SDL_Libretro_InsertDisk(SDL_Libretro* lr);
+bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path);
+bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
+bool SDL_Libretro_GetDiskLabel(const SDL_Libretro* lr, unsigned index, char* label, size_t len);
+bool SDL_Libretro_SetInitialDisk(SDL_Libretro* lr, unsigned index, const char* path);
+
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code);
@@ -518,7 +530,6 @@ typedef struct SDL_LibretroCoreData {
 
     // Disk control
     struct retro_disk_control_ext_callback disk_control;
-    bool diskControlActive;
 
     // Memory Maps
     struct retro_memory_descriptor* memoryMapDescriptors;
