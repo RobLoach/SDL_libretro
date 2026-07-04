@@ -130,6 +130,19 @@ static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect 
     return true;
 }
 
+static void SDL_Libretro_SetLEDState(int led, int state) {
+    SDL_Libretro* lr = SDL_Libretro_active;
+    if (!lr) return;
+    Uint8 v = state ? 255 : 0;
+    if (led >= 0 && led < SDL_LIBRETRO_MAX_GAMEPADS) {
+        if (lr->gamepads[led]) SDL_SetGamepadLED(lr->gamepads[led], v, v, v);
+    } else {
+        for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+            if (lr->gamepads[i]) SDL_SetGamepadLED(lr->gamepads[i], v, v, v);
+        }
+    }
+}
+
 static const char* SDL_Libretro_GetDirectory(SDL_Libretro* lr, unsigned cmd) {
     switch (cmd) {
         case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
@@ -996,8 +1009,12 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case 87:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
         case 46:
-        case RETRO_ENVIRONMENT_GET_LED_INTERFACE:
-            return false;
+        case RETRO_ENVIRONMENT_GET_LED_INTERFACE: {
+            if (!data) return true;
+            struct retro_led_interface* iface = (struct retro_led_interface*)data;
+            iface->set_led_state = SDL_Libretro_SetLEDState;
+            return true;
+        }
 
         default: {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unhandled environment callback: %u", cmd);
