@@ -231,9 +231,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
         SDL_UnloadObject(lr->core.symbols.handle);
     }
 
-    // Free frontend-owned resources regardless of whether a module was
-    // loaded, so state registered through the environment callback is
-    // never leaked.
+    // Unload any frontend resources associated with the core.
     SDL_Libretro_CloseSensors(lr);
     SDL_Libretro_CloseMicrophone(lr);
     SDL_Libretro_FreeCoreOptions(lr);
