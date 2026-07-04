@@ -40,7 +40,8 @@
  * @return The number of disk images, or 0 if disk control is not available.
  */
 unsigned SDL_Libretro_GetDiskCount(const SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.get_num_images) return 0;
+
+    if (!SDL_Libretro_IsGameReady(lr) || !lr->core.disk_control.get_num_images) return 0;
     return lr->core.disk_control.get_num_images();
 }
 
@@ -51,7 +52,7 @@ unsigned SDL_Libretro_GetDiskCount(const SDL_Libretro* lr) {
  * @return The current disk index, or 0 if disk control is not available.
  */
 unsigned SDL_Libretro_GetDiskIndex(const SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.get_image_index) return 0;
+    if (!SDL_Libretro_IsGameReady(lr) || !lr->core.disk_control.get_image_index) return 0;
     return lr->core.disk_control.get_image_index();
 }
 
@@ -65,7 +66,7 @@ unsigned SDL_Libretro_GetDiskIndex(const SDL_Libretro* lr) {
  * @return true on success, false if the core rejected the change or disk control is not available.
  */
 bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index) {
-    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_image_index) {
+    if (!SDL_Libretro_IsGameReady(lr) || !lr->core.disk_control.set_image_index) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
         return false;
     }
@@ -83,7 +84,7 @@ bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index) {
  * @return true on success, false on failure.
  */
 bool SDL_Libretro_EjectDisk(SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_eject_state) {
+    if (!SDL_Libretro_IsGameReady(lr) || !lr->core.disk_control.set_eject_state) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
         return false;
     }
@@ -97,7 +98,7 @@ bool SDL_Libretro_EjectDisk(SDL_Libretro* lr) {
  * @return true on success, false on failure.
  */
 bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded || !lr->core.disk_control.set_eject_state) {
+    if (!SDL_Libretro_IsGameReady(lr) || !lr->core.disk_control.set_eject_state) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
         return false;
     }
@@ -114,7 +115,7 @@ bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
  * @return true on success, false on failure.
  */
 bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
-    if (!lr || !lr->core.gameLoaded || !path) {
+    if (!SDL_Libretro_IsGameReady(lr) || !path) {
         SDL_SetError("[SDL_Libretro] Invalid AddDiskImage arguments");
         return false;
     }
@@ -148,7 +149,7 @@ bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
  * @return true on success, false on failure.
  */
 bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
-    if (!lr || !lr->core.gameLoaded || !src) {
+    if (!SDL_Libretro_IsGameReady(lr) || !src) {
         SDL_SetError("[SDL_Libretro] Invalid AddDiskImage_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
         return false;
@@ -187,13 +188,13 @@ bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool clos
  * Set a cheat code either enabled or disabled within the libretro context.
  */
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
-    if (!lr || !lr->core.gameLoaded || !code) return false;
+    if (!SDL_Libretro_IsGameReady(lr) || !code) return false;
     lr->core.symbols.retro_cheat_set(index, enabled, code);
     return true;
 }
 
 void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded) return;
+    if (!SDL_Libretro_IsGameReady(lr)) return;
     lr->core.symbols.retro_cheat_reset();
 }
 
@@ -203,7 +204,7 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
  * Retrieves the size of serialized states.
  */
 size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded) return 0;
+    if (!SDL_Libretro_IsGameReady(lr)) return 0;
     return lr->core.symbols.retro_serialize_size();
 }
 
@@ -212,7 +213,7 @@ size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
  */
 bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
-    if (!lr || !lr->core.gameLoaded || !dst) {
+    if (!SDL_Libretro_IsGameReady(lr) || !dst) {
         SDL_SetError("[SDL_Libretro] Invalid SaveState_IO arguments");
     } else {
         size_t size = lr->core.symbols.retro_serialize_size();
@@ -236,7 +237,7 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
  * Saves the current libretro state to a file.
  */
 bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
-    if (!lr || !lr->core.gameLoaded || !file) {
+    if (!SDL_Libretro_IsGameReady(lr) || !file) {
         SDL_SetError("[SDL_Libretro] Invalid SaveState arguments");
         return false;
     }
@@ -247,7 +248,7 @@ bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
 }
 
 bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
-    if (!lr || !lr->core.gameLoaded || !src) {
+    if (!SDL_Libretro_IsGameReady(lr) || !src) {
         SDL_SetError("[SDL_Libretro] Invalid LoadState_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
         return false;
@@ -266,7 +267,7 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
  * Loads the libretro state from the given file.
  */
 bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
-    if (!lr || !lr->core.gameLoaded || !file) {
+    if (!SDL_Libretro_IsGameReady(lr) || !file) {
         SDL_SetError("[SDL_Libretro] Invalid LoadState arguments");
         return false;
     }
@@ -290,7 +291,7 @@ bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
  * @see SDL_Libretro_SetMemoryData()
  */
 void* SDL_Libretro_GetMemoryData(const SDL_Libretro* lr, unsigned memoryType, size_t* size) {
-    if (!lr || !lr->core.gameLoaded || !lr->core.symbols.retro_get_memory_data || !lr->core.symbols.retro_get_memory_size) {
+    if (!SDL_Libretro_IsGameReady(lr) || !lr->core.symbols.retro_get_memory_data || !lr->core.symbols.retro_get_memory_size) {
         if (size) *size = 0;
         return NULL;
     }
@@ -335,6 +336,7 @@ bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const voi
  * @internal
  */
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr) {
+    if (!lr) return;
     if (lr->core.memoryMapDescriptors) {
         for (unsigned i = 0; i < lr->core.memoryMapDescriptorCount; i++) {
             SDL_free((void*)lr->core.memoryMapDescriptors[i].addrspace);
@@ -358,7 +360,7 @@ static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr) {
  * @see RETRO_ENVIRONMENT_SET_MEMORY_MAPS
  */
 unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr) {
-    return (lr && lr->core.gameLoaded) ? lr->core.memoryMapDescriptorCount : 0;
+    return SDL_Libretro_IsGameReady(lr) ? lr->core.memoryMapDescriptorCount : 0;
 }
 
 /**
@@ -385,7 +387,7 @@ unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr) {
 bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
     Uint64* flags, void** ptr, size_t* offset, size_t* start,
     size_t* select, size_t* disconnect, size_t* len, const char** addrspace) {
-    if (!lr || !lr->core.gameLoaded || index >= lr->core.memoryMapDescriptorCount) {
+    if (!SDL_Libretro_IsGameReady(lr) || index >= lr->core.memoryMapDescriptorCount) {
         return false;
     }
     const struct retro_memory_descriptor* d = &lr->core.memoryMapDescriptors[index];
@@ -424,7 +426,7 @@ bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
  */
 void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining) {
     if (regionRemaining) *regionRemaining = 0;
-    if (!lr || !lr->core.gameLoaded) return NULL;
+    if (!SDL_Libretro_IsGameReady(lr)) return NULL;
 
     for (unsigned i = 0; i < lr->core.memoryMapDescriptorCount; i++) {
         const struct retro_memory_descriptor* d = &lr->core.memoryMapDescriptors[i];
@@ -1154,7 +1156,7 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
  * @returns true if a frame was rewound, false if rewind is unavailable or the buffer is empty.
  */
 static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded || !lr->rewindEnabled) {
+    if (!SDL_Libretro_IsGameReady(lr) || !lr->rewindEnabled) {
         SDL_SetError("[SDL_Libretro] Rewind is not enabled");
         return false;
     }
