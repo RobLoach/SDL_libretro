@@ -611,35 +611,37 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             unsigned count = 0;
             while (info[count].desc) count++;
             if (count > 0) {
-                lr->core.subsystems = (SDL_LibretroSubsystemInfo*)SDL_calloc(count, sizeof(SDL_LibretroSubsystemInfo));
-                if (lr->core.subsystems) {
+                struct retro_subsystem_info* subs = (struct retro_subsystem_info*)SDL_calloc(count, sizeof(*subs));
+                if (subs) {
+                    lr->core.subsystems = subs;
                     lr->core.subsystemCount = count;
                     for (unsigned i = 0; i < count; i++) {
-                        lr->core.subsystems[i].desc = SDL_strdup(info[i].desc ? info[i].desc : "");
-                        lr->core.subsystems[i].ident = SDL_strdup(info[i].ident ? info[i].ident : "");
-                        lr->core.subsystems[i].id = info[i].id;
-                        lr->core.subsystems[i].romsCount = info[i].num_roms;
+                        subs[i].desc = SDL_strdup(info[i].desc ? info[i].desc : "");
+                        subs[i].ident = SDL_strdup(info[i].ident ? info[i].ident : "");
+                        subs[i].id = info[i].id;
+                        subs[i].num_roms = info[i].num_roms;
                         if (info[i].num_roms > 0 && info[i].roms) {
-                            lr->core.subsystems[i].roms = (SDL_LibretroSubsystemRomInfo*)SDL_calloc(
-                                info[i].num_roms, sizeof(SDL_LibretroSubsystemRomInfo));
-                            if (lr->core.subsystems[i].roms) {
+                            struct retro_subsystem_rom_info* roms = (struct retro_subsystem_rom_info*)SDL_calloc(
+                                info[i].num_roms, sizeof(*roms));
+                            subs[i].roms = roms;
+                            if (roms) {
                                 for (unsigned r = 0; r < info[i].num_roms; r++) {
-                                    lr->core.subsystems[i].roms[r].desc = SDL_strdup(
-                                        info[i].roms[r].desc ? info[i].roms[r].desc : "");
-                                    lr->core.subsystems[i].roms[r].validExtensions = SDL_strdup(
+                                    roms[r].desc = SDL_strdup(info[i].roms[r].desc ? info[i].roms[r].desc : "");
+                                    roms[r].valid_extensions = SDL_strdup(
                                         info[i].roms[r].valid_extensions ? info[i].roms[r].valid_extensions : "");
-                                    lr->core.subsystems[i].roms[r].needFullpath = info[i].roms[r].need_fullpath;
-                                    lr->core.subsystems[i].roms[r].blockExtract = info[i].roms[r].block_extract;
-                                    lr->core.subsystems[i].roms[r].required = info[i].roms[r].required;
+                                    roms[r].need_fullpath = info[i].roms[r].need_fullpath;
+                                    roms[r].block_extract = info[i].roms[r].block_extract;
+                                    roms[r].required = info[i].roms[r].required;
                                     if (info[i].roms[r].num_memory > 0 && info[i].roms[r].memory) {
-                                        lr->core.subsystems[i].roms[r].memory = (SDL_LibretroSubsystemMemoryInfo*)SDL_calloc(
-                                            info[i].roms[r].num_memory, sizeof(SDL_LibretroSubsystemMemoryInfo));
-                                        if (lr->core.subsystems[i].roms[r].memory) {
-                                            lr->core.subsystems[i].roms[r].memoryCount = info[i].roms[r].num_memory;
+                                        struct retro_subsystem_memory_info* memory = (struct retro_subsystem_memory_info*)SDL_calloc(
+                                            info[i].roms[r].num_memory, sizeof(*memory));
+                                        roms[r].memory = memory;
+                                        if (memory) {
+                                            roms[r].num_memory = info[i].roms[r].num_memory;
                                             for (unsigned m = 0; m < info[i].roms[r].num_memory; m++) {
-                                                lr->core.subsystems[i].roms[r].memory[m].extension = SDL_strdup(
+                                                memory[m].extension = SDL_strdup(
                                                     info[i].roms[r].memory[m].extension ? info[i].roms[r].memory[m].extension : "");
-                                                lr->core.subsystems[i].roms[r].memory[m].type = info[i].roms[r].memory[m].type;
+                                                memory[m].type = info[i].roms[r].memory[m].type;
                                             }
                                         }
                                     }

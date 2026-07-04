@@ -200,8 +200,22 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
 }
 
 RETRO_API bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num) {
-    (void)type; (void)info; (void)num;
-    return false;
+    // Only the registered "sgb" subsystem (id 1) with its two ROMs is valid.
+    if (type != 1 || num != 2 || !info) return false;
+
+    // ROM 0 declares need_fullpath=false, so the frontend loads it into memory;
+    // ROM 1 declares need_fullpath=true, so only its path is passed through.
+    if (info[0].data == NULL || info[1].data != NULL) return false;
+
+    enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_RGB565;
+    if (environ_cb) environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
+    game_loaded = true;
+
+    if (info[0].size > 0) {
+        size_t n = info[0].size < sizeof(save_ram) ? info[0].size : sizeof(save_ram);
+        memcpy(save_ram, info[0].data, n);
+    }
+    return true;
 }
 
 RETRO_API void retro_unload_game(void) { game_loaded = false; }

@@ -226,6 +226,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     SDL_Libretro_UnloadGame(lr);
     SDL_Libretro_SaveCoreConfig(lr);
 
+    // Deinitialize the core.
     lr->core.symbols.retro_deinit();
     if (lr->core.symbols.handle) {
         SDL_UnloadObject(lr->core.symbols.handle);
@@ -332,45 +333,61 @@ static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr) {
     lr->core.contentInfoOverrideCount = 0;
 }
 
+/**
+ * Frees the loaded subsystem data.
+ */
 static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr) {
-    if (lr->core.subsystems) {
-        for (unsigned i = 0; i < lr->core.subsystemCount; i++) {
-            SDL_free((void*)lr->core.subsystems[i].desc);
-            SDL_free((void*)lr->core.subsystems[i].ident);
-            if (lr->core.subsystems[i].roms) {
-                for (unsigned r = 0; r < lr->core.subsystems[i].romsCount; r++) {
-                    SDL_free((void*)lr->core.subsystems[i].roms[r].desc);
-                    SDL_free((void*)lr->core.subsystems[i].roms[r].validExtensions);
-                    if (lr->core.subsystems[i].roms[r].memory) {
-                        for (unsigned m = 0; m < lr->core.subsystems[i].roms[r].memoryCount; m++) {
-                            SDL_free((void*)lr->core.subsystems[i].roms[r].memory[m].extension);
-                        }
-                        SDL_free(lr->core.subsystems[i].roms[r].memory);
+    if (!lr || !lr->core.subsystems) return;
+    for (unsigned i = 0; i < lr->core.subsystemCount; i++) {
+        // Subsystem Data
+        SDL_free((void*)lr->core.subsystems[i].desc);
+        SDL_free((void*)lr->core.subsystems[i].ident);
+
+        // Roms
+        if (lr->core.subsystems[i].roms) {
+            for (unsigned r = 0; r < lr->core.subsystems[i].num_roms; r++) {
+                SDL_free((void*)lr->core.subsystems[i].roms[r].desc);
+                SDL_free((void*)lr->core.subsystems[i].roms[r].valid_extensions);
+
+                // Rom Memory
+                if (lr->core.subsystems[i].roms[r].memory) {
+                    for (unsigned m = 0; m < lr->core.subsystems[i].roms[r].num_memory; m++) {
+                        SDL_free((void*)lr->core.subsystems[i].roms[r].memory[m].extension);
                     }
+                    SDL_free((void*)lr->core.subsystems[i].roms[r].memory);
                 }
-                SDL_free(lr->core.subsystems[i].roms);
             }
+            SDL_free((void*)lr->core.subsystems[i].roms);
         }
-        SDL_free(lr->core.subsystems);
-        lr->core.subsystems = NULL;
     }
+    SDL_free(lr->core.subsystems);
+    lr->core.subsystems = NULL;
     lr->core.subsystemCount = 0;
 }
 
-unsigned SDL_Libretro_GetSubsystemCount(const SDL_Libretro* lr) {
-    return lr ? lr->core.subsystemCount : 0;
-}
-
-const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystem(const SDL_Libretro* lr, unsigned index) {
-    if (!lr || index >= lr->core.subsystemCount) return NULL;
-    return &lr->core.subsystems[index];
-}
-
-const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId) {
+/**
+ * Retrieves the given subsystem by subsystem ID.
+ */
+static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId) {
     if (!lr) return NULL;
     for (unsigned i = 0; i < lr->core.subsystemCount; i++) {
         if (lr->core.subsystems[i].id == subsystemId) {
             return &lr->core.subsystems[i];
+        }
+    }
+    return NULL;
+}
+
+/**
+ * Retrieves the subsystem that matches either the ident, or description.
+ */
+static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemByName(const SDL_Libretro* lr, const char* name) {
+    if (!lr || !name) return NULL;
+    for (unsigned i = 0; i < lr->core.subsystemCount; i++) {
+        const struct retro_subsystem_info* subsys = &lr->core.subsystems[i];
+        if ((subsys->ident && SDL_strcasecmp(subsys->ident, name) == 0) ||
+            (subsys->desc && SDL_strcasecmp(subsys->desc, name) == 0)) {
+            return subsys;
         }
     }
     return NULL;
@@ -627,16 +644,35 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     return true;
 }
 
-bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths) {
+/**
+ * Loads multi-ROM subsystem content by its numeric subsystem id.
+ *
+ * Equivalent to SDL_Libretro_LoadGameSpecial() but selects the subsystem by the
+ * id the core assigned it rather than by ident or description.
+ *
+ * @param lr the libretro instance.
+ * @param subsystemId the id of the subsystem to load.
+ * @param paths the content file paths, one per ROM the subsystem expects.
+ * @param numPaths the number of entries in `paths`; must be greater than 0.
+ * @returns true on success; false if the id is unknown, the arguments are
+ *          invalid, a file fails to load, or the core rejects the content.
+ *
+ * @see SDL_Libretro_LoadGameSpecial
+ */
+bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths) {
     if (!lr || !lr->core.loaded || !paths || numPaths == 0) {
         SDL_SetError("[SDL_Libretro] Invalid arguments for LoadGameSpecial");
         return false;
     }
 
-    SDL_Libretro_UnloadGame(lr);
-
     // Find the subsystem info to determine per-ROM need_fullpath.
-    const SDL_LibretroSubsystemInfo* subsys = SDL_Libretro_GetSubsystemById(lr, subsystemId);
+    const struct retro_subsystem_info* subsys = SDL_Libretro_GetSubsystemById(lr, subsystemId);
+    if (!subsys) {
+        SDL_SetError("[SDL_Libretro] Unknown subsystem id %u", subsystemId);
+        return false;
+    }
+
+    SDL_Libretro_UnloadGame(lr);
 
     // Build the game info with the given data.
     struct retro_game_info* gameInfos = (struct retro_game_info*)SDL_calloc(numPaths, sizeof(struct retro_game_info));
@@ -653,8 +689,8 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const 
         gameInfos[i].path = paths[i];
 
         bool needFullpath = lr->core.needFullpath;
-        if (subsys && i < subsys->romsCount) {
-            needFullpath = subsys->roms[i].needFullpath;
+        if (i < subsys->num_roms) {
+            needFullpath = subsys->roms[i].need_fullpath;
         }
 
         if (!needFullpath) {
@@ -695,6 +731,33 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const 
 
     SDL_Libretro_FinishGameLoad(lr);
     return true;
+}
+
+/**
+ * Loads multi-ROM subsystem content (e.g. Super Game Boy, Sufami Turbo).
+ *
+ * The subsystem is chosen by matching `subsystem` against each registered
+ * subsystem's ident or human-readable description. The `paths` map positionally
+ * to that subsystem's ROMs; each ROM whose descriptor sets need_fullpath is
+ * passed by path, otherwise the file is read into memory and handed to the core.
+ *
+ * @param lr the libretro instance.
+ * @param subsystem the subsystem ident or description to load.
+ * @param paths the content file paths, one per ROM the subsystem expects.
+ * @param numPaths the number of entries in `paths`; must be greater than 0.
+ * @returns true on success; false if the subsystem is unknown, the arguments
+ *          are invalid, a file fails to load, or the core rejects the content.
+ *
+ * @see SDL_Libretro_LoadGameSpecialById
+ */
+bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const char** paths, unsigned numPaths) {
+    // Match by ident or human-readable description.
+    const struct retro_subsystem_info* subsys = SDL_Libretro_GetSubsystemByName(lr, subsystem);
+    if (!subsys) {
+        SDL_SetError("[SDL_Libretro] Unknown subsystem '%s'", subsystem ? subsystem : "(null)");
+        return false;
+    }
+    return SDL_Libretro_LoadGameSpecialById(lr, subsys->id, paths, numPaths);
 }
 
 /**

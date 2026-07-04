@@ -245,33 +245,8 @@ const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* 
 
 // Subsystems
 
-typedef struct SDL_LibretroSubsystemMemoryInfo {
-    const char* extension; /** The file extension the frontend should use to save this memory region, e.g. "srm". */
-    unsigned type; /** The memory type id passed to retro_get_memory_data()/retro_get_memory_size(). */
-} SDL_LibretroSubsystemMemoryInfo;
-
-typedef struct SDL_LibretroSubsystemRomInfo {
-    const char* desc;
-    const char* validExtensions;
-    bool needFullpath;
-    bool blockExtract;
-    bool required;
-    SDL_LibretroSubsystemMemoryInfo* memory; /** Memory regions this ROM type uses; NULL when memoryCount is 0. */
-    unsigned memoryCount; /** The number of entries in memory. */
-} SDL_LibretroSubsystemRomInfo;
-
-typedef struct SDL_LibretroSubsystemInfo {
-    const char* desc;
-    const char* ident;
-    unsigned id;
-    unsigned romsCount;
-    SDL_LibretroSubsystemRomInfo* roms;
-} SDL_LibretroSubsystemInfo;
-
-unsigned SDL_Libretro_GetSubsystemCount(const SDL_Libretro* lr);
-const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystem(const SDL_Libretro* lr, unsigned index);
-const SDL_LibretroSubsystemInfo* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId);
-bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths);
+bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const char** paths, unsigned numPaths);
+bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths);
 
 // Cheats
 
@@ -524,7 +499,7 @@ typedef struct SDL_LibretroCoreData {
     unsigned contentInfoOverrideCount; /** The number of content info overrides. @see contentInfoOverrides */
 
     // Subsystems
-    SDL_LibretroSubsystemInfo* subsystems;
+    struct retro_subsystem_info* subsystems; /** Deep-copied from RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO; owned by the context. */
     unsigned subsystemCount;
 
     // Rumble
@@ -703,6 +678,8 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
 static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr);
+static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId);
+static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemByName(const SDL_Libretro* lr, const char* name);
 
 // Directory
 
