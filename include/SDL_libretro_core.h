@@ -889,20 +889,20 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     // Rewind mode: step backwards when speed is negative.
     if (lr->rewindEnabled && lr->core.speed < 0.0f) {
         Uint64 nowNS = SDL_GetTicksNS();
-        if (lr->lastTickNS == 0) {
-            lr->lastTickNS = nowNS;
+        if (lr->core.lastTickNS == 0) {
+            lr->core.lastTickNS = nowNS;
         }
-        double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9;
-        lr->lastTickNS = nowNS;
+        double frameTime = (double)(nowNS - lr->core.lastTickNS) / 1.0e9;
+        lr->core.lastTickNS = nowNS;
         double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
         // Each stored snapshot spans captureInterval real frames (a snapshot is taken every Nth frame), so a single rewind step undoes that many frames of game time. Scale the per-step wall-clock cost by the interval; otherwise speed -1 would rewind captureInterval times faster than speed +1 plays forward.
         unsigned interval = lr->rewindCaptureInterval > 0 ? lr->rewindCaptureInterval : 1;
         double stepPeriod = framePeriod * (double)interval;
-        lr->speedAccumulator += frameTime * (double)(-lr->core.speed);
+        lr->core.speedAccumulator += frameTime * (double)(-lr->core.speed);
         // Mute audio and neutralize input for the throwaway re-runs that produce the displayed frames while scrubbing backward.
         lr->rewindActive = true;
-        while (lr->speedAccumulator >= stepPeriod) {
-            lr->speedAccumulator -= stepPeriod;
+        while (lr->core.speedAccumulator >= stepPeriod) {
+            lr->core.speedAccumulator -= stepPeriod;
             if (!SDL_Libretro_RewindStepState(lr)) break;
             lr->core.symbols.retro_run();
         }
@@ -915,17 +915,17 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
 
     // Wall-clock delta since the previous RunFrame.
     Uint64 nowNS = SDL_GetTicksNS();
-    if (lr->lastTickNS == 0) {
+    if (lr->core.lastTickNS == 0) {
         // First call: seed the clock and run exactly one tick.
-        lr->lastTickNS = nowNS;
-        lr->speedAccumulator = 0.0;
+        lr->core.lastTickNS = nowNS;
+        lr->core.speedAccumulator = 0.0;
         SDL_Libretro_Tick(lr, 0);
         return;
     }
 
     // Calculate the frame time in seconds.
-    double frameTime = (double)(nowNS - lr->lastTickNS) / 1.0e9;
-    lr->lastTickNS = nowNS;
+    double frameTime = (double)(nowNS - lr->core.lastTickNS) / 1.0e9;
+    lr->core.lastTickNS = nowNS;
 
     // Target frame period from the core's declared fps (default 60).
     double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
@@ -936,12 +936,12 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     // At normal speed, when the loop is already paced close to the core's frame rate (e.g. a vsync'd 60 Hz display with a ~60 fps core), run exactly one tick and discard the accumulator. This avoids the beat-frequency judder of occasionally emitting 0 or 2 ticks. Gating on the *measured* cadence keeps the core bounded when vsync is off / FPS uncapped.
     double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
     if (lr->core.speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
-        lr->speedAccumulator = 0.0;
+        lr->core.speedAccumulator = 0.0;
         SDL_Libretro_Tick(lr, referenceUsec);
         return;
     }
 
-    lr->speedAccumulator += frameTime * (double)lr->core.speed;
+    lr->core.speedAccumulator += frameTime * (double)lr->core.speed;
 
     // Cap iterations to avoid a spiral of death on slow hardware.
     int maxTicks = (int)(lr->core.speed + 1.0f);
@@ -949,13 +949,13 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
 
     // Clamp the accumulator so a frame-time spike (game load, window drag, menu pause) can't leave a backlog that runs the core fast afterwards.
     double maxAccumulator = framePeriod * (double)maxTicks;
-    if (lr->speedAccumulator > maxAccumulator) {
-        lr->speedAccumulator = maxAccumulator;
+    if (lr->core.speedAccumulator > maxAccumulator) {
+        lr->core.speedAccumulator = maxAccumulator;
     }
 
     // Run the required number of ticks to catch up to what's needed.
-    while (lr->speedAccumulator >= framePeriod && maxTicks-- > 0) {
-        lr->speedAccumulator -= framePeriod;
+    while (lr->core.speedAccumulator >= framePeriod && maxTicks-- > 0) {
+        lr->core.speedAccumulator -= framePeriod;
         SDL_Libretro_Tick(lr, referenceUsec);
     }
 }
