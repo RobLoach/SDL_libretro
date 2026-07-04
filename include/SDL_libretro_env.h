@@ -604,6 +604,56 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO: {
+            if (!data) return true;
+            const struct retro_subsystem_info* info = (const struct retro_subsystem_info*)data;
+            SDL_Libretro_FreeSubsystems(lr);
+            unsigned count = 0;
+            while (info[count].desc) count++;
+            if (count > 0) {
+                struct retro_subsystem_info* subs = (struct retro_subsystem_info*)SDL_calloc(count, sizeof(*subs));
+                if (subs) {
+                    lr->core.subsystems = subs;
+                    lr->core.subsystemCount = count;
+                    for (unsigned i = 0; i < count; i++) {
+                        subs[i].desc = SDL_strdup(info[i].desc ? info[i].desc : "");
+                        subs[i].ident = SDL_strdup(info[i].ident ? info[i].ident : "");
+                        subs[i].id = info[i].id;
+                        subs[i].num_roms = info[i].num_roms;
+                        if (info[i].num_roms > 0 && info[i].roms) {
+                            struct retro_subsystem_rom_info* roms = (struct retro_subsystem_rom_info*)SDL_calloc(
+                                info[i].num_roms, sizeof(*roms));
+                            subs[i].roms = roms;
+                            if (roms) {
+                                for (unsigned r = 0; r < info[i].num_roms; r++) {
+                                    roms[r].desc = SDL_strdup(info[i].roms[r].desc ? info[i].roms[r].desc : "");
+                                    roms[r].valid_extensions = SDL_strdup(
+                                        info[i].roms[r].valid_extensions ? info[i].roms[r].valid_extensions : "");
+                                    roms[r].need_fullpath = info[i].roms[r].need_fullpath;
+                                    roms[r].block_extract = info[i].roms[r].block_extract;
+                                    roms[r].required = info[i].roms[r].required;
+                                    if (info[i].roms[r].num_memory > 0 && info[i].roms[r].memory) {
+                                        struct retro_subsystem_memory_info* memory = (struct retro_subsystem_memory_info*)SDL_calloc(
+                                            info[i].roms[r].num_memory, sizeof(*memory));
+                                        roms[r].memory = memory;
+                                        if (memory) {
+                                            roms[r].num_memory = info[i].roms[r].num_memory;
+                                            for (unsigned m = 0; m < info[i].roms[r].num_memory; m++) {
+                                                memory[m].extension = SDL_strdup(
+                                                    info[i].roms[r].memory[m].extension ? info[i].roms[r].memory[m].extension : "");
+                                                memory[m].type = info[i].roms[r].memory[m].type;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_SET_CONTROLLER_INFO: {
             const struct retro_controller_info* info = (const struct retro_controller_info*)data;
             if (!info) return true;

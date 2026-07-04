@@ -338,7 +338,9 @@ static int SDLCALL test_RewindBuffer(void *arg) {
 
     // End-to-end: capture a few states through a stub core, then rewind.
     SDL_Libretro* lr = SDL_Libretro_Create();
-    lr->core.loaded = true;
+    // Give the context a fake module handle so SDL_Libretro_IsCoreReady() is true
+    // for the stub core below (cleared before Destroy so teardown is skipped).
+    lr->core.symbols.handle = (SDL_SharedObject*)lr;
     lr->core.gameLoaded = true;
     lr->core.fps = 60.0;
     lr->core.symbols.retro_run = rewind_stub_run;
@@ -370,7 +372,7 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(NULL, 1.0) == false, "NULL context rejected");
 
     SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
-    lr->core.loaded = false; /* let Destroy skip the unset core teardown symbols */
+    lr->core.symbols.handle = NULL; /* let Destroy skip core teardown (stub has no real module/symbols) */
     lr->core.gameLoaded = false;
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -526,6 +528,48 @@ static int SDLCALL test_LoadCore(void *arg) {
 #endif
 }
 
+static int SDLCALL test_Subsystem(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(lr->core.subsystemCount == 1, "One subsystem registered");
+    SDLTest_AssertCheck(SDL_Libretro_GetSubsystemById(lr, 999) == NULL, "GetSubsystemById unknown NULL");
+
+    const struct retro_subsystem_info* sub = SDL_Libretro_GetSubsystemById(lr, 1);
+    SDLTest_AssertCheck(sub != NULL, "GetSubsystemById(1) found");
+    if (sub) {
+        SDLTest_AssertCheck(SDL_strcmp(sub->desc, "Super Game Boy") == 0, "Subsystem desc matches");
+        SDLTest_AssertCheck(SDL_strcmp(sub->ident, "sgb") == 0, "Subsystem ident matches");
+        SDLTest_AssertCheck(sub->num_roms == 2, "Subsystem has 2 roms");
+        SDLTest_AssertCheck(sub == SDL_Libretro_GetSubsystemByName(lr, "sgb"), "ByName matches ident");
+        SDLTest_AssertCheck(sub == SDL_Libretro_GetSubsystemByName(lr, "Super Game Boy"), "ByName matches description");
+        SDLTest_AssertCheck(SDL_Libretro_GetSubsystemByName(lr, "nope") == NULL, "GetSubsystemByName unknown NULL");
+        SDLTest_AssertCheck(SDL_Libretro_GetSubsystemByName(lr, NULL) == NULL, "GetSubsystemByName NULL NULL");
+
+        // First ROM carries a single memory descriptor (srm / 0x100).
+        SDLTest_AssertCheck(sub->roms[0].required == true, "Rom 0 required");
+        SDLTest_AssertCheck(sub->roms[0].need_fullpath == false, "Rom 0 need_fullpath false");
+        SDLTest_AssertCheck(sub->roms[0].num_memory == 1, "Rom 0 has 1 memory region");
+        if (sub->roms[0].num_memory == 1) {
+            SDLTest_AssertCheck(SDL_strcmp(sub->roms[0].memory[0].extension, "srm") == 0, "Rom 0 memory extension srm");
+            SDLTest_AssertCheck(sub->roms[0].memory[0].type == 0x100, "Rom 0 memory type 0x100");
+        }
+
+        // Second ROM has no memory descriptors.
+        SDLTest_AssertCheck(sub->roms[1].need_fullpath == true, "Rom 1 need_fullpath true");
+        SDLTest_AssertCheck(sub->roms[1].num_memory == 0, "Rom 1 has no memory regions");
+        SDLTest_AssertCheck(sub->roms[1].memory == NULL, "Rom 1 memory NULL");
+    }
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LoadGame(void *arg) {
 #if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
@@ -630,6 +674,79 @@ static int SDLCALL test_LoadGameNoContent(void *arg) {
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_LoadGameSpecial(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // The "sgb" subsystem expects two ROMs. ROM 0 (need_fullpath=false) is read
+    // into memory by the frontend; ROM 1 (need_fullpath=true) is passed by path.
+    const char* rom0 = "test_sgb_rom0.gb";
+    const char* rom1 = "test_sgb_rom1.sfc";
+    const unsigned char rom0Bytes[] = { 0xDE, 0xAD, 0xBE, 0xEF };
+    SDL_IOStream* io0 = SDL_IOFromFile(rom0, "wb");
+    SDL_WriteIO(io0, rom0Bytes, sizeof(rom0Bytes));
+    SDL_CloseIO(io0);
+    SDL_IOStream* io1 = SDL_IOFromFile(rom1, "wb");
+    SDL_WriteIO(io1, "bios", 4);
+    SDL_CloseIO(io1);
+
+    const char* paths[] = { rom0, rom1 };
+
+    // Bad arguments and unknown subsystems are rejected without loading anything.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "nope", paths, 2) == false, "Unknown subsystem name rejected");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecialById(lr, 999, paths, 2) == false, "Unknown subsystem id rejected");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "sgb", NULL, 2) == false, "NULL paths rejected");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "sgb", paths, 0) == false, "Zero paths rejected");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "No game loaded after rejected calls");
+
+    // Load by ident.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "sgb", paths, 2) == true, "LoadGameSpecial by ident succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after special load");
+    // ROM 0 was loaded into memory and copied into SAVE_RAM by the core.
+    size_t sramSize = 0;
+    const unsigned char* sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram != NULL && sramSize >= sizeof(rom0Bytes), "SAVE_RAM available");
+    if (sram && sramSize >= sizeof(rom0Bytes)) {
+        SDLTest_AssertCheck(SDL_memcmp(sram, rom0Bytes, sizeof(rom0Bytes)) == 0, "ROM 0 bytes reached the core in memory");
+    }
+    // The core probed GET_GAME_INFO_EXT during the load; SYSTEM_RAM exposes the result.
+    const unsigned char* probe = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SYSTEM_RAM, NULL);
+    SDLTest_AssertCheck(probe != NULL, "GET_GAME_INFO_EXT probe available");
+    if (probe) {
+        SDLTest_AssertCheck(SDL_strcmp((const char*)probe, "gb") == 0, "Core saw primary ROM ext 'gb', got '%s'", (const char*)probe);
+        SDLTest_AssertCheck(probe[17] == 1, "Core saw non-NULL game info data");
+    }
+    SDL_Libretro_UnloadGame(lr);
+
+    // Load by description resolves to the same subsystem.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "Super Game Boy", paths, 2) == true, "LoadGameSpecial by description succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after description load");
+    SDL_Libretro_UnloadGame(lr);
+
+    // Load by numeric id.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecialById(lr, 1, paths, 2) == true, "LoadGameSpecialById succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after id load");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_RemovePath(rom0);
+    SDL_RemovePath(rom1);
     SDL_Quit();
     return TEST_COMPLETED;
 #endif
@@ -1020,9 +1137,11 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
+    LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
+    LIBRETRO_TEST_CASE(test_LoadGameSpecial,   "Load subsystem content by name, description, and id"),
     LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
     LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),
     LIBRETRO_TEST_CASE(test_Rotation,          "Rotation-aware fit rect and pointer mapping"),

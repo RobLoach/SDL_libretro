@@ -243,6 +243,11 @@ unsigned SDL_Libretro_GetCategoryCount(const SDL_Libretro* lr);
 const SDL_LibretroCategory* SDL_Libretro_GetCategory(const SDL_Libretro* lr, const char* key);
 const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* lr, unsigned index);
 
+// Subsystems
+
+bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const char** paths, unsigned numPaths);
+bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, const char** paths, unsigned numPaths);
+
 // Cheats
 
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code);
@@ -401,10 +406,11 @@ typedef struct SDL_LibretroMicrophone {
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
-    bool loaded;     /** A core is currently loaded. */
     bool gameLoaded; /** A game is currently loaded into the core (content or no-content). */
     bool shutdown; /** Whether or not the core has requested to shutdown. */
     float speed; /** The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */
+    double speedAccumulator; /** Fractional frames accumulated for run-loop pacing; reset with the core. */
+    Uint64 lastTickNS; /** Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call, reset with the core. */
     unsigned width, height;
     double fps;
     double sampleRate;
@@ -493,6 +499,10 @@ typedef struct SDL_LibretroCoreData {
     struct retro_system_content_info_override* contentInfoOverrides; /** Deep-copied; owned by the context. */
     unsigned contentInfoOverrideCount; /** The number of content info overrides. @see contentInfoOverrides */
 
+    // Subsystems
+    struct retro_subsystem_info* subsystems; /** Deep-copied from RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO; owned by the context. */
+    unsigned subsystemCount;
+
     // Rumble
     float rumbleStrong[SDL_LIBRETRO_MAX_RUMBLE_PORTS];
     float rumbleWeak[SDL_LIBRETRO_MAX_RUMBLE_PORTS];
@@ -534,9 +544,7 @@ typedef struct SDL_LibretroRewindDelta {
 struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /** The audio volume. */
-    SDL_LibretroFitMode fitMode;
-    double speedAccumulator;
-    Uint64 lastTickNS; /* Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call. */
+    SDL_LibretroFitMode fitMode; /** How the libretro context should fit into its destination when rendering. */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
@@ -668,6 +676,9 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
 static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
+static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr);
+static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId);
+static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemByName(const SDL_Libretro* lr, const char* name);
 
 // Directory
 

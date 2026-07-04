@@ -651,7 +651,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
 bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device) {
     if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return false;
     lr->core.portDeviceMap[port] = device;
-    if (lr->core.loaded) {
+    if (SDL_Libretro_IsCoreReady(lr)) {
         lr->core.symbols.retro_set_controller_port_device(port, device);
     }
     return true;
@@ -697,7 +697,7 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
  * @see SDL_Libretro_GetInputDescriptor()
  */
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
-    return (lr && lr->core.loaded) ? lr->core.inputDescriptorsCount : 0;
+    return SDL_Libretro_IsCoreReady(lr) ? lr->core.inputDescriptorsCount : 0;
 }
 
 /**
@@ -719,7 +719,7 @@ unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
  * @see retro_input_descriptor
  */
 bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, unsigned* port, unsigned* device, unsigned* id, const char** description) {
-    if (!lr || !lr->core.loaded || index >= lr->core.inputDescriptorsCount) return false;
+    if (!SDL_Libretro_IsCoreReady(lr) || index >= lr->core.inputDescriptorsCount) return false;
     const struct retro_input_descriptor* d = &lr->core.inputDescriptors[index];
     if (port) *port = d->port;
     if (device) *device = d->device;

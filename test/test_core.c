@@ -47,6 +47,20 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
     };
     cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void *)overrides);
 
+    // Register a dummy subsystem for testing SET_SUBSYSTEM_INFO.
+    static const struct retro_subsystem_memory_info sgb_mem[] = {
+        { "srm", 0x100 },
+    };
+    static const struct retro_subsystem_rom_info sgb_roms[] = {
+        { "Game Boy ROM", "gb|gbc", false, false, true, sgb_mem, 1 },
+        { "Super Game Boy BIOS", "sfc|smc", true, false, true, NULL, 0 },
+    };
+    static const struct retro_subsystem_info subsystems[] = {
+        { "Super Game Boy", "sgb", sgb_roms, 2, 1 },
+        { NULL, NULL, NULL, 0, 0 },
+    };
+    cb(RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO, (void *)subsystems);
+
     // Register two options under one category, then hide the second one to test
     // SET_CORE_OPTIONS_DISPLAY.
     static const struct retro_core_option_v2_category opt_cats[] = {
@@ -186,8 +200,31 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
 }
 
 RETRO_API bool retro_load_game_special(unsigned type, const struct retro_game_info *info, size_t num) {
-    (void)type; (void)info; (void)num;
-    return false;
+    // Only the registered "sgb" subsystem (id 1) with its two ROMs is valid.
+    if (type != 1 || num != 2 || !info) return false;
+
+    // ROM 0 declares need_fullpath=false, so the frontend loads it into memory;
+    // ROM 1 declares need_fullpath=true, so only its path is passed through.
+    if (info[0].data == NULL || info[1].data != NULL) return false;
+
+    enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_RGB565;
+    if (environ_cb) environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
+    game_loaded = true;
+
+    if (info[0].size > 0) {
+        size_t n = info[0].size < sizeof(save_ram) ? info[0].size : sizeof(save_ram);
+        memcpy(save_ram, info[0].data, n);
+    }
+
+    // Probe the extended game info the frontend published for the primary ROM.
+    memset(game_info_probe, 0, sizeof(game_info_probe));
+    const struct retro_game_info_ext *ext = NULL;
+    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_GAME_INFO_EXT, &ext) && ext) {
+        if (ext->ext) strncpy((char *)game_info_probe, ext->ext, 15);
+        game_info_probe[16] = ext->persistent_data ? 1 : 0;
+        game_info_probe[17] = ext->data != NULL ? 1 : 0;
+    }
+    return true;
 }
 
 RETRO_API void retro_unload_game(void) { game_loaded = false; }

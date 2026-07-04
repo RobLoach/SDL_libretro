@@ -2,6 +2,7 @@
  * SDL_libretro_demo: A demonstration of what SDL_libretro can do.
  *
  * Usage: SDL_libretro_demo [core.so] [game.rom]
+ *        SDL_libretro_demo core.so --subsystem <ident> "path1" ["path2" ...]
  */
 
 #define SDL_MAIN_USE_CALLBACKS
@@ -42,14 +43,42 @@ void SDL_Libretro_DemoDropFile(AppContext* app, const char* path) {
 #endif
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
-    const char* corePath = argc > 2 ? argv[1] : NULL;
-    const char* gamePath = argc > 2 ? argv[2] : (argc > 1 ? argv[1] : NULL);
+    // Subsystem detection with "--subsystem <ident> path1 [path2 ...]"
+    const char* subsystemIdent = NULL;
+    const char** subsystemPaths = NULL;
+    unsigned subsystemPathCount = 0;
+    int subsystemArg = 0;
+    for (int i = 1; i < argc; i++) {
+        if (SDL_strcmp(argv[i], "--subsystem") == 0) {
+            subsystemArg = i;
+            subsystemIdent = (i + 1 < argc) ? argv[i + 1] : NULL;
+            if (i + 2 < argc) {
+                subsystemPaths = (const char**)&argv[i + 2];
+                subsystemPathCount = (unsigned)(argc - (i + 2));
+            }
+            break;
+        }
+    }
 
+    // The core is the first positional argument. The game path is the second,
+    // unless "--subsystem" consumes the remaining arguments.
+    const char* corePath = NULL;
+    const char* gamePath = NULL;
+    if (subsystemArg != 0) {
+        // e.g. "core.so --subsystem sgb a.gb b.gb"; a core must precede the flag.
+        corePath = subsystemArg > 1 ? argv[1] : NULL;
+    } else {
+        corePath = argc > 2 ? argv[1] : NULL;
+        gamePath = argc > 2 ? argv[2] : (argc > 1 ? argv[1] : NULL);
+    }
+
+    // Initialize
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
         SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
 
+    // Create the Window
     SDL_Window* window;
     SDL_Renderer* renderer;
     if (!SDL_CreateWindowAndRenderer("SDL_libretro_demo", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
@@ -67,7 +96,13 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
     }
 
-    if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
+    if (subsystemArg != 0) {
+        if (!subsystemIdent || subsystemPathCount == 0) {
+            SDL_Log("Usage: <core> --subsystem <ident> \"path1\" [\"path2\" ...]");
+        } else if (!SDL_Libretro_LoadGameSpecial(lr, subsystemIdent, subsystemPaths, subsystemPathCount)) {
+            SDL_Log("Failed to load subsystem '%s': %s", subsystemIdent, SDL_GetError());
+        }
+    } else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 
@@ -84,6 +119,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     // Hand the app pointer to the drag & drop bridge; it passes it back on drop.
     EM_ASM({ Module.installDemoDrop($0); }, app);
 #else
+    // Don't have rewind on Web
     SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 #endif
 

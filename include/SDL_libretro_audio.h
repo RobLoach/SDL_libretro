@@ -219,7 +219,7 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr) {
  * Initialize the audio for the given libretro context.
  */
 static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
-    if (!lr || !lr->core.loaded) {
+    if (!SDL_Libretro_IsCoreReady(lr)) {
         SDL_SetError("[SDL_Libretro] No core loaded");
         return false;
     }
