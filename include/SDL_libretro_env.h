@@ -134,10 +134,10 @@ static void SDL_Libretro_SetLEDState(int led, int state) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
     Uint8 v = state ? 255 : 0;
-    if (led >= 0 && led < (int)SDL_arraysize(lr->gamepads)) {
+    if (led >= 0 && led < SDL_LIBRETRO_MAX_GAMEPADS) {
         if (lr->gamepads[led]) SDL_SetGamepadLED(lr->gamepads[led], v, v, v);
     } else {
-        for (unsigned i = 0; i < SDL_arraysize(lr->gamepads); i++) {
+        for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
             if (lr->gamepads[i]) SDL_SetGamepadLED(lr->gamepads[i], v, v, v);
         }
     }
