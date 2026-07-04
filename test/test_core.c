@@ -149,6 +149,12 @@ RETRO_API void retro_run(void) {
     int16_t audio[882 * 2];
     memset(audio, 0, sizeof(audio));
     if (audio_batch_cb) audio_batch_cb(audio, 882);
+
+    struct retro_led_interface led_iface = {0};
+    if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_LED_INTERFACE, &led_iface) && led_iface.set_led_state) {
+        led_iface.set_led_state(0, 1);
+        led_iface.set_led_state(0, 0);
+    }
 }
 
 RETRO_API size_t retro_serialize_size(void) { return sizeof(state_data); }
