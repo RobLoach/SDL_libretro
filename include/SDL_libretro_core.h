@@ -801,7 +801,20 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const
  * @see SD_Libretro_UnloadCore()
  */
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded) return;
+    if (!lr) return;
+
+    // Release any mounted archive (e.g. a .zip mounted by SDL_Libretro_LoadGame_Zip)
+    // and restore the default SDL-backed VFS. Done before the gameLoaded guard so a
+    // mount is always torn down, regardless of load state. Backend-agnostic: the
+    // base library never references minizip directly.
+    if (lr->zipMount && lr->zipMountFree) {
+        lr->zipMountFree(lr->zipMount);
+        lr->zipMount = NULL;
+        lr->zipMountFree = NULL;
+        SDL_Libretro_SetVFS(lr, NULL);
+    }
+
+    if (!lr->core.gameLoaded) return;
 
     // Unload the game before closing audio and video.
     lr->core.symbols.retro_unload_game();

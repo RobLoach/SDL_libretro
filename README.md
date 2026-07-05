@@ -57,6 +57,32 @@ SDL_Libretro_Destroy(lr);
 - [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
 - [Demo](https://robloach.github.io/SDL_libretro/demo/)
 
+### Loading from `.zip` archives
+
+Optional zip support is provided by `SDL_libretro_minizip.h` (built on
+[SDL_minizip](https://github.com/RobLoach/SDL_minizip) and
+[minizip-ng](https://github.com/zlib-ng/minizip-ng)). Include it after
+`SDL_libretro.h` in your implementation file, and enable
+`SDL_LIBRETRO_ENABLE_MINIZIP` when configuring so the build links minizip-ng:
+
+```c
+#define SDL_LIBRETRO_IMPLEMENTATION
+#include "SDL_libretro.h"
+#include "SDL_libretro_minizip.h"
+
+// Auto-detects the content file inside the archive, or name it explicitly.
+SDL_Libretro_LoadGame_Zip(lr, "game.zip");
+SDL_Libretro_LoadGame_ZipEntry(lr, "game.zip", "roms/game.sfc");
+```
+
+The archive stays mounted as a read-only VFS layer for the life of the game, so
+the core can read the ROM and companion files (BIOS, multi-disk content, …)
+directly from the `.zip` through the libretro VFS, including opening files,
+querying sizes, and listing directories. Cores that bypass the libretro VFS and
+open files with raw stdio are not supported.
+
+See [SDL_libretro_zip.c](example/SDL_libretro_zip.c) for a complete example.
+
 ## Build
 
 ```sh
@@ -83,12 +109,19 @@ cmake --build build-web
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
 
 - `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
+- `SDL_LIBRETRO_NO_MINIZIP_IMPLEMENTATION`: When using `SDL_libretro_minizip.h`, skip emitting the bundled SDL_minizip implementation (compile it in a separate translation unit instead)
+
+The `SDL_LIBRETRO_ENABLE_MINIZIP` CMake option (default `OFF`) enables `.zip`
+content loading; when on, minizip-ng is fetched and linked. The base library has
+no minizip dependency.
 
 ## Dependencies
 
 - [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
 - [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
+- [SDL_minizip.h](https://github.com/RobLoach/SDL_minizip) (included; optional, for `.zip` loading)
+- [minizip-ng](https://github.com/zlib-ng/minizip-ng) (fetched only when `SDL_LIBRETRO_ENABLE_MINIZIP` is on)
 
 ## License
 

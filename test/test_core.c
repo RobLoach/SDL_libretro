@@ -247,6 +247,43 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
         game_info_probe[16] = ext->persistent_data ? 1 : 0;
         game_info_probe[17] = ext->data != NULL ? 1 : 0;
     }
+
+    // Probe the VFS for archive-loaded content: read a companion file and
+    // enumerate the archive root through the libretro VFS. This exercises the
+    // zip-backed VFS post-load; for non-archive content the block is skipped.
+    // Records into game_info_probe:
+    //   [18] read "extra.dat" from the archive
+    //   [19] "extra.dat" seen while enumerating the root
+    //   [20] subdirectory "data" seen and reported as a directory
+    //   [21] number of entries enumerated at the archive root
+    if (ext && ext->file_in_archive) {
+        struct retro_vfs_interface_info vfs_info = { 3, NULL };
+        if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_info) && vfs_info.iface) {
+            struct retro_vfs_interface *vfs = vfs_info.iface;
+
+            struct retro_vfs_file_handle *fh = vfs->open("extra.dat", RETRO_VFS_FILE_ACCESS_READ, 0);
+            if (fh) {
+                char buf[8];
+                memset(buf, 0, sizeof(buf));
+                int64_t n = vfs->read(fh, buf, sizeof(buf) - 1);
+                if (n >= 5 && strncmp(buf, "EXTRA", 5) == 0) game_info_probe[18] = 1;
+                vfs->close(fh);
+            }
+
+            struct retro_vfs_dir_handle *dh = vfs->opendir("", true);
+            if (dh) {
+                unsigned entries = 0;
+                while (vfs->readdir(dh)) {
+                    const char *nm = vfs->dirent_get_name(dh);
+                    entries++;
+                    if (nm && strcmp(nm, "extra.dat") == 0) game_info_probe[19] = 1;
+                    if (nm && strcmp(nm, "data") == 0 && vfs->dirent_is_dir(dh)) game_info_probe[20] = 1;
+                }
+                game_info_probe[21] = (uint8_t)entries;
+                vfs->closedir(dh);
+            }
+        }
+    }
     return true;
 }
 

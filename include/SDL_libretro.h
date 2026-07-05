@@ -580,6 +580,11 @@ struct SDL_Libretro {
     // Virtual File System
     struct retro_vfs_interface vfs_interface;
 
+    // Archive mount (optional; populated by SDL_libretro_minizip.h). Kept
+    // backend-agnostic so the base library never depends on minizip.
+    void* zipMount;                    /** Opaque archive mount, or NULL. @see SDL_libretro_minizip.h */
+    void (*zipMountFree)(void* mount); /** Releases zipMount + its storage; NULL when unmounted. */
+
     // Rewind (delta-compressed circular buffer)
     unsigned char* rewindReference;
     unsigned char* rewindScratch;
