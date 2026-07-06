@@ -505,6 +505,9 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: {
             if (!data) return true;
             lr->core.serializationQuirks = *(const uint64_t*)data;
+            // Report that we support variable-size states so cores that flag
+            // RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE know we won't break.
+            *(uint64_t*)data |= RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE;
             return true;
         }
 
