@@ -1268,6 +1268,52 @@ static int SDLCALL test_Cheats(void *arg) {
 #endif
 }
 
+static int SDLCALL test_EnvUnimplemented(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // SET_SUPPORT_ACHIEVEMENTS is unsupported: it must return false and must
+    // not write anything through data (it passes a 1-byte bool; the old LED
+    // fall-through scribbled an 8-byte function pointer over it).
+    struct {
+        uint8_t before[8];
+        bool value;
+        uint8_t after[8];
+    } probe;
+    SDL_memset(probe.before, 0xA5, sizeof(probe.before));
+    SDL_memset(probe.after, 0xA5, sizeof(probe.after));
+    probe.value = true;
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS, &probe.value) == false,
+        "SET_SUPPORT_ACHIEVEMENTS reports unsupported");
+    bool intact = probe.value == true;
+    for (size_t i = 0; i < sizeof(probe.before); i++) {
+        if (probe.before[i] != 0xA5 || probe.after[i] != 0xA5) intact = false;
+    }
+    SDLTest_AssertCheck(intact, "Bytes around the bool are intact");
+
+    // Other unimplemented interface queries also report unsupported.
+    struct retro_camera_callback cam;
+    SDL_memset(&cam, 0, sizeof(cam));
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &cam) == false,
+        "GET_CAMERA_INTERFACE reports unsupported");
+
+    // GET_LED_INTERFACE keeps working.
+    struct retro_led_interface led;
+    SDL_memset(&led, 0, sizeof(led));
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_LED_INTERFACE, &led) == true,
+        "GET_LED_INTERFACE supported");
+    SDLTest_AssertCheck(led.set_led_state != NULL, "set_led_state populated");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_OSD(void *arg) {
     (void)arg;
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -1360,6 +1406,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
+    LIBRETRO_TEST_CASE(test_EnvUnimplemented, "Unimplemented env commands return false untouched"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
     NULL
 };
