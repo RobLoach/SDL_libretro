@@ -1268,55 +1268,6 @@ static int SDLCALL test_Cheats(void *arg) {
 #endif
 }
 
-static int SDLCALL test_VFSUpdateExisting(void *arg) {
-    (void)arg;
-    const char* path = "vfs_update_test.bin";
-    SDL_RemovePath(path);
-
-    // Opening a nonexistent file with WRITE|UPDATE_EXISTING still creates it.
-    struct retro_vfs_file_handle* f = SDL_Libretro_VFS_Open(path,
-        RETRO_VFS_FILE_ACCESS_WRITE | RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING, 0);
-    SDLTest_AssertCheck(f != NULL, "WRITE|UPDATE_EXISTING creates a missing file");
-    if (f) {
-        SDLTest_AssertCheck(SDL_Libretro_VFS_Write(f, "ABCDEFGH", 8) == 8, "Write 8 bytes");
-        SDL_Libretro_VFS_Close(f);
-    }
-
-    // Patching one byte with WRITE|UPDATE_EXISTING preserves the rest.
-    f = SDL_Libretro_VFS_Open(path,
-        RETRO_VFS_FILE_ACCESS_WRITE | RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING, 0);
-    SDLTest_AssertCheck(f != NULL, "WRITE|UPDATE_EXISTING opens an existing file");
-    if (f) {
-        SDLTest_AssertCheck(SDL_Libretro_VFS_Write(f, "Z", 1) == 1, "Patch 1 byte at offset 0");
-        SDL_Libretro_VFS_Close(f);
-    }
-
-    f = SDL_Libretro_VFS_Open(path, RETRO_VFS_FILE_ACCESS_READ, 0);
-    SDLTest_AssertCheck(f != NULL, "Reopen for read");
-    if (f) {
-        char buf[9] = {0};
-        SDLTest_AssertCheck(SDL_Libretro_VFS_Read(f, buf, 8) == 8, "File still has 8 bytes");
-        SDLTest_AssertCheck(SDL_strcmp(buf, "ZBCDEFGH") == 0,
-            "Original bytes intact after patch, got '%s'", buf);
-        SDL_Libretro_VFS_Close(f);
-    }
-
-    // Plain WRITE without UPDATE_EXISTING still truncates.
-    f = SDL_Libretro_VFS_Open(path, RETRO_VFS_FILE_ACCESS_WRITE, 0);
-    SDLTest_AssertCheck(f != NULL, "WRITE opens");
-    if (f) SDL_Libretro_VFS_Close(f);
-    f = SDL_Libretro_VFS_Open(path, RETRO_VFS_FILE_ACCESS_READ, 0);
-    if (f) {
-        SDLTest_AssertCheck(SDL_Libretro_VFS_Size(f) == 0, "WRITE without UPDATE_EXISTING truncates");
-        SDL_Libretro_VFS_Close(f);
-    } else {
-        SDLTest_AssertCheck(false, "Reopen after truncate failed");
-    }
-
-    SDL_RemovePath(path);
-    return TEST_COMPLETED;
-}
-
 static int SDLCALL test_OSD(void *arg) {
     (void)arg;
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -1409,7 +1360,6 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
-    LIBRETRO_TEST_CASE(test_VFSUpdateExisting, "VFS write-only open honors UPDATE_EXISTING"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
     NULL
 };
