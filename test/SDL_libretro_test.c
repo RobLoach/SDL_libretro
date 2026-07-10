@@ -1027,6 +1027,14 @@ static int SDLCALL test_Rotation(void *arg) {
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
     SDL_Libretro_LoadGame(lr, NULL); // 320x240 (4:3) core, no content
 
+    // --- SET_ROTATION clamps out-of-range values to 0-3 ---
+    // The test core forwards (device - 0x1000) to SET_ROTATION; a rogue value
+    // of 5 must be masked to 1 so GetRotation reports 90, not 450.
+    SDL_Libretro_SetPortDevice(lr, 0, 0x1000 + 5);
+    SDLTest_AssertCheck(SDL_Libretro_GetRotation(lr) == 90, "SET_ROTATION(5) clamps to 90 deg, got %d", SDL_Libretro_GetRotation(lr));
+    SDL_Libretro_SetPortDevice(lr, 0, 0x1000 + 0);
+    SDLTest_AssertCheck(SDL_Libretro_GetRotation(lr) == 0, "SET_ROTATION(0) restores 0 deg");
+
     // --- renderDstRect fit under rotation, into the full 320x240 output ---
     // 0deg: a 4:3 frame fills the 4:3 window.
     lr->core.rotation = 0;
@@ -1071,6 +1079,46 @@ static int SDLCALL test_Rotation(void *arg) {
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_InputDescriptorCopy(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL);
+
+    // The test core issues SET_INPUT_DESCRIPTORS from stack-allocated structs
+    // and strings during retro_load_game, then scribbles over that stack.
+    // Surviving text proves the frontend deep-copied it.
+    SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptorCount(lr) == 1, "One input descriptor registered");
+    unsigned port = 99, device = 0, id = 0;
+    const char* desc = NULL;
+    SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptor(lr, 0, &port, &device, &id, &desc) == true, "GetInputDescriptor(0) succeeds");
+    SDLTest_AssertCheck(port == 0 && device == RETRO_DEVICE_JOYPAD && id == RETRO_DEVICE_ID_JOYPAD_UP,
+        "Descriptor fields survive, got port=%u device=%u id=%u", port, device, id);
+    SDLTest_AssertCheck(desc != NULL && SDL_strcmp(desc, "Stack Up") == 0,
+        "Descriptor text deep-copied, got '%s'", desc ? desc : "(null)");
+
+    // SET_CONTROLLER_INFO likewise deep-copies the types array and its strings.
+    SDLTest_AssertCheck(lr->core.controllerInfoCount == 1, "One controller info entry");
+    if (lr->core.controllerInfoCount == 1 && lr->core.controllerInfo[0].types != NULL) {
+        SDLTest_AssertCheck(lr->core.controllerInfo[0].num_types == 1, "One controller type");
+        SDLTest_AssertCheck(lr->core.controllerInfo[0].types[0].id == RETRO_DEVICE_JOYPAD, "Controller type id survives");
+        SDLTest_AssertCheck(lr->core.controllerInfo[0].types[0].desc != NULL &&
+            SDL_strcmp(lr->core.controllerInfo[0].types[0].desc, "Stack Pad") == 0,
+            "Controller type desc deep-copied, got '%s'",
+            lr->core.controllerInfo[0].types[0].desc ? lr->core.controllerInfo[0].types[0].desc : "(null)");
+    } else {
+        SDLTest_AssertCheck(false, "Controller info types missing");
+    }
+
+    SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 #endif
 }
@@ -1353,6 +1401,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
     LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),
     LIBRETRO_TEST_CASE(test_Rotation,          "Rotation-aware fit rect and pointer mapping"),
+    LIBRETRO_TEST_CASE(test_InputDescriptorCopy, "Input descriptors and controller info are deep-copied"),
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
