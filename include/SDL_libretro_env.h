@@ -998,6 +998,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case 46:
         case RETRO_ENVIRONMENT_GET_LED_INTERFACE: {
             if (!data) return true;
             struct retro_led_interface* iface = (struct retro_led_interface*)data;
@@ -1017,8 +1018,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case 43:
         case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
         case 87:
-        case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT:
-        case 46: {
+        case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unimplemented environment callback: %u", cmd);
             return false;
         }
