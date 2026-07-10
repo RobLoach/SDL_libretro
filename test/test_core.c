@@ -173,7 +173,13 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info) {
 }
 
 RETRO_API void retro_set_controller_port_device(unsigned port, unsigned device) {
-    (void)port; (void)device;
+    (void)port;
+    // Test hook: device values >= 0x1000 forward (device - 0x1000) to SET_ROTATION
+    // so the frontend test can exercise rotation clamping.
+    if (device >= 0x1000 && environ_cb) {
+        unsigned rotation = device - 0x1000;
+        environ_cb(RETRO_ENVIRONMENT_SET_ROTATION, &rotation);
+    }
 }
 
 RETRO_API void retro_reset(void) {
@@ -221,7 +227,46 @@ RETRO_API void retro_cheat_set(unsigned index, bool enabled, const char *code) {
     (void)index; (void)enabled; (void)code;
 }
 
+/* Issue SET_INPUT_DESCRIPTORS and SET_CONTROLLER_INFO from stack-allocated
+ * structures and strings; the frontend must deep-copy everything because none
+ * of it survives this call. */
+static void register_stack_input_info(void) {
+    if (!environ_cb) return;
+
+    char up_desc[16];
+    strcpy(up_desc, "Stack Up");
+    struct retro_input_descriptor descs[2];
+    memset(descs, 0, sizeof(descs));
+    descs[0].port = 0;
+    descs[0].device = RETRO_DEVICE_JOYPAD;
+    descs[0].index = 0;
+    descs[0].id = RETRO_DEVICE_ID_JOYPAD_UP;
+    descs[0].description = up_desc;
+    environ_cb(RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS, descs);
+
+    char pad_desc[16];
+    strcpy(pad_desc, "Stack Pad");
+    struct retro_controller_description types[1];
+    types[0].desc = pad_desc;
+    types[0].id = RETRO_DEVICE_JOYPAD;
+    struct retro_controller_info cinfo[2];
+    memset(cinfo, 0, sizeof(cinfo));
+    cinfo[0].types = types;
+    cinfo[0].num_types = 1;
+    environ_cb(RETRO_ENVIRONMENT_SET_CONTROLLER_INFO, cinfo);
+}
+
+/* Overwrite the stack region just vacated by register_stack_input_info() so
+ * any pointers the frontend retained into it now reference garbage. */
+static void scribble_stack(void) {
+    volatile unsigned char junk[1024];
+    for (size_t i = 0; i < sizeof(junk); i++) junk[i] = 0xAA;
+}
+
 RETRO_API bool retro_load_game(const struct retro_game_info *game) {
+    register_stack_input_info();
+    scribble_stack();
+
     enum retro_pixel_format fmt = RETRO_PIXEL_FORMAT_RGB565;
     if (environ_cb) environ_cb(RETRO_ENVIRONMENT_SET_PIXEL_FORMAT, &fmt);
     game_loaded = true;

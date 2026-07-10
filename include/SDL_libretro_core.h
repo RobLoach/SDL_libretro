@@ -235,12 +235,8 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     SDL_Libretro_CloseSensors(lr);
     SDL_Libretro_CloseMicrophone(lr);
     SDL_Libretro_FreeCoreOptions(lr);
-    if (lr->core.inputDescriptors) {
-        SDL_free(lr->core.inputDescriptors);
-    }
-    if (lr->core.controllerInfo) {
-        SDL_free(lr->core.controllerInfo);
-    }
+    SDL_Libretro_FreeInputDescriptors(lr);
+    SDL_Libretro_FreeControllerInfo(lr);
     SDL_Libretro_FreeMemoryMap(lr);
     SDL_Libretro_FreeContentInfoOverrides(lr);
     SDL_Libretro_FreeSubsystems(lr);
@@ -363,6 +359,37 @@ static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr) {
     SDL_free(lr->core.subsystems);
     lr->core.subsystems = NULL;
     lr->core.subsystemCount = 0;
+}
+
+/**
+ * Frees the retained input descriptors, including the deep-copied description strings.
+ */
+static void SDL_Libretro_FreeInputDescriptors(SDL_Libretro* lr) {
+    if (!lr || !lr->core.inputDescriptors) return;
+    for (unsigned i = 0; i < lr->core.inputDescriptorsCount; i++) {
+        SDL_free((void*)lr->core.inputDescriptors[i].description);
+    }
+    SDL_free(lr->core.inputDescriptors);
+    lr->core.inputDescriptors = NULL;
+    lr->core.inputDescriptorsCount = 0;
+}
+
+/**
+ * Frees the retained controller info, including the deep-copied type arrays and their strings.
+ */
+static void SDL_Libretro_FreeControllerInfo(SDL_Libretro* lr) {
+    if (!lr || !lr->core.controllerInfo) return;
+    for (unsigned i = 0; i < lr->core.controllerInfoCount; i++) {
+        if (lr->core.controllerInfo[i].types) {
+            for (unsigned t = 0; t < lr->core.controllerInfo[i].num_types; t++) {
+                SDL_free((void*)lr->core.controllerInfo[i].types[t].desc);
+            }
+            SDL_free((void*)lr->core.controllerInfo[i].types);
+        }
+    }
+    SDL_free(lr->core.controllerInfo);
+    lr->core.controllerInfo = NULL;
+    lr->core.controllerInfoCount = 0;
 }
 
 /**

@@ -688,6 +688,8 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
 static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr);
 static void SDL_Libretro_FreeSubsystems(SDL_Libretro* lr);
+static void SDL_Libretro_FreeInputDescriptors(SDL_Libretro* lr);
+static void SDL_Libretro_FreeControllerInfo(SDL_Libretro* lr);
 static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId);
 static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemByName(const SDL_Libretro* lr, const char* name);
 
