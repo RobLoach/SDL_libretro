@@ -197,7 +197,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     switch (cmd) {
         case RETRO_ENVIRONMENT_SET_ROTATION: {
             if (!data) return false;
-            // The spec restricts rotation to 0-3; mask so reported and rendered orientations always agree.
+            // Restrict rotation to 0-3
             lr->core.rotation = (int)(*(const unsigned*)data & 3);
             SDL_Log("[SDL_Libretro] SET_ROTATION: %d (%d deg)", lr->core.rotation, lr->core.rotation * 90);
             return true;
@@ -268,20 +268,28 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_INPUT_DESCRIPTORS: {
             const struct retro_input_descriptor* desc = (const struct retro_input_descriptor*)data;
             if (!desc) return true;
+
+            // Clear out the existing input descriptors first
+            SDL_Libretro_FreeInputDescriptors(lr);
+
+            // Count how many we are adding.
             unsigned count = 0;
             for (const struct retro_input_descriptor* d = desc; d->description; d++) count++;
-            SDL_Libretro_FreeInputDescriptors(lr);
-            if (count > 0) {
-                lr->core.inputDescriptors = (struct retro_input_descriptor*)SDL_malloc(count * sizeof(*desc));
-                if (lr->core.inputDescriptors) {
-                    SDL_memcpy(lr->core.inputDescriptors, desc, count * sizeof(*desc));
-                    lr->core.inputDescriptorsCount = count;
-                    // The description strings are only guaranteed for the duration of this call, so deep-copy them.
-                    for (unsigned i = 0; i < count; i++) {
-                        lr->core.inputDescriptors[i].description = SDL_strdup(desc[i].description);
-                    }
+            if (count == 0) {
+                return true;
+            }
+
+            // Copy the input descriptors into our structure
+            lr->core.inputDescriptors = (struct retro_input_descriptor*)SDL_malloc(count * sizeof(*desc));
+            if (lr->core.inputDescriptors) {
+                SDL_memcpy(lr->core.inputDescriptors, desc, count * sizeof(*desc));
+                lr->core.inputDescriptorsCount = count;
+                // Deep copy the description strings
+                for (unsigned i = 0; i < count; i++) {
+                    lr->core.inputDescriptors[i].description = SDL_strdup(desc[i].description);
                 }
             }
+
             return true;
         }
 
@@ -678,23 +686,25 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             SDL_Libretro_FreeControllerInfo(lr);
             unsigned count = 0;
             for (unsigned i = 0; info[i].types; i++) count++;
-            if (count > 0) {
-                lr->core.controllerInfo = (struct retro_controller_info*)SDL_calloc(count, sizeof(*info));
-                if (lr->core.controllerInfo) {
-                    lr->core.controllerInfoCount = count;
-                    // The types arrays and their desc strings are only guaranteed for the duration of this call, so deep-copy them.
-                    for (unsigned i = 0; i < count; i++) {
-                        lr->core.controllerInfo[i].num_types = info[i].num_types;
-                        if (info[i].num_types == 0) continue;
-                        struct retro_controller_description* types = (struct retro_controller_description*)SDL_calloc(info[i].num_types, sizeof(*types));
-                        if (types) {
-                            for (unsigned t = 0; t < info[i].num_types; t++) {
-                                types[t].id = info[i].types[t].id;
-                                types[t].desc = info[i].types[t].desc ? SDL_strdup(info[i].types[t].desc) : NULL;
-                            }
+            if (count == 0) {
+                return true;
+            }
+
+            lr->core.controllerInfo = (struct retro_controller_info*)SDL_calloc(count, sizeof(*info));
+            if (lr->core.controllerInfo) {
+                lr->core.controllerInfoCount = count;
+                // Deep copy the data into our own data struture
+                for (unsigned i = 0; i < count; i++) {
+                    lr->core.controllerInfo[i].num_types = info[i].num_types;
+                    if (info[i].num_types == 0) continue;
+                    struct retro_controller_description* types = (struct retro_controller_description*)SDL_calloc(info[i].num_types, sizeof(*types));
+                    if (types) {
+                        for (unsigned t = 0; t < info[i].num_types; t++) {
+                            types[t].id = info[i].types[t].id;
+                            types[t].desc = info[i].types[t].desc ? SDL_strdup(info[i].types[t].desc) : NULL;
                         }
-                        lr->core.controllerInfo[i].types = types;
                     }
+                    lr->core.controllerInfo[i].types = types;
                 }
             }
             return true;
