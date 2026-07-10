@@ -202,7 +202,8 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
     if (!dup) return false;
     SDL_free((void*)opt->value);
     opt->value = dup;
-    lr->core.optionsDirty = true;
+    lr->core.optionsDirtyCore = true;
+    lr->core.optionsDirtyApp = true;
     return true;
 }
 
@@ -268,7 +269,8 @@ bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
     if (!dupicateValue) return false;
     SDL_free((void*)opt->value);
     opt->value = dupicateValue;
-    lr->core.optionsDirty = true;
+    lr->core.optionsDirtyCore = true;
+    lr->core.optionsDirtyApp = true;
     return true;
 }
 
@@ -284,7 +286,8 @@ void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
         SDL_free((void*)opt->value);
         opt->value = dupicateValue;
     }
-    lr->core.optionsDirty = true;
+    lr->core.optionsDirtyCore = true;
+    lr->core.optionsDirtyApp = true;
 }
 
 /**
@@ -292,8 +295,8 @@ void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
  */
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr) {
     if (!lr) return false;
-    bool dirty = lr->core.optionsDirty;
-    lr->core.optionsDirty = false;
+    bool dirty = lr->core.optionsDirtyApp;
+    lr->core.optionsDirtyApp = false;
     return dirty;
 }
 

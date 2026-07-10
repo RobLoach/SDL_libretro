@@ -408,8 +408,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE: {
             if (!data) return true;
-            *(bool*)data = lr->core.optionsDirty;
-            lr->core.optionsDirty = false;
+            *(bool*)data = lr->core.optionsDirtyCore;
+            lr->core.optionsDirtyCore = false;
             return true;
         }
 
@@ -828,7 +828,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             for (unsigned i = 0; i < lr->core.optionCount; i++) {
                 if (lr->core.options[i].key && SDL_strcmp(lr->core.options[i].key, opt->key) == 0) {
                     lr->core.options[i].visible = opt->visible;
-                    lr->core.optionsDirty = true;
+                    lr->core.optionsDirtyCore = true;
+                    lr->core.optionsDirtyApp = true;
                     return true;
                 }
             }

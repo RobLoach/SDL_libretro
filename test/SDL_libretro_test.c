@@ -488,6 +488,45 @@ static int SDLCALL test_UpdateOptionVisibility(void *arg) {
 #endif
 }
 
+static int SDLCALL test_OptionsDirtyIndependent(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // Drain both consumers of the dirty state left over from core load.
+    bool updated = false;
+    SDL_Libretro_AreOptionsDirty(lr);
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+
+    // App polls first; the core must still see the update.
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "SetOptionValue succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "App sees dirty flag");
+    updated = false;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+    SDLTest_AssertCheck(updated == true, "Core still sees update after app poll");
+
+    // Core polls first; the app must still see the update.
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "on") == true, "SetOptionValue back succeeds");
+    updated = false;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+    SDLTest_AssertCheck(updated == true, "Core sees update first");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "App still sees dirty after core poll");
+
+    // Each consumer clears only its own flag.
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == false, "App flag cleared after poll");
+    updated = true;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+    SDLTest_AssertCheck(updated == false, "Core flag cleared after poll");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_LoadCore(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -1392,6 +1431,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
+    LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
