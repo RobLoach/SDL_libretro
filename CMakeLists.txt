@@ -33,7 +33,14 @@ target_include_directories(SDL_libretro INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
-target_link_libraries(SDL_libretro INTERFACE SDL3::SDL3-static ${CMAKE_DL_LIBS})
+# SDL3::SDL3 resolves to the shared or static SDL3, whichever is available,
+# so consumers aren't pinned to one flavor. It is linked only in the build
+# interface: the default build fetches SDL3 in-tree (cmake/FindSDL3.cmake)
+# and in-tree targets can't be exported, so the installed package config
+# attaches the SDL3 dependency instead (cmake/SDL_libretroConfig.cmake.in).
+target_link_libraries(SDL_libretro INTERFACE
+    $<BUILD_INTERFACE:SDL3::SDL3>
+    ${CMAKE_DL_LIBS})
 target_compile_features(SDL_libretro INTERFACE c_std_99)
 
 # Example
@@ -66,16 +73,38 @@ endif()
 
 # Install (only when this is the top-level project)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    include(CMakePackageConfigHelpers)
+    include(GNUInstallDirs)
+
     install(TARGETS SDL_libretro EXPORT SDL_libretroTargets)
 
     # Implementation fragments + the libretro API header are part of the
     # shipped header set (needed by the TU that defines the macro).
     install(
         DIRECTORY include/
-        DESTINATION include
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "SDL_*.h"
     )
-    install(FILES vendor/libretro-common/include/libretro.h DESTINATION include)
+    install(FILES vendor/libretro-common/include/libretro.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+    install(EXPORT SDL_libretroTargets
+        NAMESPACE SDL_libretro::
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SDL_libretro)
+
+    configure_package_config_file(
+        cmake/SDL_libretroConfig.cmake.in
+        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfig.cmake
+        INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SDL_libretro)
+
+    write_basic_package_version_file(
+        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfigVersion.cmake
+        VERSION ${PROJECT_VERSION}
+        COMPATIBILITY SameMajorVersion)
+
+    install(FILES
+        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfig.cmake
+        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfigVersion.cmake
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SDL_libretro)
 endif()
 
 if(EMSCRIPTEN)

@@ -36,3 +36,11 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      - name: Verify find_package(SDL_libretro)
+        run: |
+          cmake --install build --prefix ${{ github.workspace }}/scratch
+          cmake -B build-consumer -S test/consumer \
+            -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON \
+            -DCMAKE_PREFIX_PATH="${{ steps.sdl.outputs.prefix }};${{ github.workspace }}/scratch"
+          cmake --build build-consumer
