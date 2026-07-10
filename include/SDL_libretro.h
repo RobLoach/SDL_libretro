@@ -484,7 +484,8 @@ typedef struct SDL_LibretroCoreData {
     SDL_LibretroOption* options; /** The options that have been set by the core. The strings are owned by the context. */
     unsigned optionCount; /** The number of options. */
     unsigned optionCapacity; /** The capacity of the options array. */
-    bool optionsDirty; /** Indicates whether or not the options have been changed since last poll. */
+    bool optionsDirtyCore; /** An option changed since the core last polled GET_VARIABLE_UPDATE. */
+    bool optionsDirtyApp; /** An option changed since the app last called SDL_Libretro_AreOptionsDirty(). */
 
     retro_core_options_update_display_callback_t optionsUpdateDisplayCallback; /** A callback used to determine the visibility of options. */
     SDL_LibretroCategory* optionCategories; /** Categories registered by the core. The strings are owned by the context. */
