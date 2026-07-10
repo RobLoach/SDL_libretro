@@ -73,12 +73,17 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, uns
     if (read && write) {
         sdlMode = update ? "r+b" : "w+b";
     } else if (write) {
-        sdlMode = "wb";
+        // UPDATE_EXISTING must preserve existing contents rather than truncate.
+        sdlMode = update ? "r+b" : "wb";
     } else {
         sdlMode = "rb";
     }
 
     SDL_IOStream* io = SDL_IOFromFile(path, sdlMode);
+    // UPDATE_EXISTING still permits creating a missing file, but "r+b" cannot.
+    if (!io && write && !read && update) {
+        io = SDL_IOFromFile(path, "wb");
+    }
     if (!io) return NULL;
 
     struct retro_vfs_file_handle* h = (struct retro_vfs_file_handle*)SDL_malloc(sizeof(*h));
