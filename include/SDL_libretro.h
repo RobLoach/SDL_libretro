@@ -126,6 +126,7 @@ bool SDL_Libretro_ShouldQuit(const SDL_Libretro* lr);
 // Game
 
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath);
+bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio);
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr);
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr);
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr);
@@ -271,6 +272,7 @@ const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr);
+bool SDL_Libretro_GetBlockExtract(const SDL_Libretro* lr);
 unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr);
 enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro* lr);
 void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context);
@@ -366,6 +368,7 @@ typedef struct SDL_Libretro_CoreInfo {
     char* path;
     bool needs_fullpath;
     bool supports_no_game;
+    bool block_extract;
 } SDL_Libretro_CoreInfo;
 
 typedef struct SDL_LibretroOsdEntry {
@@ -432,6 +435,7 @@ typedef struct SDL_LibretroCoreData {
     char libraryVersion[128];
     char validExtensions[128];
     bool needFullpath;
+    bool blockExtract;
     bool supportNoGame;
     unsigned apiVersion;
     enum retro_pixel_format pixelFormat;
@@ -505,6 +509,7 @@ typedef struct SDL_LibretroCoreData {
     char contentName[SDL_LIBRETRO_MAX_PATH]; /** The human-readable content name. */
     char contentDir[SDL_LIBRETRO_MAX_PATH]; /** Directory of the content file; backs gameInfoExt.dir. */
     char contentExt[8]; /** Lower-case content extension; backs gameInfoExt.ext. */
+    char contentTempPath[SDL_LIBRETRO_MAX_PATH]; /** File spilled to disk by SDL_Libretro_LoadGame_IO() for a need_fullpath core; removed when the content unloads. */
 
     struct retro_game_info_ext gameInfoExt; /** Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
 

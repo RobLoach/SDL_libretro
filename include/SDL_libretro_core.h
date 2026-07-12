@@ -197,6 +197,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
     SDL_strlcpy(lr->core.libraryVersion, sysinfo.library_version ? sysinfo.library_version : "", sizeof(lr->core.libraryVersion));
     SDL_strlcpy(lr->core.validExtensions, sysinfo.valid_extensions ? sysinfo.valid_extensions : "", sizeof(lr->core.validExtensions));
     lr->core.needFullpath = sysinfo.need_fullpath;
+    lr->core.blockExtract = sysinfo.block_extract;
 
     // Default the content name to the core's reported name.
     SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
@@ -471,6 +472,12 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     lr->core.contentExt[0] = '\0';
     SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
 
+    // Remove the file SDL_Libretro_LoadGame_IO() spilled for a need_fullpath core.
+    if (lr->core.contentTempPath[0] != '\0') {
+        SDL_RemovePath(lr->core.contentTempPath);
+        lr->core.contentTempPath[0] = '\0';
+    }
+
     if (lr->core.gameInfoExt.persistent_data) {
         SDL_free((void*)lr->core.gameInfoExt.data);
     }
@@ -613,38 +620,26 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
 }
 
 /**
- * Loads a game at the given path.
+ * Shared tail of SDL_Libretro_LoadGame() and SDL_Libretro_LoadGame_IO().
  *
- * A renderer is not required to load a game. If none has been set via
- * SDL_Libretro_SetRenderer(), the game still loads and runs (audio and input
- * work); video texture creation is deferred until a renderer is set, and until
- * then rendered frames are dropped.
+ * Takes ownership of `fileData` (content bytes already read from an IOStream;
+ * NULL to read them from `gamePath` when the core wants a data buffer). The
+ * core must already be loaded.
  *
- * @see SDL_Libretro_UnloadGame()
- * @see SDL_Libretro_SetRenderer()
+ * @internal
  */
-bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
-    if (!lr) return false;
-
+static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, void* fileData, size_t fileSize) {
     // Switching content: unload any game that's already running first.
     SDL_Libretro_UnloadGame(lr);
 
-    // Try to find what can be loaded with it.
-    if (!SDL_Libretro_IsCoreReady(lr)) {
-        if (!SDL_Libretro_LoadCoreForGame(lr, gamePath)) {
-            SDL_SetError("[SDL_Libretro] Core not loaded");
-            return false;
-        }
-    }
-
     // A core that didn't opt into no-content (SET_SUPPORT_NO_GAME) can't run without a game.
     if (!gamePath && !lr->core.supportNoGame) {
+        SDL_free(fileData);
         SDL_SetError("[SDL_Libretro] This core requires content");
         return false;
     }
 
     struct retro_game_info gameInfo = {0};
-    void* fileData = NULL;
     bool persistData = false;
 
     // Cleared here so a no-content load leaves GET_GAME_INFO_EXT invalid.
@@ -659,21 +654,29 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
         gameInfo.path = lr->core.contentPath;
 
         if (!needFullpath) {
-            size_t fileSize = 0;
-            fileData = SDL_LoadFile(gamePath, &fileSize);
             if (!fileData) {
-                SDL_SetError("[SDL_Libretro] Failed to load game file '%s'", gamePath);
-                SDL_Libretro_ResetContentState(lr);
-                return false;
+                fileData = SDL_LoadFile(gamePath, &fileSize);
+                if (!fileData) {
+                    SDL_SetError("[SDL_Libretro] Failed to load game file '%s'", gamePath);
+                    SDL_Libretro_ResetContentState(lr);
+                    return false;
+                }
             }
             gameInfo.data = fileData;
             gameInfo.size = fileSize;
+        } else if (fileData) {
+            // The core wants a path, not bytes; drop a pre-read buffer.
+            SDL_free(fileData);
+            fileData = NULL;
         }
 
         // The string fields are set above; fill in the content buffer.
         lr->core.gameInfoExt.data            = gameInfo.data;
         lr->core.gameInfoExt.size            = gameInfo.size;
         lr->core.gameInfoExt.persistent_data = persistData;
+    } else if (fileData) {
+        SDL_free(fileData);
+        fileData = NULL;
     }
 
     SDL_Libretro_SetCoreCallbacks(lr);
@@ -695,6 +698,112 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 
     SDL_Libretro_FinishGameLoad(lr);
     return true;
+}
+
+/**
+ * Loads a game at the given path.
+ *
+ * A renderer is not required to load a game. If none has been set via
+ * SDL_Libretro_SetRenderer(), the game still loads and runs (audio and input
+ * work); video texture creation is deferred until a renderer is set, and until
+ * then rendered frames are dropped.
+ *
+ * @see SDL_Libretro_UnloadGame()
+ * @see SDL_Libretro_SetRenderer()
+ */
+bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
+    if (!lr) return false;
+
+    // Try to find what can be loaded with it.
+    if (!SDL_Libretro_IsCoreReady(lr)) {
+        if (!SDL_Libretro_LoadCoreForGame(lr, gamePath)) {
+            SDL_SetError("[SDL_Libretro] Core not loaded");
+            return false;
+        }
+    }
+
+    return SDL_Libretro_LoadGameCommon(lr, gamePath, NULL, 0);
+}
+
+/**
+ * Loads a game from an SDL_IOStream.
+ *
+ * When the core takes content as a data buffer, the stream contents are read
+ * into memory and handed to the core directly; `path` only provides the
+ * content identity (name, extension, save paths). When the core requires a
+ * full path (need_fullpath), the stream is saved to the save directory under
+ * the file name from `path`, loaded from there, and the file is removed again
+ * when the game unloads.
+ *
+ * @param lr the libretro context.
+ * @param src the stream to read the content from.
+ * @param path the path the content is known by. Does not need to exist on
+ *             disk (e.g. a virtual path inside an archive), but the file
+ *             extension determines which core loads it and how.
+ * @param closeio if true, close `src` before returning, even on failure.
+ *
+ * @see SDL_Libretro_LoadGame()
+ */
+bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio) {
+    if (!lr || !src || !path) {
+        if (src && closeio) SDL_CloseIO(src);
+        SDL_SetError("[SDL_Libretro] Invalid arguments");
+        return false;
+    }
+
+    // Try to find what can be loaded with it.
+    if (!SDL_Libretro_IsCoreReady(lr)) {
+        if (!SDL_Libretro_LoadCoreForGame(lr, path)) {
+            if (closeio) SDL_CloseIO(src);
+            SDL_SetError("[SDL_Libretro] Core not loaded");
+            return false;
+        }
+    }
+
+    // The raw-case extension drives the need_fullpath resolution.
+    const char* dot = SDL_strrchr(path, '.');
+    const char* ext = dot ? dot + 1 : "";
+
+    if (!SDL_Libretro_ContentNeedsFullpath(lr, ext)) {
+        // Byte-oriented content: hand the stream contents to the core.
+        size_t fileSize = 0;
+        void* fileData = SDL_LoadFile_IO(src, &fileSize, closeio);
+        if (!fileData) return false;
+        return SDL_Libretro_LoadGameCommon(lr, path, fileData, fileSize);
+    }
+
+    // The core wants a real file: spill the stream to the save directory,
+    // load from there, and remove the file again when the game unloads.
+    char name[SDL_LIBRETRO_MAX_PATH];
+    if (SDL_Libretro_GetFileName(name, sizeof(name), path, true) == 0) {
+        SDL_strlcpy(name, "content.bin", sizeof(name));
+    }
+    char tempPath[SDL_LIBRETRO_MAX_PATH];
+    if (lr->saveDirectory[0] != '\0') {
+        SDL_snprintf(tempPath, sizeof(tempPath), "%s/%s", lr->saveDirectory, name);
+    } else {
+        SDL_strlcpy(tempPath, name, sizeof(tempPath));
+    }
+
+    size_t fileSize = 0;
+    void* fileData = SDL_LoadFile_IO(src, &fileSize, closeio);
+    if (!fileData) return false;
+    bool saved = SDL_SaveFile(tempPath, fileData, fileSize);
+    SDL_free(fileData);
+    if (!saved) {
+        SDL_SetError("[SDL_Libretro] Failed to save content to '%s'", tempPath);
+        return false;
+    }
+
+    // The temp path is recorded only after the load, so the UnloadGame inside
+    // SDL_Libretro_LoadGameCommon() doesn't remove the file it's about to use.
+    bool result = SDL_Libretro_LoadGameCommon(lr, tempPath, NULL, 0);
+    if (result) {
+        SDL_strlcpy(lr->core.contentTempPath, tempPath, sizeof(lr->core.contentTempPath));
+    } else {
+        SDL_RemovePath(tempPath);
+    }
+    return result;
 }
 
 /**
@@ -1071,6 +1180,7 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
     entry->supported_extensions = extensions ? SDL_strdup(extensions) : NULL;
     entry->needs_fullpath = INI_GetBoolean(ini, NULL, "needs_fullpath", false);
     entry->supports_no_game = INI_GetBoolean(ini, NULL, "supports_no_game", false);
+    entry->block_extract = INI_GetBoolean(ini, NULL, "block_extract", false);
 
     // Build the path for the core.
     char base[SDL_LIBRETRO_MAX_PATH];
@@ -1267,6 +1377,17 @@ enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro
 
 void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context) {
     if (lr) lr->core.savestateContext = context;
+}
+
+/**
+ * Whether the loaded core wants archives (e.g. .zip) passed through raw
+ * rather than extracted, as reported by retro_system_info::block_extract.
+ *
+ * @param lr the libretro context.
+ * @returns true if the core handles archive files itself.
+ */
+bool SDL_Libretro_GetBlockExtract(const SDL_Libretro* lr) {
+    return SDL_Libretro_IsCoreReady(lr) && lr->core.blockExtract;
 }
 
 /**

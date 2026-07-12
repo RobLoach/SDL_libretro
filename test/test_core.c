@@ -74,9 +74,12 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
     cb(RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL, &perf_level);
 
     // Mark "txt" content as loaded into a persistent buffer; the frontend test
-    // checks this round-trips through GET_GAME_INFO_EXT.
+    // checks this round-trips through GET_GAME_INFO_EXT. "vfs" content wants a
+    // full path instead, so the frontend's stream/archive loaders route it
+    // through the VFS (see retro_load_game).
     static const struct retro_system_content_info_override overrides[] = {
         { "txt", false, true },
+        { "vfs", true, false },
         { NULL, false, false },
     };
     cb(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, (void *)overrides);
@@ -157,7 +160,7 @@ RETRO_API void retro_get_system_info(struct retro_system_info *info) {
     memset(info, 0, sizeof(*info));
     info->library_name = "test_core";
     info->library_version = "1.0";
-    info->valid_extensions = "txt";
+    info->valid_extensions = "txt|vfs";
     info->need_fullpath = false;
     info->block_extract = false;
 }
@@ -282,6 +285,19 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
     if (game && game->data && game->size > 0) {
         size_t n = game->size < sizeof(save_ram) ? game->size : sizeof(save_ram);
         memcpy(save_ram, game->data, n);
+    } else if (game && game->path && environ_cb) {
+        // Path-only content (need_fullpath): read it through the frontend VFS
+        // into save_ram so tests can verify the bytes were reachable, even
+        // when the path is virtual (e.g. inside a mounted archive).
+        struct retro_vfs_interface_info vfs_info = { 1, NULL };
+        if (environ_cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_info) && vfs_info.iface) {
+            struct retro_vfs_file_handle *file = vfs_info.iface->open(
+                game->path, RETRO_VFS_FILE_ACCESS_READ, RETRO_VFS_FILE_ACCESS_HINT_NONE);
+            if (file) {
+                vfs_info.iface->read(file, save_ram, sizeof(save_ram));
+                vfs_info.iface->close(file);
+            }
+        }
     }
 
     // Probe the extended game info the frontend published for this content.

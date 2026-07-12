@@ -1,0 +1,498 @@
+/**
+ * SDL_libretro_physfs - PhysFS-backed archive (zip) loading for SDL_libretro
+ *
+ * Optional layer that mounts .zip content with PhysicsFS (through SDL_PhysFS)
+ * and hands the game inside to the core, either as a data buffer or through
+ * the libretro VFS for cores that need a full path. The core SDL_libretro.h
+ * stays free of PhysFS; frontends opt in by including this header.
+ *
+ * To compile the implementation, define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION in
+ * the same translation unit that defines SDL_LIBRETRO_IMPLEMENTATION:
+ *
+ *     #define SDL_LIBRETRO_IMPLEMENTATION
+ *     #define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION
+ *     #include "SDL_libretro.h"
+ *     #include "SDL_libretro_physfs.h"
+ *
+ * Then at runtime, use SDL_Libretro_PhysFS_LoadGame() in place of
+ * SDL_Libretro_LoadGame(), and SDL_Libretro_PhysFS_Quit() before destroying
+ * the context.
+ *
+ * Copyright (c) 2026 Rob Loach
+ *
+ * This software is provided "as-is", without any express or implied warranty.
+ * In no event will the authors be held liable for any damages arising from
+ * the use of this software.
+ *
+ * Permission is granted to anyone to use this software for any purpose,
+ * including commercial applications, and to alter it and redistribute it
+ * freely, subject to the following restrictions:
+ *
+ *   1. The origin of this software must not be misrepresented; you must not
+ *      claim that you wrote the original software. If you use this software
+ *      in a product, an acknowledgment in the product documentation would be
+ *      appreciated but is not required.
+ *
+ *   2. Altered source versions must be plainly marked as such, and must not
+ *      be misrepresented as being the original software.
+ *
+ *   3. This notice may not be removed or altered from any source distribution.
+ *
+ * @file SDL_libretro_physfs.h
+ */
+
+#ifndef SDL_LIBRETRO_PHYSFS_H
+#define SDL_LIBRETRO_PHYSFS_H
+
+#include "SDL_libretro.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr);
+void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr);
+bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* SDL_LIBRETRO_PHYSFS_H */
+
+/* ===================================================================== */
+/*  Implementation                                                       */
+/* ===================================================================== */
+#ifdef SDL_LIBRETRO_PHYSFS_IMPLEMENTATION
+#ifndef SDL_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE
+#define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE
+
+#ifndef SDL_LIBRETRO_IMPLEMENTATION_ONCE
+#error "SDL_LIBRETRO_PHYSFS_IMPLEMENTATION requires SDL_LIBRETRO_IMPLEMENTATION in the same translation unit; include SDL_libretro.h first"
+#endif
+
+#ifdef SDL_LIBRETRO_DISABLE_VFS
+#error "SDL_libretro_physfs requires the SDL VFS; do not define SDL_LIBRETRO_DISABLE_VFS"
+#endif
+
+#ifndef SDL_LIBRETRO_PHYSFS_NO_SDL_PHYSFS_IMPLEMENTATION
+#define SDL_PHYSFS_IMPLEMENTATION
+#endif
+#include "SDL_PhysFS.h"
+
+#ifndef SDL_PHYSFS_PHYSFS_H
+#define SDL_PHYSFS_PHYSFS_H "physfs.h"
+#endif
+#include SDL_PHYSFS_PHYSFS_H
+
+#ifndef SDL_LIBRETRO_PHYSFS_MOUNT_POINT
+/**
+ * The PhysFS mount point archives are mounted at, which also prefixes the
+ * virtual content paths handed to cores.
+ */
+#define SDL_LIBRETRO_PHYSFS_MOUNT_POINT "game"
+#endif
+
+/**
+ * @internal
+ */
+typedef struct SDL_Libretro_PhysFS_State {
+    bool ready; /** PhysFS is initialized and the VFS overrides are installed. */
+    char mountSource[SDL_LIBRETRO_MAX_PATH]; /** The archive currently mounted at the mount point. */
+} SDL_Libretro_PhysFS_State;
+
+static SDL_Libretro_PhysFS_State SDL_Libretro_PhysFS = {0};
+
+/**
+ * VFS open override: read-only opens of files that exist in the PhysFS search
+ * path are served from there; everything else falls through to the SDL VFS.
+ *
+ * @internal
+ */
+static struct retro_vfs_file_handle* SDL_Libretro_PhysFS_VFS_Open(const char* path, unsigned mode, unsigned hints) {
+    PHYSFS_Stat st;
+    if (path && (mode & RETRO_VFS_FILE_ACCESS_WRITE) == 0 &&
+        PHYSFS_stat(path, &st) && st.filetype == PHYSFS_FILETYPE_REGULAR) {
+        SDL_IOStream* io = SDL_PhysFS_IOFromFile(path);
+        if (io) {
+            struct retro_vfs_file_handle* h = (struct retro_vfs_file_handle*)SDL_malloc(sizeof(*h));
+            if (!h) {
+                SDL_CloseIO(io);
+                return NULL;
+            }
+            h->io   = io;
+            h->path = SDL_strdup(path);
+            h->mode = mode;
+            return h;
+        }
+    }
+    return SDL_Libretro_VFS_Open(path, mode, hints);
+}
+
+/**
+ * VFS stat override backed by PHYSFS_stat, falling through to the SDL VFS.
+ *
+ * @internal
+ */
+static int SDL_Libretro_PhysFS_VFS_Stat64(const char* path, int64_t* size) {
+    PHYSFS_Stat st;
+    if (path && PHYSFS_stat(path, &st)) {
+        int flags = RETRO_VFS_STAT_IS_VALID;
+        if (st.filetype == PHYSFS_FILETYPE_DIRECTORY) {
+            flags |= RETRO_VFS_STAT_IS_DIRECTORY;
+        }
+        if (size != NULL) {
+            *size = (int64_t)st.filesize;
+        }
+        return flags;
+    }
+    return SDL_Libretro_VFS_Stat64(path, size);
+}
+
+/**
+ * @internal
+ */
+static int SDL_Libretro_PhysFS_VFS_Stat(const char* path, int32_t* size) {
+    int64_t outSize = 0;
+    int out = SDL_Libretro_PhysFS_VFS_Stat64(path, &outSize);
+    if (size != NULL) {
+        *size = outSize > SDL_MAX_SINT32 ? SDL_MAX_SINT32 : (int32_t)outSize;
+    }
+    return out;
+}
+
+/**
+ * VFS opendir override: directories in the PhysFS search path are enumerated
+ * with PHYSFS_enumerateFiles; everything else falls through to the SDL VFS.
+ *
+ * @internal
+ */
+static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* dir, bool include_hidden) {
+    PHYSFS_Stat st;
+    if (!dir || !PHYSFS_stat(dir, &st) || st.filetype != PHYSFS_FILETYPE_DIRECTORY) {
+        return SDL_Libretro_VFS_Opendir(dir, include_hidden);
+    }
+
+    char** entries = PHYSFS_enumerateFiles(dir);
+    if (!entries) return NULL;
+
+    size_t count = 0;
+    while (entries[count]) count++;
+
+    struct retro_vfs_dir_handle* h = (struct retro_vfs_dir_handle*)SDL_calloc(1, sizeof(*h));
+    char** names = count > 0 ? (char**)SDL_calloc(count, sizeof(char*)) : NULL;
+    bool* isDir  = count > 0 ? (bool*)SDL_calloc(count, sizeof(bool)) : NULL;
+    if (!h || (count > 0 && (!names || !isDir))) {
+        SDL_free(h);
+        SDL_free(names);
+        SDL_free(isDir);
+        PHYSFS_freeList(entries);
+        return NULL;
+    }
+
+    size_t stored = 0;
+    for (size_t i = 0; i < count; i++) {
+        if (!include_hidden && entries[i][0] == '.') continue;
+        names[stored] = SDL_strdup(entries[i]);
+        char full[SDL_LIBRETRO_MAX_PATH];
+        SDL_snprintf(full, sizeof(full), "%s/%s", dir, entries[i]);
+        PHYSFS_Stat entryStat;
+        isDir[stored] = PHYSFS_stat(full, &entryStat) && entryStat.filetype == PHYSFS_FILETYPE_DIRECTORY;
+        stored++;
+    }
+    PHYSFS_freeList(entries);
+
+    h->dir   = SDL_strdup(dir);
+    h->names = names;
+    h->isDir = isDir;
+    h->count = stored;
+    h->index = (size_t)-1; // readdir advances before returning
+    return h;
+}
+
+/**
+ * Unmount the archive currently mounted at the mount point, if any.
+ *
+ * @internal
+ */
+static void SDL_Libretro_PhysFS_ClearMount(void) {
+    if (SDL_Libretro_PhysFS.mountSource[0] != '\0') {
+        SDL_PhysFS_Unmount(SDL_Libretro_PhysFS.mountSource);
+        SDL_Libretro_PhysFS.mountSource[0] = '\0';
+    }
+}
+
+/**
+ * Initialize PhysFS and route the libretro VFS through it.
+ *
+ * Cores then transparently read content that lives inside a mounted archive:
+ * VFS open/stat/opendir consult the PhysFS search path first and fall back to
+ * the plain SDL file system. Safe to call repeatedly.
+ *
+ * @param lr the libretro context to install the VFS overrides on.
+ * @return true on success, false if PhysFS failed to initialize.
+ *
+ * @see SDL_Libretro_PhysFS_Quit()
+ */
+bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
+    if (!lr) return false;
+
+    if (!SDL_Libretro_PhysFS.ready) {
+        if (!SDL_PhysFS_Init(NULL)) {
+            return false;
+        }
+        SDL_Libretro_PhysFS.ready = true;
+    }
+
+    struct retro_vfs_interface vfs = {0};
+    vfs.open    = SDL_Libretro_PhysFS_VFS_Open;
+    vfs.stat    = SDL_Libretro_PhysFS_VFS_Stat;
+    vfs.stat_64 = SDL_Libretro_PhysFS_VFS_Stat64;
+    vfs.opendir = SDL_Libretro_PhysFS_VFS_Opendir;
+    SDL_Libretro_SetVFS(lr, &vfs);
+    return true;
+}
+
+/**
+ * Tear down PhysFS, unmounting any active archive and restoring the plain SDL
+ * VFS on the given context.
+ *
+ * @see SDL_Libretro_PhysFS_Init()
+ */
+void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
+    SDL_Libretro_PhysFS_ClearMount();
+    if (lr) {
+        SDL_Libretro_SetVFS(lr, NULL);
+    }
+    if (SDL_Libretro_PhysFS.ready) {
+        SDL_PhysFS_Quit();
+        SDL_Libretro_PhysFS.ready = false;
+    }
+}
+
+/**
+ * @internal
+ */
+typedef struct SDL_Libretro_PhysFS_FileList {
+    char** paths;
+    int count;
+    int capacity;
+} SDL_Libretro_PhysFS_FileList;
+
+/**
+ * Recursively collect the regular files under `dir` in the PhysFS search path.
+ *
+ * @internal
+ */
+static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysFS_FileList* list) {
+    char** entries = PHYSFS_enumerateFiles(dir);
+    if (!entries) return;
+
+    for (char** entry = entries; *entry; entry++) {
+        char full[SDL_LIBRETRO_MAX_PATH];
+        SDL_snprintf(full, sizeof(full), "%s/%s", dir, *entry);
+        PHYSFS_Stat st;
+        if (!PHYSFS_stat(full, &st)) continue;
+        if (st.filetype == PHYSFS_FILETYPE_DIRECTORY) {
+            SDL_Libretro_PhysFS_CollectFiles(full, list);
+        } else if (st.filetype == PHYSFS_FILETYPE_REGULAR) {
+            if (list->count >= list->capacity) {
+                int newCapacity = list->capacity > 0 ? list->capacity * 2 : 16;
+                char** grown = (char**)SDL_realloc(list->paths, (size_t)newCapacity * sizeof(char*));
+                if (!grown) continue;
+                list->paths = grown;
+                list->capacity = newCapacity;
+            }
+            list->paths[list->count] = SDL_strdup(full);
+            if (list->paths[list->count]) list->count++;
+        }
+    }
+    PHYSFS_freeList(entries);
+}
+
+/**
+ * The extension of a path, without the dot ("" if none).
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_PhysFS_Extension(const char* path) {
+    const char* dot = SDL_strrchr(path, '.');
+    return dot ? dot + 1 : "";
+}
+
+/**
+ * Pick the content file inside the mounted archive.
+ *
+ * Tries each strategy in turn, stopping at the first match:
+ *   1. Disc metadata - the first .m3u playlist, then the first .cue sheet, so
+ *      CD-based cores receive the descriptor rather than a raw track. Only
+ *      considered when the loaded core advertises that extension.
+ *   2. An entry whose base name matches the archive's ("mario.zip" > "mario.nes").
+ *   3. The first entry whose extension is in the loaded core's valid
+ *      extensions; without a loaded core, one that any core in the core
+ *      library supports.
+ *   4. Without a loaded core to judge by, the first file.
+ *
+ * Subdirectories are searched recursively.
+ *
+ * @param archivePath the OS path of the archive (used for the base name).
+ * @param dst receives the virtual path of the pick.
+ * @return true if a candidate was found and copied into `dst`.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archivePath, char* dst, size_t dstSize) {
+    SDL_Libretro_PhysFS_FileList list = {0};
+    SDL_Libretro_PhysFS_CollectFiles(SDL_LIBRETRO_PHYSFS_MOUNT_POINT, &list);
+
+    const char* validExts = SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : "";
+    bool hasExts = validExts[0] != '\0';
+
+    char archiveName[SDL_LIBRETRO_MAX_PATH];
+    SDL_Libretro_GetFileName(archiveName, sizeof(archiveName), archivePath, false);
+
+    const char* found = NULL;
+
+    // Pass 1: disc metadata, gated on the core actually supporting it.
+    static const char* discExts[] = { "m3u", "cue" };
+    for (size_t d = 0; !found && d < SDL_arraysize(discExts); d++) {
+        if (hasExts && !SDL_Libretro_ExtensionInList(discExts[d], validExts)) continue;
+        for (int i = 0; !found && i < list.count; i++) {
+            if (SDL_strcasecmp(SDL_Libretro_PhysFS_Extension(list.paths[i]), discExts[d]) == 0) {
+                found = list.paths[i];
+            }
+        }
+    }
+
+    // Pass 2: base name matching the archive's.
+    for (int i = 0; !found && i < list.count; i++) {
+        char entryName[SDL_LIBRETRO_MAX_PATH];
+        SDL_Libretro_GetFileName(entryName, sizeof(entryName), list.paths[i], false);
+        if (SDL_strcasecmp(entryName, archiveName) == 0) {
+            found = list.paths[i];
+        }
+    }
+
+    // Pass 3: extension known to the loaded core, or to any core in the library.
+    for (int i = 0; !found && i < list.count; i++) {
+        const char* ext = SDL_Libretro_PhysFS_Extension(list.paths[i]);
+        if (hasExts) {
+            if (SDL_Libretro_ExtensionInList(ext, validExts)) {
+                found = list.paths[i];
+            }
+        } else {
+            for (unsigned c = 0; c < lr->coreLibraryCount; c++) {
+                if (SDL_Libretro_ExtensionInList(ext, lr->coreLibrary[c].supported_extensions)) {
+                    found = list.paths[i];
+                    break;
+                }
+            }
+        }
+    }
+
+    // Pass 4: no core to judge by; take the first file.
+    if (!found && !hasExts && list.count > 0) {
+        found = list.paths[0];
+    }
+
+    if (found) {
+        SDL_strlcpy(dst, found, dstSize);
+    }
+    for (int i = 0; i < list.count; i++) {
+        SDL_free(list.paths[i]);
+    }
+    SDL_free(list.paths);
+    return found != NULL;
+}
+
+/**
+ * Archive-aware replacement for SDL_Libretro_LoadGame().
+ *
+ * Content that isn't a .zip loads exactly like SDL_Libretro_LoadGame(). For a
+ * .zip, the archive is mounted with PhysFS and the content inside is picked
+ * (see SDL_Libretro_PhysFS_PickContent) and handed to the core: as a data
+ * buffer for byte-oriented cores, or by its virtual path - served through the
+ * PhysFS-backed VFS - for cores that need a full path. Cores that parse
+ * archives themselves (block_extract, or "zip" in their valid extensions)
+ * receive the raw .zip.
+ *
+ * The archive stays mounted while the game runs so the core can keep reading
+ * from it; it is unmounted on the next load or by SDL_Libretro_PhysFS_Quit().
+ *
+ * @param lr the libretro context.
+ * @param gamePath the OS path of the content or archive. May be NULL for a
+ *                 content-less core load.
+ *
+ * @see SDL_Libretro_LoadGame()
+ */
+bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
+    if (!lr) return false;
+    if (!gamePath) {
+        return SDL_Libretro_LoadGame(lr, NULL);
+    }
+
+    // Initialize on demand (idempotent, and installs the VFS overrides on
+    // this context); without PhysFS, fall back to the plain loader.
+    if (!SDL_Libretro_PhysFS_Init(lr)) {
+        return SDL_Libretro_LoadGame(lr, gamePath);
+    }
+
+    // Drop any prior mount before establishing a new one.
+    SDL_Libretro_PhysFS_ClearMount();
+
+    const char* ext = SDL_Libretro_PhysFS_Extension(gamePath);
+    if (SDL_strcasecmp(ext, "zip") != 0) {
+        return SDL_Libretro_LoadGame(lr, gamePath);
+    }
+
+    // Cores that parse archives themselves get the raw .zip.
+    if (SDL_Libretro_IsCoreReady(lr)) {
+        if (lr->core.blockExtract || SDL_Libretro_ExtensionInList("zip", lr->core.validExtensions)) {
+            return SDL_Libretro_LoadGame(lr, gamePath);
+        }
+    } else {
+        for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+            if (lr->coreLibrary[i].block_extract &&
+                SDL_Libretro_ExtensionInList("zip", lr->coreLibrary[i].supported_extensions)) {
+                return SDL_Libretro_LoadGame(lr, gamePath);
+            }
+        }
+    }
+
+    if (!SDL_PhysFS_Mount(gamePath, SDL_LIBRETRO_PHYSFS_MOUNT_POINT)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to mount '%s': %s", gamePath, SDL_GetError());
+        return SDL_Libretro_LoadGame(lr, gamePath);
+    }
+    SDL_strlcpy(SDL_Libretro_PhysFS.mountSource, gamePath, sizeof(SDL_Libretro_PhysFS.mountSource));
+
+    char virtualPath[SDL_LIBRETRO_MAX_PATH];
+    if (!SDL_Libretro_PhysFS_PickContent(lr, gamePath, virtualPath, sizeof(virtualPath))) {
+        SDL_Libretro_PhysFS_ClearMount();
+        SDL_SetError("[SDL_Libretro] No suitable content found inside '%s'", gamePath);
+        return false;
+    }
+
+    // The core must be loaded to resolve need_fullpath for the picked file.
+    if (!SDL_Libretro_IsCoreReady(lr) && !SDL_Libretro_LoadCoreForGame(lr, virtualPath)) {
+        SDL_Libretro_PhysFS_ClearMount();
+        return false;
+    }
+
+    bool result;
+    if (SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_PhysFS_Extension(virtualPath))) {
+        // Full-path core: pass the virtual path; the PhysFS-backed VFS serves
+        // it (and any sibling files, e.g. cue+bin) straight out of the mount.
+        result = SDL_Libretro_LoadGame(lr, virtualPath);
+    } else {
+        SDL_IOStream* io = SDL_PhysFS_IOFromFile(virtualPath);
+        result = io != NULL && SDL_Libretro_LoadGame_IO(lr, io, virtualPath, true);
+    }
+
+    if (!result) {
+        SDL_Libretro_PhysFS_ClearMount();
+    }
+    return result;
+}
+
+#endif /* SDL_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE */
+#endif /* SDL_LIBRETRO_PHYSFS_IMPLEMENTATION */
