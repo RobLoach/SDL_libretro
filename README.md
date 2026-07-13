@@ -107,6 +107,13 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
 - [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (optional)
 
+## Development
+
+Use [clang-format](https://clang.llvm.org/docs/ClangFormat.html) to apply coding standards.
+```sh
+clang-format -i *.h
+```
+
 ## License
 
 [zlib/libpng](LICENSE)
