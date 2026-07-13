@@ -1,10 +1,6 @@
 #define SDL_LIBRETRO_IMPLEMENTATION
+#define SDL_LIBRETRO_ENABLE_ZIP
 #include "SDL_libretro.h"
-
-#ifdef TEST_CONTENT_ZIP_PATH
-#define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION
-#include "SDL_libretro_physfs.h"
-#endif
 
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_test.h>

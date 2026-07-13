@@ -310,6 +310,12 @@ int SDL_Libretro_GetMessageType(SDL_Libretro* lr);
 unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr);
 bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index, const char** msg, int* progress, int* type);
 
+// PhysFS
+
+bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr);
+void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr);
+bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
+
 /**
  * @}
  */
@@ -618,6 +624,11 @@ struct SDL_Libretro {
     unsigned coreLibraryCount; /** The number of core libraries represented in coreLibrary. */
 
     void* userData; /** Generic data available to the implementation. */
+
+    #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+    bool physfsReady; /** PhysFS is initialized and the VFS overrides are installed. */
+    char physfsMountSource[SDL_LIBRETRO_MAX_PATH]; /** The archive currently mounted at the mount point. */
+    #endif
 };
 
 /**
@@ -719,6 +730,7 @@ static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr);
 #include "SDL_libretro_env.h"
 #include "SDL_libretro_core.h"
 #include "SDL_libretro_config.h"
+#include "SDL_libretro_physfs.h"
 
 #endif /* SDL_LIBRETRO_IMPLEMENTATION_ONCE */
 #endif /* SDL_LIBRETRO_IMPLEMENTATION */

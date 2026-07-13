@@ -10,6 +10,7 @@
 #include <SDL3/SDL_main.h>
 
 #define SDL_LIBRETRO_IMPLEMENTATION
+#define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
 #ifdef __EMSCRIPTEN__
@@ -27,7 +28,7 @@ typedef struct {
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
     SDL_Libretro_UnloadCore(app->lr);
-    SDL_Libretro_LoadGame(app->lr, path);
+    SDL_Libretro_PhysFS_LoadGame(app->lr, path);
 }
 
 #ifdef __EMSCRIPTEN__
@@ -92,6 +93,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_InitConfigFile(lr, "SDL_libretro_demo.cfg");
 
+    SDL_Libretro_PhysFS_Init(lr);
+
     if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
     }
@@ -102,7 +105,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         } else if (!SDL_Libretro_LoadGameSpecial(lr, subsystemIdent, subsystemPaths, subsystemPathCount)) {
             SDL_Log("Failed to load subsystem '%s': %s", subsystemIdent, SDL_GetError());
         }
-    } else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
+    } else if ((corePath || gamePath) && !SDL_Libretro_PhysFS_LoadGame(lr, gamePath)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 
@@ -238,6 +241,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
     AppContext* app = appstate;
     if (app) {
+        SDL_Libretro_PhysFS_Quit(app->lr);
         SDL_Libretro_Destroy(app->lr);
         SDL_DestroyRenderer(app->renderer);
         SDL_DestroyWindow(app->window);

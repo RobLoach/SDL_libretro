@@ -69,7 +69,7 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
 
     add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
-    target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro)
+    target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs)
 endif()
 
 # Tests

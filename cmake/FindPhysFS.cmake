@@ -1,8 +1,5 @@
-# Builds PhysicsFS from source as the physfs-static target, using the SDL3
-# platform backend (PHYSFS_PLATFORM_SDL3) so all of its platform I/O goes
-# through SDL3, with only the ZIP archiver enabled. Upstream's CMakeLists is
-# bypassed so the SDL3 dependency resolves against the in-tree SDL3 targets.
-
+# PhysFS
+# https://github.com/icculus/physfs
 if(TARGET physfs-static)
     set(PhysFS_FOUND TRUE)
     return()

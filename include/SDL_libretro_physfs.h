@@ -1,75 +1,10 @@
 /**
- * SDL_libretro_physfs - PhysFS-backed archive (zip) loading for SDL_libretro
- *
- * Optional layer that mounts .zip content with PhysicsFS (through SDL_PhysFS)
- * and hands the game inside to the core, either as a data buffer or through
- * the libretro VFS for cores that need a full path. The core SDL_libretro.h
- * stays free of PhysFS; frontends opt in by including this header.
- *
- * To compile the implementation, define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION in
- * the same translation unit that defines SDL_LIBRETRO_IMPLEMENTATION:
- *
- *     #define SDL_LIBRETRO_IMPLEMENTATION
- *     #define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION
- *     #include "SDL_libretro.h"
- *     #include "SDL_libretro_physfs.h"
- *
- * Then at runtime, use SDL_Libretro_PhysFS_LoadGame() in place of
- * SDL_Libretro_LoadGame(), and SDL_Libretro_PhysFS_Quit() before destroying
- * the context.
- *
- * Copyright (c) 2026 Rob Loach
- *
- * This software is provided "as-is", without any express or implied warranty.
- * In no event will the authors be held liable for any damages arising from
- * the use of this software.
- *
- * Permission is granted to anyone to use this software for any purpose,
- * including commercial applications, and to alter it and redistribute it
- * freely, subject to the following restrictions:
- *
- *   1. The origin of this software must not be misrepresented; you must not
- *      claim that you wrote the original software. If you use this software
- *      in a product, an acknowledgment in the product documentation would be
- *      appreciated but is not required.
- *
- *   2. Altered source versions must be plainly marked as such, and must not
- *      be misrepresented as being the original software.
- *
- *   3. This notice may not be removed or altered from any source distribution.
- *
+ * SDL_libretro - zip loading with PhysFS
  * @file SDL_libretro_physfs.h
  */
 
-#ifndef SDL_LIBRETRO_PHYSFS_H
-#define SDL_LIBRETRO_PHYSFS_H
-
-#include "SDL_libretro.h"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr);
-void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr);
-bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif /* SDL_LIBRETRO_PHYSFS_H */
-
-/* ===================================================================== */
-/*  Implementation                                                       */
-/* ===================================================================== */
-#ifdef SDL_LIBRETRO_PHYSFS_IMPLEMENTATION
-#ifndef SDL_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE
-#define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE
-
-#ifndef SDL_LIBRETRO_IMPLEMENTATION_ONCE
-#error "SDL_LIBRETRO_PHYSFS_IMPLEMENTATION requires SDL_LIBRETRO_IMPLEMENTATION in the same translation unit; include SDL_libretro.h first"
-#endif
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_PHYSFS_IMPL_ONCE) && defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+#define SDL_LIBRETRO_PHYSFS_IMPL_ONCE
 
 #ifdef SDL_LIBRETRO_DISABLE_VFS
 #error "SDL_libretro_physfs requires the SDL VFS; do not define SDL_LIBRETRO_DISABLE_VFS"
@@ -87,21 +22,12 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
 
 #ifndef SDL_LIBRETRO_PHYSFS_MOUNT_POINT
 /**
- * The PhysFS mount point archives are mounted at, which also prefixes the
- * virtual content paths handed to cores.
+ * PhysFS mount point for archives.
+ *
+ * Will be used to prefix the virtual content paths handed to cores.
  */
 #define SDL_LIBRETRO_PHYSFS_MOUNT_POINT "game"
 #endif
-
-/**
- * @internal
- */
-typedef struct SDL_Libretro_PhysFS_State {
-    bool ready; /** PhysFS is initialized and the VFS overrides are installed. */
-    char mountSource[SDL_LIBRETRO_MAX_PATH]; /** The archive currently mounted at the mount point. */
-} SDL_Libretro_PhysFS_State;
-
-static SDL_Libretro_PhysFS_State SDL_Libretro_PhysFS = {0};
 
 /**
  * VFS open override: read-only opens of files that exist in the PhysFS search
@@ -215,10 +141,11 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
  *
  * @internal
  */
-static void SDL_Libretro_PhysFS_ClearMount(void) {
-    if (SDL_Libretro_PhysFS.mountSource[0] != '\0') {
-        SDL_PhysFS_Unmount(SDL_Libretro_PhysFS.mountSource);
-        SDL_Libretro_PhysFS.mountSource[0] = '\0';
+static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
+    if (!lr) return;
+    if (lr->physfsMountSource[0] != '\0') {
+        SDL_PhysFS_Unmount(lr->physfsMountSource);
+        lr->physfsMountSource[0] = '\0';
     }
 }
 
@@ -237,11 +164,11 @@ static void SDL_Libretro_PhysFS_ClearMount(void) {
 bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
     if (!lr) return false;
 
-    if (!SDL_Libretro_PhysFS.ready) {
+    if (!lr->physfsReady) {
         if (!SDL_PhysFS_Init(NULL)) {
             return false;
         }
-        SDL_Libretro_PhysFS.ready = true;
+        lr->physfsReady = true;
     }
 
     struct retro_vfs_interface vfs = {0};
@@ -260,13 +187,14 @@ bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
  * @see SDL_Libretro_PhysFS_Init()
  */
 void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
-    SDL_Libretro_PhysFS_ClearMount();
+    if (!lr) return;
+    SDL_Libretro_PhysFS_ClearMount(lr);
     if (lr) {
         SDL_Libretro_SetVFS(lr, NULL);
     }
-    if (SDL_Libretro_PhysFS.ready) {
+    if (lr->physfsReady) {
         SDL_PhysFS_Quit();
-        SDL_Libretro_PhysFS.ready = false;
+        lr->physfsReady = false;
     }
 }
 
@@ -438,7 +366,7 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     }
 
     // Drop any prior mount before establishing a new one.
-    SDL_Libretro_PhysFS_ClearMount();
+    SDL_Libretro_PhysFS_ClearMount(lr);
 
     const char* ext = SDL_Libretro_PhysFS_Extension(gamePath);
     if (SDL_strcasecmp(ext, "zip") != 0) {
@@ -463,18 +391,18 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to mount '%s': %s", gamePath, SDL_GetError());
         return SDL_Libretro_LoadGame(lr, gamePath);
     }
-    SDL_strlcpy(SDL_Libretro_PhysFS.mountSource, gamePath, sizeof(SDL_Libretro_PhysFS.mountSource));
+    SDL_strlcpy(lr->physfsMountSource, gamePath, sizeof(lr->physfsMountSource));
 
     char virtualPath[SDL_LIBRETRO_MAX_PATH];
     if (!SDL_Libretro_PhysFS_PickContent(lr, gamePath, virtualPath, sizeof(virtualPath))) {
-        SDL_Libretro_PhysFS_ClearMount();
+        SDL_Libretro_PhysFS_ClearMount(lr);
         SDL_SetError("[SDL_Libretro] No suitable content found inside '%s'", gamePath);
         return false;
     }
 
     // The core must be loaded to resolve need_fullpath for the picked file.
     if (!SDL_Libretro_IsCoreReady(lr) && !SDL_Libretro_LoadCoreForGame(lr, virtualPath)) {
-        SDL_Libretro_PhysFS_ClearMount();
+        SDL_Libretro_PhysFS_ClearMount(lr);
         return false;
     }
 
@@ -489,10 +417,23 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     }
 
     if (!result) {
-        SDL_Libretro_PhysFS_ClearMount();
+        SDL_Libretro_PhysFS_ClearMount(lr);
     }
     return result;
 }
 
-#endif /* SDL_LIBRETRO_PHYSFS_IMPLEMENTATION_ONCE */
-#endif /* SDL_LIBRETRO_PHYSFS_IMPLEMENTATION */
+#else
+
+bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
+    return SDL_SetError("SDL_Libretro_PhysFS not enabled");
+}
+
+void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
+    // Nothing
+}
+
+bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
+    return SDL_SetError("SDL_Libretro_PhysFS not enabled");
+}
+
+#endif
