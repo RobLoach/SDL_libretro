@@ -90,6 +90,13 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
 - [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
 
+## Development
+
+Use [clang-format](https://clang.llvm.org/docs/ClangFormat.html) to apply coding standards.
+```sh
+clang-format -i *.h
+```
+
 ## License
 
 [zlib/libpng](LICENSE)
