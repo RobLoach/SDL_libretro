@@ -1,5 +1,5 @@
 #define SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_LIBRETRO_ENABLE_ZIP
+#define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
 #include <SDL3/SDL_main.h>
