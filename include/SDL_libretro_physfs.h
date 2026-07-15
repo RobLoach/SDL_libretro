@@ -334,9 +334,6 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archiv
  * the core: as a data buffer for byte-oriented cores, or by its virtual path in
  * a PhysFS-backed VFS for full-path cores that use the libretro VFS.
  *
- * The archive stays mounted while the game runs so the core can keep reading
- * from it; it is unmounted on the next load or by SDL_Libretro_PhysFS_Quit().
- *
  * @param lr the libretro context.
  * @param gamePath the OS path of the content or archive. May be NULL for a
  *                 content-less core load.
@@ -436,6 +433,10 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     (void)lr;
     (void)gamePath;
     return SDL_SetError("SDL_Libretro_PhysFS not enabled");
+}
+
+static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
+    (void)lr;
 }
 
 #endif

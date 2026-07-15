@@ -976,6 +976,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     SDL_Libretro_RewindFree(lr);
     SDL_Libretro_CloseAudio(lr);
     SDL_Libretro_CloseVideo(lr);
+    SDL_Libretro_PhysFS_ClearMount(lr);
     SDL_Log("[SDL_Libretro] Game unloaded");
 }
 

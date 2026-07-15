@@ -721,6 +721,10 @@ static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr);
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr);
 static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr);
 
+// PhysFS
+
+static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr);
+
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"
 #include "SDL_libretro_input.h"
