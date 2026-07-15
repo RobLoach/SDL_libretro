@@ -30,10 +30,12 @@
 #endif
 
 /**
- * VFS open override: read-only opens of files that exist in the PhysFS search
- * path are served from there; everything else falls through to the SDL VFS.
+ * PhysFS VFS Open override: Loads a file that exist in the PhysFS search path.
+ *
+ * When note found, will fall through to the SDL VFS.
  *
  * @internal
+ * @see SDL_Libretro_VFS_Open()
  */
 static struct retro_vfs_file_handle* SDL_Libretro_PhysFS_VFS_Open(const char* path, unsigned mode, unsigned hints) {
     PHYSFS_Stat st;
@@ -48,9 +50,10 @@ static struct retro_vfs_file_handle* SDL_Libretro_PhysFS_VFS_Open(const char* pa
 }
 
 /**
- * VFS stat override backed by PHYSFS_stat, falling through to the SDL VFS.
+ * PhysFS VFS Stat64 override to fall through to the SDL VFS.
  *
  * @internal
+ * @see SDL_Libretro_VFS_Stat64()
  */
 static int SDL_Libretro_PhysFS_VFS_Stat64(const char* path, int64_t* size) {
     PHYSFS_Stat st;
@@ -68,7 +71,9 @@ static int SDL_Libretro_PhysFS_VFS_Stat64(const char* path, int64_t* size) {
 }
 
 /**
+ * PhysFS VFS Stat override, falling through to the SDL VFS.
  * @internal
+ * @see SDL_Libretro_PhysFS_VFS_Stat64
  */
 static int SDL_Libretro_PhysFS_VFS_Stat(const char* path, int32_t* size) {
     int64_t outSize = 0;
@@ -80,10 +85,10 @@ static int SDL_Libretro_PhysFS_VFS_Stat(const char* path, int32_t* size) {
 }
 
 /**
- * VFS opendir override: directories in the PhysFS search path are enumerated
- * with PHYSFS_enumerateFiles; everything else falls through to the SDL VFS.
+ * PhysFS VFS Opendir override, falling through to the SDL VFS.
  *
  * @internal
+ * @see SDL_Libretro_VFS_Opendir
  */
 static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* dir, bool include_hidden) {
     PHYSFS_Stat st;
@@ -129,7 +134,7 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
 }
 
 /**
- * Unmount the archive currently mounted at the mount point, if any.
+ * Unmount the PhysFS archive currently mounted at the mount point, if any.
  *
  * @internal
  */
@@ -144,8 +149,9 @@ static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
 /**
  * Initialize PhysFS and route the libretro VFS through it.
  *
- * Cores can then read content directly from the mounted archive
- * through the VFS. Safe to call repeatedly.
+ * This will be called automatically in SDL_Libretro_PhysFS_LoadGame()
+ * if PhysFS was not initiatlized. Cores can then read content directly
+ * from the mounted archive through the VFS. Safe to call repeatedly.
  *
  * @param lr the libretro context to install the VFS overrides on.
  * @return true on success, false if PhysFS failed to initialize.
@@ -188,6 +194,8 @@ void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
 }
 
 /**
+ * A list of files within a directory.
+ * @see SDL_Libretro_PhysFS_PickContent()
  * @internal
  */
 typedef struct SDL_Libretro_PhysFS_FileList {

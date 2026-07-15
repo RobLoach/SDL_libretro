@@ -715,13 +715,9 @@ static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, 
 /**
  * Loads a game at the given path.
  *
- * A renderer is not required to load a game. If none has been set via
- * SDL_Libretro_SetRenderer(), the game still loads and runs (audio and input
- * work); video texture creation is deferred until a renderer is set, and until
- * then rendered frames are dropped.
- *
  * @see SDL_Libretro_UnloadGame()
  * @see SDL_Libretro_SetRenderer()
+ * @see SDL_Libretro_PhysFS_LoadGame()
  */
 bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     if (!lr) return false;
@@ -740,14 +736,15 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 /**
  * Loads a game from an SDL_IOStream.
  *
- * Stream content into memory, and hand it to the core directly. The `path`
- * only provides the content identity (name, extension, save paths). When
+ * Stream content into memory, and hand it to the core. The `path` only
+ * provides the content identity (name, extension, save path, etc). When
  * the core requires a full path (need_fullpath), the stream is saved to
  * the save directory under the file name from `path`, and loaded there.
  *
  * @param lr the libretro context.
  * @param src the stream to read the content from.
- * @param path the path the content is known by. Could be a virtual path if the loading from an archive.
+ * @param path the path the content is known by. Could be a virtual path
+ * if the loading from an archive.
  * @param closeio if true, close `src` before returning, even on failure.
  *
  * @see SDL_Libretro_LoadGame()
@@ -755,8 +752,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio) {
     if (!lr || !src || !path) {
         if (src && closeio) SDL_CloseIO(src);
-        SDL_SetError("[SDL_Libretro] Invalid arguments");
-        return false;
+        return SDL_InvalidParamError("src, path");
     }
 
     // Try to find what can be loaded with it.
@@ -825,7 +821,7 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
 }
 
 /**
- * Loads multi-ROM subsystem content by its numeric subsystem id.
+ * Load multi-ROM subsystem content by its numeric subsystem id.
  *
  * Equivalent to SDL_Libretro_LoadGameSpecial() but selects the subsystem by the
  * id the core assigned it rather than by ident or description.
@@ -1398,8 +1394,7 @@ void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_con
 }
 
 /**
- * Whether the loaded core wants archives (e.g. .zip) passed through raw
- * rather than extracted, as reported by retro_system_info::block_extract.
+ * Retrieves whether the core expects archives to be loaded directly.
  *
  * @param lr the libretro context.
  * @returns true if the core handles archive files itself.
@@ -1421,6 +1416,13 @@ const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr) {
     return SDL_Libretro_GetExtension(lr->core.contentPath);
 }
 
+/**
+ * Gets whether or not the given extension appears within the provided piped list.
+ *
+ * @param ext The extension to check, without the dot.
+ * @param pipeList A piped list of extensions. For example: nes|rom|bin
+ * @internal
+ */
 static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) {
     if (!ext || !pipeList) return false;
     size_t extLen = SDL_strlen(ext);
