@@ -76,39 +76,7 @@ endif()
 option(SDL_LIBRETRO_BUILD_TESTS "Build unit tests" ON)
 if(SDL_LIBRETRO_BUILD_TESTS)
     enable_testing()
-
-    add_library(test_core SHARED test/test_core.c)
-    target_include_directories(test_core PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include)
-    set_target_properties(test_core PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
-
-    add_executable(SDL_libretro_test test/SDL_libretro_test.c)
-    target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
-    target_compile_definitions(SDL_libretro_test PRIVATE
-        TEST_CORE_PATH="$<TARGET_FILE:test_core>"
-        TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt")
-
-    if(SDL_LIBRETRO_PHYSFS)
-        target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro_physfs)
-
-        # Zip fixtures for the PhysFS loader tests: one whose base name matches
-        # the file inside, and one holding a need_fullpath (".vfs") file.
-        set(TEST_ZIP_STAGING "${CMAKE_CURRENT_BINARY_DIR}/test_zip_staging")
-        file(MAKE_DIRECTORY ${TEST_ZIP_STAGING})
-        configure_file(test/test_content.txt ${TEST_ZIP_STAGING}/test_content.txt COPYONLY)
-        configure_file(test/test_content.txt ${TEST_ZIP_STAGING}/game.vfs COPYONLY)
-        execute_process(COMMAND ${CMAKE_COMMAND} -E tar cf
-            ${CMAKE_CURRENT_BINARY_DIR}/test_content.zip --format=zip test_content.txt
-            WORKING_DIRECTORY ${TEST_ZIP_STAGING})
-        execute_process(COMMAND ${CMAKE_COMMAND} -E tar cf
-            ${CMAKE_CURRENT_BINARY_DIR}/test_fullpath.zip --format=zip game.vfs
-            WORKING_DIRECTORY ${TEST_ZIP_STAGING})
-        target_compile_definitions(SDL_libretro_test PRIVATE
-            TEST_CONTENT_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_content.zip"
-            TEST_FULLPATH_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_fullpath.zip")
-    endif()
-
-    add_test(NAME SDL_libretro_test COMMAND SDL_libretro_test)
+    add_subdirectory(test)
 endif()
 
 # Install (only when this is the top-level project)

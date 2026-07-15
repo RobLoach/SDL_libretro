@@ -70,6 +70,15 @@ RETRO_API void retro_set_environment(retro_environment_t cb) {
     bool no_game = true; // retro_load_game(NULL) is handled, so advertise it
     cb(RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, &no_game);
 
+#ifndef TEST_CORE_NO_EARLY_VFS
+    // Request the VFS "as early as possible" like real VFS-aware cores do;
+    // this tells the frontend it may hand this core virtual paths. The
+    // TEST_CORE_NO_EARLY_VFS build skips it so tests can cover the fallback
+    // for cores that read files directly from the OS.
+    struct retro_vfs_interface_info vfs_probe = { 1, NULL };
+    cb(RETRO_ENVIRONMENT_GET_VFS_INTERFACE, &vfs_probe);
+#endif
+
     unsigned perf_level = 2;
     cb(RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL, &perf_level);
 
@@ -160,7 +169,9 @@ RETRO_API void retro_get_system_info(struct retro_system_info *info) {
     memset(info, 0, sizeof(*info));
     info->library_name = "test_core";
     info->library_version = "1.0";
-    info->valid_extensions = "txt|vfs";
+    // "cue" is claimed (loaded as a plain data buffer) so tests can exercise
+    // the archive loader's disc-metadata pick priority.
+    info->valid_extensions = "txt|vfs|cue";
     info->need_fullpath = false;
     info->block_extract = false;
 }

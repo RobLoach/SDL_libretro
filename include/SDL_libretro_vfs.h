@@ -55,6 +55,25 @@ static const char* SDL_Libretro_VFS_GetPath(struct retro_vfs_file_handle* stream
 }
 
 /**
+ * Wrap an already-open SDL_IOStream in a VFS file handle.
+ *
+ * Takes ownership of `io` (closed on allocation failure).
+ *
+ * @internal
+ */
+static struct retro_vfs_file_handle* SDL_Libretro_VFS_WrapIO(SDL_IOStream* io, const char* path, unsigned mode) {
+    struct retro_vfs_file_handle* h = (struct retro_vfs_file_handle*)SDL_malloc(sizeof(*h));
+    if (!h) {
+        SDL_CloseIO(io);
+        return NULL;
+    }
+    h->io   = io;
+    h->path = SDL_strdup(path);
+    h->mode = mode;
+    return h;
+}
+
+/**
  * @internal
  */
 static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, unsigned mode, unsigned hints) {
@@ -86,12 +105,7 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, uns
     }
     if (!io) return NULL;
 
-    struct retro_vfs_file_handle* h = (struct retro_vfs_file_handle*)SDL_malloc(sizeof(*h));
-    if (!h) { SDL_CloseIO(io); return NULL; }
-    h->io   = io;
-    h->path = SDL_strdup(path);
-    h->mode = mode;
-    return h;
+    return SDL_Libretro_VFS_WrapIO(io, path, mode);
 }
 
 /**
@@ -191,6 +205,11 @@ static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
 static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, int64_t length) {
     if (!stream || length < 0) return -1;
 
+    // Refuse read-only handles: the shrink path below rewrites the file at
+    // stream->path, which must never happen for content opened read-only
+    // (a PhysFS-backed handle's path isn't even a real file).
+    if ((stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) == 0) return -1;
+
     int64_t cur_size = SDL_GetIOSize(stream->io);
     if (cur_size < 0) return -1;
 
@@ -269,6 +288,22 @@ static int SDL_Libretro_VFS_Stat64(const char* path, int64_t* size) {
 }
 
 /**
+ * Clamp a 64-bit stat size for the legacy 32-bit stat callback, warning on
+ * overflow.
+ *
+ * @internal
+ */
+static int32_t SDL_Libretro_VFS_ClampStatSize(const char* path, int64_t size) {
+    if (size > SDL_MAX_SINT32) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+            "[SDL_Libretro] VFS stat size %" SDL_PRIs64 " for '%s' exceeds int32. Clamping to SDL_MAX_SINT32.",
+            size, path);
+        return SDL_MAX_SINT32;
+    }
+    return (int32_t)size;
+}
+
+/**
  * @internal
  */
 static int SDL_Libretro_VFS_Stat(const char* path, int32_t* size) {
@@ -276,15 +311,7 @@ static int SDL_Libretro_VFS_Stat(const char* path, int32_t* size) {
     int64_t outSize = 0;
     int out = SDL_Libretro_VFS_Stat64(path, &outSize);
     if (size != NULL) {
-        if (outSize > SDL_MAX_SINT32) {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                "[SDL_Libretro] VFS stat size %" SDL_PRIs64 " for '%s' exceeds int32. Clamping to SDL_MAX_SINT32.",
-                outSize, path);
-            *size = SDL_MAX_SINT32;
-        }
-        else {
-            *size = (int32_t)outSize;
-        }
+        *size = SDL_Libretro_VFS_ClampStatSize(path, outSize);
     }
     return out;
 }

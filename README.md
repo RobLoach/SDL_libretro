@@ -60,20 +60,16 @@ SDL_Libretro_Destroy(lr);
 
 ### Zip Loading
 
-Link the `SDL_libretro_physfs` CMake target (enabled with `SDL_LIBRETRO_PHYSFS`), define the implementation next to the core one, and load games through the PhysFS-aware loader:
+Link the `SDL_libretro_physfs` CMake target (enabled with `SDL_LIBRETRO_PHYSFS`), enable PhysFS next to the implementation define, and load games through the PhysFS-aware loader:
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_LIBRETRO_PHYSFS_IMPLEMENTATION
+#define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
-#include "SDL_libretro_physfs.h"
 
-SDL_Libretro_PhysFS_LoadGame(lr, "game.zip"); // instead of SDL_Libretro_LoadGame()
-// ...
-SDL_Libretro_PhysFS_Quit(lr); // before SDL_Libretro_Destroy()
+// Instead of SDL_Libretro_LoadGame()
+SDL_Libretro_PhysFS_LoadGame(lr, "game.zip");
 ```
-
-The archive is mounted with [PhysicsFS](https://icculus.org/physfs/) (built on its SDL3 platform backend) and the game inside is picked automatically: disc metadata (`.m3u`/`.cue`) first, then a file matching the archive's name, then the first file the core's extensions accept. Byte-oriented cores receive the extracted data; `need_fullpath` cores read the virtual path through the libretro VFS, straight out of the archive. Cores flagged `block_extract` (or listing `zip` as a valid extension) receive the raw archive instead. Non-zip content passes through unchanged.
 
 ## Build
 
@@ -101,6 +97,7 @@ cmake --build build-web
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
 
 - `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
+- `SDL_LIBRETRO_ENABLE_PHYSFS`: Enable .zip loading with PhysFS
 - `SDL_LIBRETRO_PHYSFS_MOUNT_POINT`: The PhysFS mount point archives are mounted at (default `"game"`)
 
 ## Dependencies
@@ -108,7 +105,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
 - [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
-- [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (fetched automatically, only with `SDL_LIBRETRO_PHYSFS`)
+- [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (optional)
 
 ## License
 

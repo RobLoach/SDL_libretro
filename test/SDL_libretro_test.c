@@ -542,7 +542,7 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == true, "Core is ready after load");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreName(lr), "test_core") == 0, "Core name is test_core");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreVersion(lr), "1.0") == 0, "Core version is 1.0");
-    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "txt|vfs") == 0, "Valid extensions is txt|vfs");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetValidExtensions(lr), "txt|vfs|cue") == 0, "Valid extensions is txt|vfs|cue");
     SDLTest_AssertCheck(SDL_Libretro_GetPerformanceLevel(lr) == 2, "Performance level reported by core is 2");
     SDLTest_AssertCheck(SDL_Libretro_GetPerformanceLevel(NULL) == 0, "GetPerformanceLevel(NULL) 0");
     SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(lr) == RETRO_SAVESTATE_CONTEXT_NORMAL, "Savestate context defaults to NORMAL");
@@ -1003,6 +1003,9 @@ static int SDLCALL test_PhysFSLoadGameZipFullpath(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_FULLPATH_ZIP_PATH) == true,
         "PhysFS_LoadGame succeeds with a need_fullpath zip");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after fullpath zip load");
+    SDLTest_AssertCheck(lr->core.usedVFS == true, "Core requested the VFS early");
+    SDLTest_AssertCheck(lr->core.contentTempPath[0] == '\0',
+        "Content served by its virtual path, not spilled to disk");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "vfs") == 0,
         "Content extension is the file inside the zip, got '%s'", SDL_Libretro_GetContentExtension(lr));
 
@@ -1099,6 +1102,154 @@ static int SDLCALL test_PhysFSNonZip(void *arg) {
     // So does a content-less load.
     SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, NULL) == true,
         "PhysFS_LoadGame passes NULL content through");
+
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_PhysFSPickPriority(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_PRIORITY_ZIP_PATH) || !defined(TEST_DISC_ZIP_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH, TEST_PRIORITY_ZIP_PATH, or TEST_DISC_ZIP_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // test_priority.zip holds "aaa.txt" and "test_priority.txt"; the entry
+    // whose base name matches the archive's must win over the other
+    // extension-valid candidate.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_PRIORITY_ZIP_PATH) == true,
+        "PhysFS_LoadGame succeeds with the priority zip");
+    size_t sramSize = 0;
+    const char* sram = (const char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram != NULL && sramSize >= 13, "SAVE_RAM available");
+    if (sram && sramSize >= 13) {
+        SDLTest_AssertCheck(SDL_memcmp(sram, "PRIORITY PICK", 13) == 0,
+            "Base-name match beats the other candidate, got '%.13s'", sram);
+    }
+
+    // test_disc.zip holds "data.txt" and "disc.cue"; the core supports "cue",
+    // so the disc metadata must win over the plain candidate.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_DISC_ZIP_PATH) == true,
+        "PhysFS_LoadGame succeeds with the disc zip");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "cue") == 0,
+        "Cue sheet picked over the plain candidate, got '%s'", SDL_Libretro_GetContentExtension(lr));
+    sram = (const char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram != NULL && sramSize >= 14, "SAVE_RAM available");
+    if (sram && sramSize >= 14) {
+        SDLTest_AssertCheck(SDL_memcmp(sram, "CUE SHEET PICK", 14) == 0,
+            "Cue sheet bytes reached the core, got '%.14s'", sram);
+    }
+
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_PhysFSNestedDir(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_NESTED_ZIP_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_NESTED_ZIP_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // test_nested.zip only holds "sub/dir/nested.txt"; the recursive search
+    // must find it.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_NESTED_ZIP_PATH) == true,
+        "PhysFS_LoadGame finds content in a subdirectory");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "txt") == 0,
+        "Content extension is 'txt', got '%s'", SDL_Libretro_GetContentExtension(lr));
+    size_t sramSize = 0;
+    const char* sram = (const char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram != NULL && sramSize >= 11, "SAVE_RAM available");
+    if (sram && sramSize >= 11) {
+        SDLTest_AssertCheck(SDL_memcmp(sram, "NESTED PICK", 11) == 0,
+            "Nested bytes reached the core, got '%.11s'", sram);
+    }
+
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_PhysFSSpillFallback(void *arg) {
+#if !defined(TEST_CORE_NOVFS_PATH) || !defined(TEST_FULLPATH_ZIP_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_NOVFS_PATH, TEST_FULLPATH_ZIP_PATH, or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+
+    // This core build skips the early GET_VFS_INTERFACE probe, so the loader
+    // must not hand it a virtual path.
+    SDL_Libretro_LoadCore(lr, TEST_CORE_NOVFS_PATH);
+    SDLTest_AssertCheck(lr->core.usedVFS == false, "Core has not requested the VFS before load");
+
+    // A file already sitting at the spill's natural name must survive the
+    // load/unload cycle untouched. Clear any leftover from a crashed prior
+    // run first so the uniquified name is deterministic.
+    SDL_RemovePath("game-1.vfs");
+    SDLTest_AssertCheck(SDL_SaveFile("game.vfs", "KEEP", 4) == true, "Pre-existing 'game.vfs' created");
+
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_FULLPATH_ZIP_PATH) == true,
+        "PhysFS_LoadGame succeeds for a full-path core that doesn't use the VFS");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after spill-fallback load");
+    SDLTest_AssertCheck(lr->core.contentTempPath[0] != '\0',
+        "Content was spilled to a real file, not served virtually");
+    SDLTest_AssertCheck(SDL_strstr(lr->core.contentTempPath, "game-1.vfs") != NULL,
+        "Spill avoided the pre-existing 'game.vfs': %s", lr->core.contentTempPath);
+
+    // The core read the spilled file; the bytes match the file that was zipped.
+    size_t expectedSize = 0;
+    unsigned char* expected = (unsigned char*)SDL_LoadFile(TEST_CONTENT_PATH, &expectedSize);
+    size_t sramSize = 0;
+    const unsigned char* sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(expected != NULL && sram != NULL && sramSize >= expectedSize, "SAVE_RAM and expected content available");
+    if (expected && sram && sramSize >= expectedSize) {
+        SDLTest_AssertCheck(SDL_memcmp(sram, expected, expectedSize) == 0, "Core read the spilled file");
+    }
+    SDL_free(expected);
+
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(SDL_GetPathInfo("./game-1.vfs", NULL) == false, "Spilled file removed on unload");
+
+    size_t keepSize = 0;
+    char* keep = (char*)SDL_LoadFile("game.vfs", &keepSize);
+    SDLTest_AssertCheck(keep != NULL && keepSize == 4 && SDL_memcmp(keep, "KEEP", 4) == 0,
+        "Pre-existing 'game.vfs' untouched");
+    SDL_free(keep);
+    SDL_RemovePath("game.vfs");
 
     SDL_Libretro_PhysFS_Quit(lr);
     SDL_Libretro_Destroy(lr);
@@ -1723,6 +1874,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PhysFSLoadGameZipFullpath, "need_fullpath content inside a zip served via the VFS"),
     LIBRETRO_TEST_CASE(test_PhysFSBlockExtract, "block_extract cores receive the raw archive"),
     LIBRETRO_TEST_CASE(test_PhysFSNonZip,      "PhysFS loader passes non-zip content through"),
+    LIBRETRO_TEST_CASE(test_PhysFSPickPriority, "Content pick prefers disc metadata and base-name matches"),
+    LIBRETRO_TEST_CASE(test_PhysFSNestedDir,   "Content in a zip subdirectory is found"),
+    LIBRETRO_TEST_CASE(test_PhysFSSpillFallback, "Full-path cores without VFS get an extracted file"),
 #endif
     LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
     LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),

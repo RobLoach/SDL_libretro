@@ -75,6 +75,10 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_Libretro_UnloadGame(lr);
     SDL_Libretro_UnloadCore(lr);
 
+    // Tear down PhysFS if it was initialized (a no-op otherwise, and a stub
+    // when PhysFS support isn't compiled in).
+    SDL_Libretro_PhysFS_Quit(lr);
+
     for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
         if (lr->gamepads[i]) {
             SDL_CloseGamepad(lr->gamepads[i]);
@@ -283,6 +287,16 @@ size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, boo
     }
 
     return SDL_strlen(dst);
+}
+
+/**
+ * The extension of a path, without the dot ("" if none).
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_GetExtension(const char* path) {
+    const char* dot = SDL_strrchr(path, '.');
+    return dot ? dot + 1 : "";
 }
 
 /**
@@ -539,8 +553,7 @@ static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath)
     if (!lr || !gamePath) return false;
 
     // The game's file extension.
-    const char* dot = SDL_strrchr(gamePath, '.');
-    const char* extension = dot ? dot + 1 : "";
+    const char* extension = SDL_Libretro_GetExtension(gamePath);
     if (extension[0] == '\0') {
         SDL_SetError("[SDL_Libretro] Game path '%s' has no file extension", gamePath);
         return false;
@@ -732,8 +745,9 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
  * into memory and handed to the core directly; `path` only provides the
  * content identity (name, extension, save paths). When the core requires a
  * full path (need_fullpath), the stream is saved to the save directory under
- * the file name from `path`, loaded from there, and the file is removed again
- * when the game unloads.
+ * the file name from `path` (uniquified if a file by that name already
+ * exists), loaded from there, and the file is removed again when the game
+ * unloads.
  *
  * @param lr the libretro context.
  * @param src the stream to read the content from.
@@ -761,10 +775,7 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
     }
 
     // The raw-case extension drives the need_fullpath resolution.
-    const char* dot = SDL_strrchr(path, '.');
-    const char* ext = dot ? dot + 1 : "";
-
-    if (!SDL_Libretro_ContentNeedsFullpath(lr, ext)) {
+    if (!SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(path))) {
         // Byte-oriented content: hand the stream contents to the core.
         size_t fileSize = 0;
         void* fileData = SDL_LoadFile_IO(src, &fileSize, closeio);
@@ -778,13 +789,26 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
     if (SDL_Libretro_GetFileName(name, sizeof(name), path, true) == 0) {
         SDL_strlcpy(name, "content.bin", sizeof(name));
     }
+
+    // FS paths handed to cores must contain at least one forward
+    // slash, so use ./ if the save directory is empty.
+    const char* dir = lr->saveDirectory[0] != '\0' ? lr->saveDirectory : ".";
     char tempPath[SDL_LIBRETRO_MAX_PATH];
-    if (lr->saveDirectory[0] != '\0') {
-        SDL_snprintf(tempPath, sizeof(tempPath), "%s/%s", lr->saveDirectory, name);
-    } else {
-        SDL_strlcpy(tempPath, name, sizeof(tempPath));
+    SDL_snprintf(tempPath, sizeof(tempPath), "%s/%s", dir, name);
+
+    // Find a temporary file that doesn't exist yet.
+    const char* dot = SDL_strrchr(name, '.');
+    int stemLen = dot ? (int)(dot - name) : (int)SDL_strlen(name);
+    for (int attempt = 1; SDL_GetPathInfo(tempPath, NULL); attempt++) {
+        if (attempt > 99) {
+            if (closeio) SDL_CloseIO(src);
+            SDL_SetError("[SDL_Libretro] Could not find a free file name for '%s' in '%s'", name, dir);
+            return false;
+        }
+        SDL_snprintf(tempPath, sizeof(tempPath), "%s/%.*s-%d%s", dir, stemLen, name, attempt, dot ? dot : "");
     }
 
+    // Save the file.
     size_t fileSize = 0;
     void* fileData = SDL_LoadFile_IO(src, &fileSize, closeio);
     if (!fileData) return false;
@@ -1400,8 +1424,7 @@ bool SDL_Libretro_GetBlockExtract(const SDL_Libretro* lr) {
  */
 const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr) {
     if (!lr || lr->core.contentPath[0] == '\0') return "";
-    const char* dot = SDL_strrchr(lr->core.contentPath, '.');
-    return dot ? dot + 1 : "";
+    return SDL_Libretro_GetExtension(lr->core.contentPath);
 }
 
 static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) {

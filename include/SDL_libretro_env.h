@@ -962,6 +962,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             // Let the core know which version of the VFS we support.
             info->required_interface_version = 4;
             info->iface = &lr->vfs_interface;
+            lr->core.usedVFS = true;
             return true;
         }
 

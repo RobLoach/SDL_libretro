@@ -241,7 +241,6 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
     AppContext* app = appstate;
     if (app) {
-        SDL_Libretro_PhysFS_Quit(app->lr);
         SDL_Libretro_Destroy(app->lr);
         SDL_DestroyRenderer(app->renderer);
         SDL_DestroyWindow(app->window);
