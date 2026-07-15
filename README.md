@@ -67,8 +67,8 @@ Link the `SDL_libretro_physfs` CMake target (enabled with `SDL_LIBRETRO_PHYSFS`)
 #define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
-// Instead of SDL_Libretro_LoadGame()
-SDL_Libretro_PhysFS_LoadGame(lr, "game.zip");
+// Enables loading games directly from .zip files.
+SDL_Libretro_LoadGame(lr, "game.zip");
 ```
 
 ## Build

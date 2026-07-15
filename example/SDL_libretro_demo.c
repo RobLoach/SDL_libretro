@@ -28,7 +28,7 @@ typedef struct {
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
     SDL_Libretro_UnloadCore(app->lr);
-    SDL_Libretro_PhysFS_LoadGame(app->lr, path);
+    SDL_Libretro_LoadGame(app->lr, path);
 }
 
 #ifdef __EMSCRIPTEN__
@@ -107,7 +107,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         }
     }
     // Load the game, with .zip support
-    else if ((corePath || gamePath) && !SDL_Libretro_PhysFS_LoadGame(lr, gamePath)) {
+    else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 

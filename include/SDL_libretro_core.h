@@ -721,15 +721,13 @@ static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, 
 }
 
 /**
- * Loads a game at the given path.
+ * Plain file loader: load a game straight from an OS path, no archive handling.
  *
- * @see SDL_Libretro_UnloadGame()
- * @see SDL_Libretro_SetRenderer()
- * @see SDL_Libretro_PhysFS_LoadGame()
+ * This is the non-dispatching core of SDL_Libretro_LoadGame(). The archive
+ * loader (SDL_Libretro_PhysFS_LoadGame) falls back here rather than into the
+ * public entry point, so archive routing can never recurse.
  */
-bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
-    if (!lr) return false;
-
+static bool SDL_Libretro_LoadGameFile(SDL_Libretro* lr, const char* gamePath) {
     // Try to find what can be loaded with it.
     if (!SDL_Libretro_IsCoreReady(lr)) {
         if (!SDL_Libretro_LoadCoreForGame(lr, gamePath)) {
@@ -739,6 +737,30 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     }
 
     return SDL_Libretro_LoadGameCommon(lr, gamePath, NULL, 0);
+}
+
+/**
+ * Loads a game at the given path.
+ *
+ * When SDL_LIBRETRO_ENABLE_PHYSFS is enabled, a `.zip` path is routed through
+ * SDL_Libretro_PhysFS_LoadGame() automatically..
+ *
+ * @see SDL_Libretro_UnloadGame()
+ * @see SDL_Libretro_SetRenderer()
+ * @see SDL_Libretro_PhysFS_LoadGame()
+ */
+bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
+    if (!lr) return false;
+
+#if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+    // Route archives through the PhysFS loader. It only ever falls back to
+    // SDL_Libretro_LoadGameFile(), never this dispatcher, so there is no loop.
+    if (gamePath && SDL_strcasecmp(SDL_Libretro_GetExtension(gamePath), "zip") == 0) {
+        return SDL_Libretro_PhysFS_LoadGame(lr, gamePath);
+    }
+#endif
+
+    return SDL_Libretro_LoadGameFile(lr, gamePath);
 }
 
 /**
