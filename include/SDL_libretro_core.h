@@ -646,7 +646,7 @@ static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, 
     SDL_Libretro_UnloadGame(lr);
 
     // A core that didn't opt into no-content (SET_SUPPORT_NO_GAME) can't run without a game.
-    if (!gamePath && !lr->core.supportNoGame) {
+    if (!gamePath && SDL_Libretro_IsGameRequired(lr)) {
         SDL_free(fileData);
         SDL_SetError("[SDL_Libretro] This core requires content");
         return false;

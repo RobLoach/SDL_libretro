@@ -93,8 +93,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_InitConfigFile(lr, "SDL_libretro_demo.cfg");
 
-    SDL_Libretro_PhysFS_Init(lr);
-
     if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
     }
