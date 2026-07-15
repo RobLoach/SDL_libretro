@@ -41,7 +41,7 @@ SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro_SetVFS(lr, NULL);
     SDL_Libretro_SetVolume(lr, 1.0f);
     SDL_Libretro_SetSpeed(lr, 1.0f);
-    SDL_Libretro_SetUsername(lr, "SDL_Libretro");
+    SDL_Libretro_SetUsername(lr, "SDL_libretro");
 
     // Keyboard Mappings
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]       = SDL_SCANCODE_Z;
@@ -133,6 +133,14 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
 
     // Make sure the old core is unloaded.
     SDL_Libretro_UnloadCore(lr);
+
+    // Ensure the Saves and System directories exist, since the core may need them.
+    if (lr->saveDirectory[0] != '\0') {
+        SDL_CreateDirectory(lr->saveDirectory);
+    }
+    if (lr->systemDirectory[0] != '\0') {
+        SDL_CreateDirectory(lr->systemDirectory);
+    }
 
     // If the corePath is just a name, see if it lives in the loaded coreLibrary.
     const char* path = SDL_Libretro_GetCorePathFromName(lr, core);
@@ -739,7 +747,8 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
  * Stream content into memory, and hand it to the core. The `path` only
  * provides the content identity (name, extension, save path, etc). When
  * the core requires a full path (need_fullpath), the stream is saved to
- * the save directory under the file name from `path`, and loaded there.
+ * the save directory and, loaded from there. It's cleaned up when the game
+ * unloads.
  *
  * @param lr the libretro context.
  * @param src the stream to read the content from.
@@ -780,13 +789,19 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
         SDL_strlcpy(name, "content.bin", sizeof(name));
     }
 
-    // FS paths handed to cores must contain at least one forward
-    // slash, so use ./ if the save directory is empty.
-    const char* dir = lr->saveDirectory[0] != '\0' ? lr->saveDirectory : ".";
+    // Find a workable save directory, or use the base path.
+    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
+    char dir[SDL_LIBRETRO_MAX_PATH];
+    if (saveDir && saveDir[0]) {
+        SDL_snprintf(dir, sizeof(dir), "%s/", saveDir);
+    } else {
+        const char* base = SDL_GetBasePath();
+        SDL_strlcpy(dir, base ? base : "./", sizeof(dir));
+    }
     char tempPath[SDL_LIBRETRO_MAX_PATH];
-    SDL_snprintf(tempPath, sizeof(tempPath), "%s/%s", dir, name);
+    SDL_snprintf(tempPath, sizeof(tempPath), "%s%s", dir, name);
 
-    // Find a temporary file that doesn't exist yet.
+    // Find a temporary file in the directory doesn't exist yet.
     const char* dot = SDL_strrchr(name, '.');
     int stemLen = dot ? (int)(dot - name) : (int)SDL_strlen(name);
     for (int attempt = 1; SDL_GetPathInfo(tempPath, NULL); attempt++) {
@@ -795,7 +810,7 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
             SDL_SetError("[SDL_Libretro] Could not find a free file name for '%s' in '%s'", name, dir);
             return false;
         }
-        SDL_snprintf(tempPath, sizeof(tempPath), "%s/%.*s-%d%s", dir, stemLen, name, attempt, dot ? dot : "");
+        SDL_snprintf(tempPath, sizeof(tempPath), "%s%.*s-%d%s", dir, stemLen, name, attempt, dot ? dot : "");
     }
 
     // Save the file.
@@ -1224,15 +1239,84 @@ bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     return true;
 }
 
+/**
+ * The application's writable pref path, without the trailing separator.
+ *
+ * Keyed by the app metadata (SDL_SetAppMetadata): CREATOR_STRING as the
+ * organization and NAME_STRING as the application, each falling back to
+ * "SDL_libretro". SDL_GetPrefPath() creates the directory.
+ *
+ * @returns true when `dst` received the path, false when no pref path is
+ * available (leaving `dst` untouched).
+ *
+ * @internal
+ */
+static bool SDL_Libretro_GetPrefDirectory(char* dst, size_t dstSize) {
+    const char* appName = SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING);
+    const char* orgName = SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_CREATOR_STRING);
+    char* prefPath = SDL_GetPrefPath(orgName && orgName[0] ? orgName : "SDL_libretro", appName && appName[0] ? appName : "SDL_libretro");
+    if (!prefPath) return false;
+
+    // Ensure it's a clean path; directory paths are composed as "<dir>/<file>".
+    size_t len = SDL_strlen(prefPath);
+    while (len > 0 && (prefPath[len - 1] == '/' || prefPath[len - 1] == '\\')) {
+        prefPath[--len] = '\0';
+    }
+    SDL_strlcpy(dst, prefPath, dstSize);
+    SDL_free(prefPath);
+    return dst[0] != '\0';
+}
+
+/**
+ * Sets where content will be saved.
+ *
+ * The directory is created when a core is loaded.
+ *
+ * @param lr The libretro context.
+ * @param path The path to where save data should be placed, NULL for the
+ * default, or "" for none.
+ */
 bool SDL_Libretro_SetSaveDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
-    SDL_strlcpy(lr->saveDirectory, path ? path : "", sizeof(lr->saveDirectory));
+
+    if (!path) {
+        // NULL resets to the default: "saves" inside the app's pref path.
+        char pref[SDL_LIBRETRO_MAX_PATH];
+        if (SDL_Libretro_GetPrefDirectory(pref, sizeof(pref))) {
+            SDL_snprintf(lr->saveDirectory, sizeof(lr->saveDirectory), "%s/saves", pref);
+        } else {
+            lr->saveDirectory[0] = '\0';
+        }
+        return true;
+    }
+
+    SDL_strlcpy(lr->saveDirectory, path, sizeof(lr->saveDirectory));
     return true;
 }
 
+/**
+ * Sets where cores look for system files (BIOS, firmware, etc).
+ *
+ * The directory is created when a core is loaded.
+ *
+ * @param lr The libretro context.
+ * @param path The system directory, NULL for the default, or "" for none.
+ */
 bool SDL_Libretro_SetSystemDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
-    SDL_strlcpy(lr->systemDirectory, path ? path : "", sizeof(lr->systemDirectory));
+
+    if (!path) {
+        // NULL resets to the default: "system" inside the app's pref path.
+        char pref[SDL_LIBRETRO_MAX_PATH];
+        if (SDL_Libretro_GetPrefDirectory(pref, sizeof(pref))) {
+            SDL_snprintf(lr->systemDirectory, sizeof(lr->systemDirectory), "%s/system", pref);
+        } else {
+            lr->systemDirectory[0] = '\0';
+        }
+        return true;
+    }
+
+    SDL_strlcpy(lr->systemDirectory, path, sizeof(lr->systemDirectory));
     return true;
 }
 

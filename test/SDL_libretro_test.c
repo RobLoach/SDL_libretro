@@ -12,7 +12,8 @@ static int SDLCALL test_CreateDestroy(void *arg) {
     // Defaults
     SDLTest_AssertCheck(lr->volume == 1.0f, "Default volume is 1.0");
     SDLTest_AssertCheck(lr->core.speed == 1.0f, "Default speed is 1.0");
-    SDLTest_AssertCheck(SDL_strcmp(lr->username, "SDL_Libretro") == 0, "Default username is SDL_Libretro");
+    SDLTest_AssertCheck(SDL_Libretro_GetSaveDirectory(lr) == NULL, "No save directory on a fresh context");
+    SDLTest_AssertCheck(SDL_Libretro_GetSystemDirectory(lr) == NULL, "No system directory on a fresh context");
 
     // Default Keyboard Mappings
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_Z, "B mapped to Z");
@@ -79,10 +80,25 @@ static int SDLCALL test_DirectorySetters(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, "/tmp/cores") == true, "SetCoreDirectory returns true");
     SDLTest_AssertCheck(SDL_strcmp(lr->coreDirectory, "/tmp/cores") == 0, "CoreDirectory stored correctly");
+    // Leftovers from prior runs would mask the "not created" checks below.
+    SDL_RemovePath("/tmp/saves");
+    SDL_RemovePath("/tmp/system");
     SDLTest_AssertCheck(SDL_Libretro_SetSaveDirectory(lr, "/tmp/saves") == true, "SetSaveDirectory returns true");
     SDLTest_AssertCheck(SDL_strcmp(lr->saveDirectory, "/tmp/saves") == 0, "SaveDirectory stored correctly");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/saves", NULL) == false, "SetSaveDirectory does not create the directory (LoadCore does)");
+    SDLTest_AssertCheck(SDL_Libretro_SetSaveDirectory(lr, "") == true, "SetSaveDirectory(\"\") returns true");
+    SDLTest_AssertCheck(lr->saveDirectory[0] == '\0', "Empty path clears the save directory");
+    SDLTest_AssertCheck(SDL_Libretro_SetSaveDirectory(lr, NULL) == true, "SetSaveDirectory(NULL) returns true");
+    SDLTest_AssertCheck(SDL_strstr(lr->saveDirectory, "/saves") != NULL,
+        "NULL resets the save directory to '<pref>/saves': '%s'", lr->saveDirectory);
     SDLTest_AssertCheck(SDL_Libretro_SetSystemDirectory(lr, "/tmp/system") == true, "SetSystemDirectory returns true");
     SDLTest_AssertCheck(SDL_strcmp(lr->systemDirectory, "/tmp/system") == 0, "SystemDirectory stored correctly");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/system", NULL) == false, "SetSystemDirectory does not create explicit paths");
+    SDLTest_AssertCheck(SDL_Libretro_SetSystemDirectory(lr, "") == true, "SetSystemDirectory(\"\") returns true");
+    SDLTest_AssertCheck(lr->systemDirectory[0] == '\0', "Empty path clears the system directory");
+    SDLTest_AssertCheck(SDL_Libretro_SetSystemDirectory(lr, NULL) == true, "SetSystemDirectory(NULL) returns true");
+    SDLTest_AssertCheck(SDL_strstr(lr->systemDirectory, "/system") != NULL,
+        "NULL resets the system directory to '<pref>/system': '%s'", lr->systemDirectory);
     SDLTest_AssertCheck(SDL_Libretro_SetCoreAssetsDirectory(lr, "/tmp/assets") == true, "SetCoreAssetsDirectory returns true");
     SDLTest_AssertCheck(SDL_strcmp(lr->coreAssetsDirectory, "/tmp/assets") == 0, "CoreAssetsDirectory stored correctly");
     SDLTest_AssertCheck(SDL_Libretro_SetUsername(lr, "TestUser") == true, "SetUsername returns true");
@@ -538,7 +554,18 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, "nonexistent.so") == false, "LoadCore fails for missing file");
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == false, "Not ready after failed load");
 
+    // LoadCore ensures the save and system directories exist before the core
+    // needs them.
+    SDL_RemovePath("/tmp/sdl_libretro_test_saves");
+    SDL_RemovePath("/tmp/sdl_libretro_test_system");
+    SDL_Libretro_SetSaveDirectory(lr, "/tmp/sdl_libretro_test_saves");
+    SDL_Libretro_SetSystemDirectory(lr, "/tmp/sdl_libretro_test_system");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/sdl_libretro_test_saves", NULL) == false, "Save directory absent before LoadCore");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/sdl_libretro_test_system", NULL) == false, "System directory absent before LoadCore");
+
     SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds for test_core");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/sdl_libretro_test_saves", NULL) == true, "LoadCore creates the save directory");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/sdl_libretro_test_system", NULL) == true, "LoadCore creates the system directory");
     SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == true, "Core is ready after load");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreName(lr), "test_core") == 0, "Core name is test_core");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetCoreVersion(lr), "1.0") == 0, "Core version is 1.0");
@@ -564,6 +591,8 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetSavePath(lr, ".srm", buf, sizeof(buf)) > 0, "GetSavePath uses core name before a game loads");
 
     SDL_Libretro_Destroy(lr);
+    SDL_RemovePath("/tmp/sdl_libretro_test_saves");
+    SDL_RemovePath("/tmp/sdl_libretro_test_system");
     return TEST_COMPLETED;
 #endif
 }
@@ -902,15 +931,17 @@ static int SDLCALL test_LoadGameIOFullpath(void *arg) {
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
 
     // The ".vfs" override requires a full path, so the stream is spilled to
-    // disk (no save directory is set, so next to the working directory),
-    // loaded from there, and the file removed again on unload.
+    // disk (no save directory is set on a fresh context, so next to the
+    // executable), loaded from there, and the file removed again on unload.
+    char spillPath[1024];
+    SDL_snprintf(spillPath, sizeof(spillPath), "%stest_io_content.vfs", SDL_GetBasePath());
     const unsigned char bytes[] = { 'V', 'F', 'S', 'D', 'A', 'T', 'A', '1' };
     SDL_IOStream* io = SDL_IOFromConstMem(bytes, sizeof(bytes));
     SDLTest_AssertCheck(SDL_Libretro_LoadGame_IO(lr, io, "some/dir/test_io_content.vfs", true) == true,
         "LoadGame_IO spills need_fullpath content to disk");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after spilled load");
     SDL_PathInfo info;
-    SDLTest_AssertCheck(SDL_GetPathInfo("test_io_content.vfs", &info) == true, "Spilled file exists while loaded");
+    SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, &info) == true, "Spilled file exists while loaded");
 
     // The core received a path (no data buffer) and read it back through the VFS.
     const unsigned char* probe = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SYSTEM_RAM, NULL);
@@ -927,7 +958,7 @@ static int SDLCALL test_LoadGameIOFullpath(void *arg) {
     }
 
     SDL_Libretro_UnloadGame(lr);
-    SDLTest_AssertCheck(SDL_GetPathInfo("test_io_content.vfs", &info) == false, "Spilled file removed on unload");
+    SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, &info) == false, "Spilled file removed on unload");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -1211,16 +1242,26 @@ static int SDLCALL test_PhysFSSpillFallback(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetRenderer(lr, renderer);
 
+    // Opt into the default save directory (<pref>/saves) before loading the
+    // core, so LoadCore creates it; the spill lands there.
+    SDL_Libretro_SetSaveDirectory(lr, NULL);
+    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
+    SDLTest_AssertCheck(saveDir != NULL, "SetSaveDirectory(NULL) applies the pref-path default");
+
     // This core build skips the early GET_VFS_INTERFACE probe, so the loader
     // must not hand it a virtual path.
     SDL_Libretro_LoadCore(lr, TEST_CORE_NOVFS_PATH);
     SDLTest_AssertCheck(lr->core.usedVFS == false, "Core has not requested the VFS before load");
+    SDLTest_AssertCheck(SDL_GetPathInfo(saveDir, NULL) == true, "LoadCore created the default save directory");
 
     // A file already sitting at the spill's natural name must survive the
     // load/unload cycle untouched. Clear any leftover from a crashed prior
     // run first so the uniquified name is deterministic.
-    SDL_RemovePath("game-1.vfs");
-    SDLTest_AssertCheck(SDL_SaveFile("game.vfs", "KEEP", 4) == true, "Pre-existing 'game.vfs' created");
+    char keepPath[1024], uniquePath[1024];
+    SDL_snprintf(keepPath, sizeof(keepPath), "%s/game.vfs", saveDir);
+    SDL_snprintf(uniquePath, sizeof(uniquePath), "%s/game-1.vfs", saveDir);
+    SDL_RemovePath(uniquePath);
+    SDLTest_AssertCheck(SDL_SaveFile(keepPath, "KEEP", 4) == true, "Pre-existing 'game.vfs' created");
 
     SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_FULLPATH_ZIP_PATH) == true,
         "PhysFS_LoadGame succeeds for a full-path core that doesn't use the VFS");
@@ -1242,14 +1283,14 @@ static int SDLCALL test_PhysFSSpillFallback(void *arg) {
     SDL_free(expected);
 
     SDL_Libretro_UnloadGame(lr);
-    SDLTest_AssertCheck(SDL_GetPathInfo("./game-1.vfs", NULL) == false, "Spilled file removed on unload");
+    SDLTest_AssertCheck(SDL_GetPathInfo(uniquePath, NULL) == false, "Spilled file removed on unload");
 
     size_t keepSize = 0;
-    char* keep = (char*)SDL_LoadFile("game.vfs", &keepSize);
+    char* keep = (char*)SDL_LoadFile(keepPath, &keepSize);
     SDLTest_AssertCheck(keep != NULL && keepSize == 4 && SDL_memcmp(keep, "KEEP", 4) == 0,
         "Pre-existing 'game.vfs' untouched");
     SDL_free(keep);
-    SDL_RemovePath("game.vfs");
+    SDL_RemovePath(keepPath);
 
     SDL_Libretro_PhysFS_Quit(lr);
     SDL_Libretro_Destroy(lr);
@@ -1375,6 +1416,7 @@ static int SDLCALL test_SavePath(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) > 0, "GetSavePath derives a path with content");
     SDLTest_AssertCheck(SDL_strstr(path, "test_saves") != NULL && SDL_strstr(path, ".srm") != NULL, "Derived path uses save dir and extension: %s", path);
+    SDL_RemovePath("test_saves"); // created by SetSaveDirectory above
 
     // LoadGame again should unload the existing game and reload cleanly.
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame again succeeds (reloads over existing game)");

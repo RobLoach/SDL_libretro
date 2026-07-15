@@ -1,5 +1,5 @@
 /*
- * SDL_libretro_basic: A simple implementation of using SDL_libretro.
+ * SDL_libretro_basic: A simple example of using SDL_libretro.
  *
  * Usage: SDL_libretro_basic <core.so> <game.rom>
  */
