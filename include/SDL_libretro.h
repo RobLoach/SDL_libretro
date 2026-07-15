@@ -442,7 +442,7 @@ typedef struct SDL_LibretroCoreData {
     char validExtensions[128];
     bool needFullpath;
     bool blockExtract;
-    bool usedVFS; /** The core requested GET_VFS_INTERFACE. The spec says to query "as early as possible", so VFS-aware cores set this before content loads. */
+    bool usedVFS; /** The core requested RETRO_ENVIRONMENT_GET_VFS_INTERFACE. */
     bool supportNoGame;
     unsigned apiVersion;
     enum retro_pixel_format pixelFormat;

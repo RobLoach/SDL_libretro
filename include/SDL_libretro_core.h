@@ -75,8 +75,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_Libretro_UnloadGame(lr);
     SDL_Libretro_UnloadCore(lr);
 
-    // Tear down PhysFS if it was initialized (a no-op otherwise, and a stub
-    // when PhysFS support isn't compiled in).
+    // Tear down PhysFS if it was initialized.
     SDL_Libretro_PhysFS_Quit(lr);
 
     for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
@@ -741,19 +740,14 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 /**
  * Loads a game from an SDL_IOStream.
  *
- * When the core takes content as a data buffer, the stream contents are read
- * into memory and handed to the core directly; `path` only provides the
- * content identity (name, extension, save paths). When the core requires a
- * full path (need_fullpath), the stream is saved to the save directory under
- * the file name from `path` (uniquified if a file by that name already
- * exists), loaded from there, and the file is removed again when the game
- * unloads.
+ * Stream content into memory, and hand it to the core directly. The `path`
+ * only provides the content identity (name, extension, save paths). When
+ * the core requires a full path (need_fullpath), the stream is saved to
+ * the save directory under the file name from `path`, and loaded there.
  *
  * @param lr the libretro context.
  * @param src the stream to read the content from.
- * @param path the path the content is known by. Does not need to exist on
- *             disk (e.g. a virtual path inside an archive), but the file
- *             extension determines which core loads it and how.
+ * @param path the path the content is known by. Could be a virtual path if the loading from an archive.
  * @param closeio if true, close `src` before returning, even on failure.
  *
  * @see SDL_Libretro_LoadGame()
