@@ -246,7 +246,10 @@ bool SDL_Libretro_SetInitialDisk(SDL_Libretro* lr, unsigned index, const char* p
  * Set a cheat code either enabled or disabled within the libretro context.
  */
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
-    if (!SDL_Libretro_IsGameReady(lr) || !code) return false;
+    if (!SDL_Libretro_IsGameReady(lr) || !code) {
+        SDL_SetError("[SDL_Libretro] Invalid SetCheat arguments");
+        return false;
+    }
     lr->core.symbols.retro_cheat_set(index, enabled, code);
     return true;
 }
@@ -279,9 +282,14 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
             SDL_SetError("[SDL_Libretro] Core does not support save states");
         } else {
             void* data = SDL_malloc(size);
-            if (data) {
+            if (!data) {
+                SDL_SetError("[SDL_Libretro] Failed to allocate save state buffer");
+            } else {
                 if (lr->core.symbols.retro_serialize(data, size)) {
+                    // On a short write, SDL_WriteIO sets its own error.
                     ok = (SDL_WriteIO(dst, data, size) == size);
+                } else {
+                    SDL_SetError("[SDL_Libretro] Core failed to serialize state");
                 }
                 SDL_free(data);
             }
@@ -314,7 +322,14 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
     size_t size = 0;
     void* data = SDL_LoadFile_IO(src, &size, closeio);
     if (!data) return false;
-    bool ok = (size > 0) && lr->core.symbols.retro_unserialize(data, size);
+    bool ok = false;
+    if (size == 0) {
+        SDL_SetError("[SDL_Libretro] Save state is empty");
+    } else if (!lr->core.symbols.retro_unserialize(data, size)) {
+        SDL_SetError("[SDL_Libretro] Core rejected save state");
+    } else {
+        ok = true;
+    }
     SDL_free(data);
     // A load is a timeline discontinuity: drop rewind history so a subsequent rewind can't walk back across it into the pre-load timeline.
     if (ok && lr->rewindEnabled) SDL_Libretro_ClearRewind(lr);
@@ -848,7 +863,10 @@ static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t de
  * @see SDL_Libretro_SetRewindMemoryLimit()
  */
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
-    if (!lr) return false;
+    if (!lr) {
+        SDL_SetError("[SDL_Libretro] Invalid SetRewindEnabled arguments");
+        return false;
+    }
 
     SDL_Libretro_RewindFree(lr);
 
@@ -1006,7 +1024,10 @@ size_t SDL_Libretro_GetRewindMemoryLimit(const SDL_Libretro* lr) {
  * @see SDL_Libretro_GetRewindRemaining()
  */
 bool SDL_Libretro_SetRewindMemoryDuration(SDL_Libretro* lr, double seconds) {
-    if (!lr) return false;
+    if (!lr) {
+        SDL_SetError("[SDL_Libretro] Invalid SetRewindMemoryDuration arguments");
+        return false;
+    }
     if (!(seconds > 0.0)) {
         SDL_SetError("[SDL_Libretro] Rewind duration must be positive");
         return false;

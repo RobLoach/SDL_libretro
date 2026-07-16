@@ -175,9 +175,14 @@ const SDL_LibretroOption* SDL_Libretro_GetOptionByIndex(const SDL_Libretro* lr, 
  * Set a core option's value; fails if the value isn't one the core declared.
  */
 bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* value) {
-    if (!lr || !key || !value) return false;
+    if (!lr || !key || !value) {
+        SDL_SetError("[SDL_Libretro] Invalid SetOptionValue arguments");
+        return false;
+    }
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
-    if (!opt) return false;
+    if (!opt) {
+        return SDL_SetError("[SDL_Libretro] No such option '%s'", key);
+    }
 
     // Reject values the core never offered, so GET_VARIABLE only ever hands the
     // core a value it declared. Options with no declared values accept anything.
@@ -197,7 +202,9 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
     // Allocate before freeing so a failed allocation never leaves opt->value
     // NULL (which GET_VARIABLE would then hand to the core).
     char* dup = SDL_strdup(value);
-    if (!dup) return false;
+    if (!dup) {
+        return SDL_SetError("[SDL_Libretro] Out of memory setting option '%s'", key);
+    }
     SDL_free((void*)opt->value);
     opt->value = dup;
     lr->core.optionsDirtyCore = true;
@@ -235,9 +242,17 @@ const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key) 
  * Advance a core option to the next (+1) or previous (-1) value.
  */
 bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direction) {
-    if (direction == 0) return false;
+    if (direction == 0) {
+        SDL_SetError("[SDL_Libretro] Invalid CycleOptionValue direction");
+        return false;
+    }
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
-    if (!opt || opt->valuesCount == 0) return false;
+    if (!opt) {
+        return SDL_SetError("[SDL_Libretro] No such option '%s'", key);
+    }
+    if (opt->valuesCount == 0) {
+        return SDL_SetError("[SDL_Libretro] Option '%s' has no declared values to cycle", key);
+    }
 
     // Find the current value's index; default to 0 if it isn't in the list.
     unsigned current = 0;
@@ -262,9 +277,13 @@ bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direct
  */
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
-    if (!opt) return false;
+    if (!opt) {
+        return SDL_SetError("[SDL_Libretro] No such option '%s'", key);
+    }
     char* dupicateValue = SDL_Libretro_Strdup(opt->defaultValue);
-    if (!dupicateValue) return false;
+    if (!dupicateValue) {
+        return SDL_SetError("[SDL_Libretro] Out of memory resetting option '%s'", key);
+    }
     SDL_free((void*)opt->value);
     opt->value = dupicateValue;
     lr->core.optionsDirtyCore = true;
