@@ -8,6 +8,19 @@
 #define SDL_LIBRETRO_CORE_IMPL_ONCE
 
 /**
+ * Reset all controller ports to the libretro default device.
+ *
+ * Libretro assumes ports are RETRO_DEVICE_JOYPAD until the frontend calls
+ * retro_set_controller_port_device, so restore that default whenever
+ * lr->core is zeroed.
+ */
+static void SDL_Libretro_ResetPortDevices(SDL_Libretro* lr) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+        lr->core.portDeviceMap[i] = RETRO_DEVICE_JOYPAD;
+    }
+}
+
+/**
  * Load a required core symbol in \c lr->core.
  *
  * On failure, unload the shared object and reset lr->core so
@@ -20,6 +33,7 @@
         SDL_SetError("[SDL_Libretro] Failed to load symbol '%s'", #sym); \
         SDL_UnloadObject(lr->core.symbols.handle); \
         SDL_memset(&lr->core, 0, sizeof(lr->core)); \
+        SDL_Libretro_ResetPortDevices(lr); \
         return false; \
     } \
 } while (0)
@@ -38,6 +52,7 @@ SDL_Libretro* SDL_Libretro_Create(void) {
 
     // Initial state (the calloc above already zeroed the struct).
     lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
+    SDL_Libretro_ResetPortDevices(lr);
     SDL_Libretro_SetVFS(lr, NULL);
     SDL_Libretro_SetVolume(lr, 1.0f);
     SDL_Libretro_SetSpeed(lr, 1.0f);
@@ -162,6 +177,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
         SDL_UnloadObject(lr->core.symbols.handle);
         SDL_SetError("[SDL_Libretro] Unsupported Core API Version: %d", (int)lr->core.apiVersion);
         SDL_memset(&lr->core, 0, sizeof(lr->core));
+        SDL_Libretro_ResetPortDevices(lr);
         return false;
     }
 
@@ -254,6 +270,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     SDL_Libretro_FreeSubsystems(lr);
 
     SDL_memset(&lr->core, 0, sizeof(lr->core));
+    SDL_Libretro_ResetPortDevices(lr);
     if (SDL_Libretro_active == lr) {
         SDL_Libretro_active = NULL;
     }

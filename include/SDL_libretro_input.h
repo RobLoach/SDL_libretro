@@ -620,6 +620,11 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
                     SDL_Log("[SDL_Libretro] Gamepad removed: #%u %s", i + 1, name ? name : "");
                     SDL_CloseGamepad(lr->gamepads[i]);
                     lr->gamepads[i] = NULL;
+                    // Recompute the gamepad count as the highest occupied port + 1.
+                    lr->gamepadCount = 0;
+                    for (unsigned j = 0; j < SDL_LIBRETRO_MAX_GAMEPADS; j++) {
+                        if (lr->gamepads[j]) lr->gamepadCount = j + 1;
+                    }
                     break;
                 }
             }
@@ -660,12 +665,13 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
 /**
  * Get the device type assigned to a controller port.
  *
- * Returns the RETRO_DEVICE_* type last set via SDL_Libretro_SetPortDevice(),
- * or RETRO_DEVICE_NONE if none was set or the arguments are invalid.
+ * Returns the RETRO_DEVICE_* type last set via SDL_Libretro_SetPortDevice().
+ * Ports default to RETRO_DEVICE_JOYPAD, per libretro convention, until a
+ * device is explicitly assigned. Invalid arguments return RETRO_DEVICE_NONE.
  *
  * @param lr the libretro context.
  * @param port the controller port, at a max of SDL_LIBRETRO_MAX_GAMEPADS.
- * @returns the assigned RETRO_DEVICE_* type, or RETRO_DEVICE_NONE.
+ * @returns the assigned RETRO_DEVICE_* type, or RETRO_DEVICE_NONE on invalid arguments.
  *
  * @see SDL_LIBRETRO_MAX_GAMEPADS
  */
