@@ -10,9 +10,7 @@
 /**
  * Reset all controller ports to the libretro default device.
  *
- * Libretro assumes ports are RETRO_DEVICE_JOYPAD until the frontend calls
- * retro_set_controller_port_device, so restore that default whenever
- * lr->core is zeroed.
+ * Libretro assumes ports are \c RETRO_DEVICE_JOYPAD, so we start with that.
  */
 static void SDL_Libretro_ResetPortDevices(SDL_Libretro* lr) {
     for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
