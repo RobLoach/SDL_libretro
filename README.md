@@ -14,7 +14,7 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Rewind with delta compression
 - Rumble
 - On-screen display messages
-- Zip content loading via [PhysicsFS](https://icculus.org/physfs/) (optional)
+- Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optionally)
 
 ## Usage
 
@@ -60,7 +60,7 @@ SDL_Libretro_Destroy(lr);
 
 ### Zip Loading
 
-Link the `SDL_libretro_physfs` CMake target (enabled with `SDL_LIBRETRO_PHYSFS`), enable PhysFS next to the implementation define, and load games through the PhysFS-aware loader:
+To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake option, and then let SDL_libretro it's available with `SDL_LIBRETRO_ENABLE_PHYSFS`.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION

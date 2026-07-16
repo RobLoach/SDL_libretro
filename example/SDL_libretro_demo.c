@@ -106,7 +106,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
             SDL_Log("Failed to load subsystem '%s': %s", subsystemIdent, SDL_GetError());
         }
     }
-    // Load the game, with .zip support
+    // Load the game.
     else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }

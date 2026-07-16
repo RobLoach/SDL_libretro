@@ -441,7 +441,7 @@ typedef struct SDL_LibretroCoreData {
     char libraryVersion[128];
     char validExtensions[128];
     bool needFullpath;
-    bool blockExtract;
+    bool blockExtract; /** True if the core wants to restrict extracting any archives prior to loading the real content. */
     bool usedVFS; /** The core requested RETRO_ENVIRONMENT_GET_VFS_INTERFACE. */
     bool supportNoGame;
     unsigned apiVersion;
