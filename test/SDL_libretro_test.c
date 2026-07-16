@@ -1450,6 +1450,14 @@ static int SDLCALL test_ContentExtension(void *arg) {
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "") == 0,
         "GetContentExtension empty for file without extension");
 
+    // Long extensions must not be truncated; contentExt backs gameInfoExt.ext
+    // and the need-fullpath / persistent-data override lookups.
+    SDL_Libretro_SetContentIdentity(lr, "/path/to/Game.LongExtension");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.contentExt, "longextension") == 0,
+        "SetContentIdentity keeps long extension intact, got '%s'", lr->core.contentExt);
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.gameInfoExt.ext, "longextension") == 0,
+        "gameInfoExt.ext matches the full lower-cased extension, got '%s'", lr->core.gameInfoExt.ext);
+
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }
