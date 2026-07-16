@@ -96,7 +96,7 @@ extern "C" {
 
 SDL_Libretro* SDL_Libretro_Create(void);
 void SDL_Libretro_Destroy(SDL_Libretro* lr);
-int SDL_Libretro_Version(void);
+int SDL_Libretro_GetVersion(void);
 
 // Directories
 

@@ -1159,7 +1159,7 @@ bool SDL_Libretro_ShouldQuit(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
-int SDL_Libretro_Version(void) {
+int SDL_Libretro_GetVersion(void) {
     return SDL_LIBRETRO_VERSION;
 }
 
