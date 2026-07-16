@@ -1,5 +1,5 @@
 /*
- * SDL_libretro_demo: A demonstration of what SDL_libretro can do.
+ * SDL_libretro_demo: A fully-featured example of what SDL_libretro can do.
  *
  * Usage: SDL_libretro_demo [core.so] [game.rom]
  *        SDL_libretro_demo core.so --subsystem <ident> "path1" ["path2" ...]
@@ -10,6 +10,7 @@
 #include <SDL3/SDL_main.h>
 
 #define SDL_LIBRETRO_IMPLEMENTATION
+#define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
 #ifdef __EMSCRIPTEN__
@@ -60,8 +61,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         }
     }
 
-    // The core is the first positional argument. The game path is the second,
-    // unless "--subsystem" consumes the remaining arguments.
+    // Parse the core and game arguments
     const char* corePath = NULL;
     const char* gamePath = NULL;
     if (subsystemArg != 0) {
@@ -90,19 +90,24 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetCoreDirectory(lr, "cores");
     SDL_Libretro_SetSystemDirectory(lr, "system");
+    SDL_Libretro_SetSaveDirectory(lr, "saves");
     SDL_Libretro_InitConfigFile(lr, "SDL_libretro_demo.cfg");
 
+    // Load the core
     if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
     }
 
+    // Subsystem
     if (subsystemArg != 0) {
         if (!subsystemIdent || subsystemPathCount == 0) {
             SDL_Log("Usage: <core> --subsystem <ident> \"path1\" [\"path2\" ...]");
         } else if (!SDL_Libretro_LoadGameSpecial(lr, subsystemIdent, subsystemPaths, subsystemPathCount)) {
             SDL_Log("Failed to load subsystem '%s': %s", subsystemIdent, SDL_GetError());
         }
-    } else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
+    }
+    // Load the game.
+    else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 

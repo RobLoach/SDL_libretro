@@ -16,9 +16,7 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     const char* info, const char* categoryKey) {
     if (!lr || !key) return;
 
-    // Check if already registered. Re-registration is intentionally ignored:
-    // the first definition wins, so an option's declared values and default stay
-    // stable for the life of the core.
+    // Check if already registered. Ignore any duplicate registrations.
     if (SDL_Libretro_GetOption(lr, key)) {
         return;
     }

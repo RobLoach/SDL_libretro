@@ -43,6 +43,25 @@ target_link_libraries(SDL_libretro INTERFACE
     ${CMAKE_DL_LIBS})
 target_compile_features(SDL_libretro INTERFACE c_std_99)
 
+# PhysFS-backed archive loading (SDL_libretro_physfs.h). Kept out of the base
+# SDL_libretro target so consumers that don't want it pull in no PhysFS.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    option(SDL_LIBRETRO_PHYSFS "Enable PhysFS-backed zip loading (SDL_libretro_physfs.h)" ON)
+else()
+    option(SDL_LIBRETRO_PHYSFS "Enable PhysFS-backed zip loading (SDL_libretro_physfs.h)" OFF)
+endif()
+
+if(SDL_LIBRETRO_PHYSFS)
+    find_package(PhysFS REQUIRED)     # physfs-static, built on the SDL3 platform backend
+    find_package(SDL_PhysFS REQUIRED) # SDL_PhysFS header-only interface
+
+    add_library(SDL_libretro_physfs INTERFACE)
+    target_link_libraries(SDL_libretro_physfs INTERFACE
+        SDL_libretro
+        SDL_PhysFS
+        physfs-static)
+endif()
+
 # Example
 option(SDL_LIBRETRO_BUILD_EXAMPLES "Build example applications" ON)
 if(SDL_LIBRETRO_BUILD_EXAMPLES)
@@ -50,25 +69,14 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
 
     add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
-    target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro)
+    target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs)
 endif()
 
 # Tests
 option(SDL_LIBRETRO_BUILD_TESTS "Build unit tests" ON)
 if(SDL_LIBRETRO_BUILD_TESTS)
     enable_testing()
-
-    add_library(test_core SHARED test/test_core.c)
-    target_include_directories(test_core PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include)
-    set_target_properties(test_core PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
-
-    add_executable(SDL_libretro_test test/SDL_libretro_test.c)
-    target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
-    target_compile_definitions(SDL_libretro_test PRIVATE
-        TEST_CORE_PATH="$<TARGET_FILE:test_core>"
-        TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/test_content.txt")
-    add_test(NAME SDL_libretro_test COMMAND SDL_libretro_test)
+    add_subdirectory(test)
 endif()
 
 # Install (only when this is the top-level project)

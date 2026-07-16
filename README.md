@@ -14,6 +14,7 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Rewind with delta compression
 - Rumble
 - On-screen display messages
+- Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optionally)
 
 ## Usage
 
@@ -57,6 +58,19 @@ SDL_Libretro_Destroy(lr);
 - [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
 - [Demo](https://robloach.github.io/SDL_libretro/demo/)
 
+### Zip Loading
+
+To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake option, and then let SDL_libretro it's available with `SDL_LIBRETRO_ENABLE_PHYSFS`.
+
+```c
+#define SDL_LIBRETRO_IMPLEMENTATION
+#define SDL_LIBRETRO_ENABLE_PHYSFS
+#include "SDL_libretro.h"
+
+// Enables loading games directly from .zip files.
+SDL_Libretro_LoadGame(lr, "game.zip");
+```
+
 ## Build
 
 ```sh
@@ -83,12 +97,15 @@ cmake --build build-web
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
 
 - `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
+- `SDL_LIBRETRO_ENABLE_PHYSFS`: Enable .zip loading with PhysFS
+- `SDL_LIBRETRO_PHYSFS_MOUNT_POINT`: The PhysFS mount point archives are mounted at (default `"game"`)
 
 ## Dependencies
 
 - [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
 - [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
+- [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (optional)
 
 ## License
 
