@@ -1708,6 +1708,14 @@ static int SDLCALL test_DiskControl(void *arg) {
     // Eject, then change index.
     SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == true, "EjectDisk succeeds");
 
+    // A core without get_num_images must fail cleanly instead of crashing.
+    retro_get_num_images_t savedGetNumImages = lr->core.disk_control.get_num_images;
+    lr->core.disk_control.get_num_images = NULL;
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, TEST_CONTENT_PATH) == false, "AddDiskImage fails without get_num_images");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, SDL_IOFromConstMem("x", 1), true) == false, "AddDiskImage_IO fails without get_num_images");
+    lr->core.disk_control.get_num_images = savedGetNumImages;
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == 1, "Disk count unchanged after failed adds");
+
     // Add a new disk image.
     SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, TEST_CONTENT_PATH) == true, "AddDiskImage succeeds");
     SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == 2, "Disk count is now 2");
