@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
     const char* corePath = argc > 1 ? argv[1] : NULL;
     const char* gamePath = argc > 2 ? argv[2] : NULL;
     if (!corePath || !gamePath) {
-        SDL_Log("Usage: SDL_libertro_basic <core> <game>");
+        SDL_Log("Usage: SDL_libretro_basic <core> <game>");
         return 1;
     }
 

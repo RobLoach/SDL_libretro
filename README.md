@@ -13,6 +13,12 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Fast-forward and slow-motion
 - Rewind with delta compression
 - Rumble
+- Sensors (accelerometer, gyroscope)
+- Microphone input
+- LED interface
+- Disk control for multi-disc games
+- libretro VFS (virtual file system)
+- Config-file persistence of options and settings
 - On-screen display messages
 - Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optionally)
 
@@ -60,7 +66,7 @@ SDL_Libretro_Destroy(lr);
 
 ### Zip Loading
 
-To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake option, and then let SDL_libretro it's available with `SDL_LIBRETRO_ENABLE_PHYSFS`.
+To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake option, and then let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_PHYSFS`.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION
@@ -111,7 +117,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 
 Use [clang-format](https://clang.llvm.org/docs/ClangFormat.html) to apply coding standards.
 ```sh
-clang-format -i *.h
+clang-format -i include/*.h
 ```
 
 ## License
