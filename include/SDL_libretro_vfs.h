@@ -205,9 +205,8 @@ static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
 static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, int64_t length) {
     if (!stream || length < 0) return -1;
 
-    // Refuse read-only handles: the shrink path below rewrites the file at
-    // stream->path, which must never happen for content opened read-only
-    // (a PhysFS-backed handle's path isn't even a real file).
+    // Read-only handles are skipped because the below updates
+    // the stream->path. This shouldn't happen for read-only content.
     if ((stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) == 0) return -1;
 
     int64_t cur_size = SDL_GetIOSize(stream->io);
