@@ -339,10 +339,13 @@ int SDL_Libretro_GetRotation(const SDL_Libretro* lr) {
 /**
  * Sets the desired scale mode for the libretro context when it's displayed.
  */
-void SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode) {
-    if (lr && lr->fitMode != mode) {
-        lr->fitMode = mode;
+bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode) {
+    if (!lr) return false;
+    if ((int)mode < (int)SDL_LIBRETRO_FIT_ASPECT || (int)mode > (int)SDL_LIBRETRO_FIT_STRETCH) {
+        return SDL_SetError("[SDL_Libretro] Invalid fit mode: %d", (int)mode);
     }
+    lr->fitMode = mode;
+    return true;
 }
 
 SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr) {
