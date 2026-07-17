@@ -247,7 +247,7 @@ bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direct
     }
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
     if (!opt) {
-        return SDL_InvalidParamError("opt");
+        return SDL_SetError("[SDL_Libretro] No such option '%s'", key);
     }
     if (opt->valuesCount == 0) {
         return SDL_SetError("[SDL_Libretro] Option '%s' has no declared values to cycle", key);
