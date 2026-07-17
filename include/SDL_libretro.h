@@ -83,9 +83,11 @@ typedef struct SDL_Libretro SDL_Libretro;
  * When rendering the libretro context, determine how to display within the destination.
  */
 typedef enum SDL_LibretroFitMode {
+    SDL_LIBRETRO_FIT_FIRST = 0, /** The default fit mode to fit within the destination. */
     SDL_LIBRETRO_FIT_ASPECT = 0, /** Keep the same aspect ratio, and fit within the confines of the destination. */
     SDL_LIBRETRO_FIT_INTEGER = 1, /** Keep the same aspect ratio, while keeping integer scaling within the confines of the destination. */
-    SDL_LIBRETRO_FIT_STRETCH = 2 /** Ignore the aspect ratio, and stretch the image to match the destination rectangle. */
+    SDL_LIBRETRO_FIT_STRETCH = 2, /** Ignore the aspect ratio, and stretch the image to match the destination rectangle. */
+    SDL_LIBRETRO_FIT_COUNT = 3 /** The number of possible fit modes. */
 } SDL_LibretroFitMode;
 
 #ifdef __cplusplus
@@ -144,7 +146,7 @@ void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h);
 float SDL_Libretro_GetAspectRatio(const SDL_Libretro* lr);
 double SDL_Libretro_GetFPS(const SDL_Libretro* lr);
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr);
-void SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode);
+bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode);
 SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr);
 
 // Audio

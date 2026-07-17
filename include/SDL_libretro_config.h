@@ -60,7 +60,7 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     if (INI_HasValue(ini, NULL, "audiolatency"))
         SDL_Libretro_SetAudioLatency(lr, (unsigned)INI_GetInt(ini, NULL, "audiolatency", SDL_Libretro_GetAudioLatency(lr)));
     if (INI_HasValue(ini, NULL, "fitmode"))
-        SDL_Libretro_SetFitMode(lr, INI_GetInt(ini, NULL, "fitmode", SDL_Libretro_GetFitMode(lr)));
+        SDL_Libretro_SetFitMode(lr, (SDL_LibretroFitMode)INI_GetInt(ini, NULL, "fitmode", SDL_Libretro_GetFitMode(lr)));
     if (INI_HasValue(ini, NULL, "savedirectory"))
         SDL_Libretro_SetSaveDirectory(lr, INI_GetString(ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr)));
     if (INI_HasValue(ini, NULL, "systemdirectory"))
