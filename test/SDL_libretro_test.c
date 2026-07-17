@@ -500,7 +500,11 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "Set valid value succeeds");
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Held pointer reflects updated value");
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "bogus") == false, "Set invalid value rejected");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "not a valid value") != NULL, "Rejected set reports an error");
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Value unchanged after rejected set");
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "nope", "on") == false, "Set unknown option fails");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "No such option") != NULL, "Unknown option set reports an error");
 
     // GetOptionValueLabel falls back to the raw value when no label was supplied.
     SDLTest_AssertCheck(a && SDL_strcmp(SDL_Libretro_GetOptionValueLabel(lr, "test_option_a"), "off") == 0,
@@ -516,7 +520,9 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDL_Libretro_CycleOptionValue(lr, "test_option_a", -1);
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Cycle backward on -> off (wrap)");
     SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 0) == false, "Cycle 0 direction fails");
+    SDL_ClearError();
     SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "nope", 1) == false, "Cycle unknown option fails");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "No such option") != NULL, "Cycle unknown option reports an error");
 
     // ResetAllOptions restores defaults and marks options dirty.
     SDL_Libretro_AreOptionsDirty(lr); // clear the dirty flag set by SetOptionValue
