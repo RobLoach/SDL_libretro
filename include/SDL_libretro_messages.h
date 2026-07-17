@@ -50,10 +50,11 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
     lr->osdQueue[slot].progress = progress;
 }
 
-static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
+/**
+ * Expires old on-screen-display messages from the OSD queue.
+ */
+static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
     Uint64 now = SDL_GetTicks();
-    int best = -1;
-    unsigned bestPri = 0;
     int dst = 0;
 
     for (int i = 0; i < lr->osdQueueCount; i++) {
@@ -65,13 +66,28 @@ static int SDL_Libretro_OsdFindTop(SDL_Libretro* lr) {
         if (dst != i) {
             lr->osdQueue[dst] = lr->osdQueue[i];
         }
-        if (best == -1 || lr->osdQueue[dst].priority > bestPri) {
-            bestPri = lr->osdQueue[dst].priority;
-            best = dst;
-        }
         dst++;
     }
     lr->osdQueueCount = dst;
+}
+
+/**
+ * Gets the message index of the highest priority message.
+ *
+ * @returns the message index, or -1 if none.
+ */
+static int SDL_Libretro_OsdFindTop(const SDL_Libretro* lr) {
+    Uint64 now = SDL_GetTicks();
+    int best = -1;
+    unsigned bestPri = 0;
+
+    for (int i = 0; i < lr->osdQueueCount; i++) {
+        if (now > lr->osdQueue[i].endTimeMs) continue;
+        if (best == -1 || lr->osdQueue[i].priority > bestPri) {
+            bestPri = lr->osdQueue[i].priority;
+            best = i;
+        }
+    }
     return best;
 }
 
@@ -130,9 +146,16 @@ int SDL_Libretro_GetMessageType(SDL_Libretro* lr) {
     return (int)lr->osdQueue[top].type;
 }
 
+/**
+ * Gets the number of messages currently in the queue.
+ *
+ * Will expire any old messages to make sure the count is correct.
+ *
+ * @return The number of queued messages.
+ */
 unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr) {
     if (!lr || lr->osdQueueCount == 0) return 0;
-    SDL_Libretro_OsdFindTop(lr);
+    SDL_Libretro_OsdExpire(lr);
     return (unsigned)lr->osdQueueCount;
 }
 
@@ -146,9 +169,6 @@ bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index,
     if (!lr) return false;
     if (index < 0) {
         index = SDL_Libretro_OsdFindTop(lr);
-    }
-    else {
-        SDL_Libretro_OsdFindTop(lr);
     }
     if (index < 0 || index >= lr->osdQueueCount) return false;
     if (msg) *msg = lr->osdQueue[index].msg;
