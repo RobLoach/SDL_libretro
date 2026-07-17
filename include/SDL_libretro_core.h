@@ -1090,11 +1090,11 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         double stepPeriod = framePeriod * (double)interval;
         lr->core.speedAccumulator += frameTime * (double)(-lr->core.speed);
 
-        // Cap iterations to avoid a spiral of death, mirroring the forward path.
+        // Protect against infinite rewinds, and clamp it to 1 tick.
         int maxTicks = (int)(-lr->core.speed + 1.0f);
         if (maxTicks < 1) maxTicks = 1;
 
-        // Clamp the accumulator so a frame-time spike (game load, window drag, menu pause) can't drain the rewind buffer in a single update.
+        // Protect with a maximum accumulator, so frame spikes don't drain the rewind buffer.
         double maxAccumulator = stepPeriod * (double)maxTicks;
         if (lr->core.speedAccumulator > maxAccumulator) {
             lr->core.speedAccumulator = maxAccumulator;
