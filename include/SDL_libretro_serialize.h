@@ -119,7 +119,7 @@ bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
         SDL_SetError("[SDL_Libretro] Invalid AddDiskImage arguments");
         return false;
     }
-    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index) {
+    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index || !lr->core.disk_control.get_num_images) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
         return false;
     }
@@ -158,7 +158,7 @@ bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool clos
         if (closeio && src) SDL_CloseIO(src);
         return false;
     }
-    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index) {
+    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index || !lr->core.disk_control.get_num_images) {
         SDL_SetError("[SDL_Libretro] Disk control not available");
         if (closeio) SDL_CloseIO(src);
         return false;
