@@ -17,8 +17,8 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Microphone input
 - LED interface
 - Disk control for multi-disc games
-- libretro VFS (virtual file system)
-- Config-file persistence of options and settings
+- Virtual file system
+- Config system for saving and loading settings
 - On-screen display messages
 - Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optionally)
 
