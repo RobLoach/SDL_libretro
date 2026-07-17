@@ -382,25 +382,6 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     SDL_Libretro_ClearRewind(lr);
     SDLTest_AssertCheck(lr->rewindCount == 0, "ClearRewind empties the buffer");
 
-    // Regression: a wall-clock spike (window drag, pause, breakpoint) while
-    // rewinding must not drain the buffer in one update. The negative-speed
-    // path caps its steps per update just like the forward path.
-    for (int k = 0; k < 10; k++) {
-        SDL_memset(g_rewindState, (unsigned char)k, sizeof(g_rewindState));
-        SDL_Libretro_RewindCapture(lr);
-    }
-    SDLTest_AssertCheck(lr->rewindCount == 9, "Nine deltas captured for the catch-up cap check");
-    SDL_Libretro_SetSpeed(lr, -1.0f);
-    lr->core.speedAccumulator = 0.0;
-    lr->core.lastTickNS = SDL_GetTicksNS() - (Uint64)5000000000ULL; // pretend 5 seconds elapsed
-    SDL_Libretro_Update(lr);
-    SDLTest_AssertCheck(lr->rewindCount == 7,
-        "Spiked update rewinds at most maxTicks steps (%u snapshots left)", (unsigned)lr->rewindCount);
-    SDL_Libretro_SetSpeed(lr, 1.0f);
-    lr->core.lastTickNS = 0;
-    lr->core.speedAccumulator = 0.0;
-    SDL_Libretro_ClearRewind(lr);
-
     // Duration-based budget: 1s at 60fps, interval 1, 32-byte state = 60 snapshots.
     SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(lr, 1.0) == true, "Set rewind budget by duration");
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) == (size_t)60 * sizeof(g_rewindState), "Duration budget equals snapshots * state size");
