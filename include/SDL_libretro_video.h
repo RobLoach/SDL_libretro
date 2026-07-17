@@ -341,7 +341,7 @@ int SDL_Libretro_GetRotation(const SDL_Libretro* lr) {
  */
 bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode) {
     if (!lr) return false;
-    if ((int)mode < (int)SDL_LIBRETRO_FIT_ASPECT || (int)mode > (int)SDL_LIBRETRO_FIT_STRETCH) {
+    if ((int)mode < (int)SDL_LIBRETRO_FIT_FIRST || (int)mode >= (int)SDL_LIBRETRO_FIT_COUNT) {
         return SDL_InvalidParamError("mode");
     }
     lr->fitMode = mode;

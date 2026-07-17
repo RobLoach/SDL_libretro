@@ -83,9 +83,11 @@ typedef struct SDL_Libretro SDL_Libretro;
  * When rendering the libretro context, determine how to display within the destination.
  */
 typedef enum SDL_LibretroFitMode {
+    SDL_LIBRETRO_FIT_FIRST = 0, /** The default fit mode to fit within the destination. */
     SDL_LIBRETRO_FIT_ASPECT = 0, /** Keep the same aspect ratio, and fit within the confines of the destination. */
     SDL_LIBRETRO_FIT_INTEGER = 1, /** Keep the same aspect ratio, while keeping integer scaling within the confines of the destination. */
-    SDL_LIBRETRO_FIT_STRETCH = 2 /** Ignore the aspect ratio, and stretch the image to match the destination rectangle. */
+    SDL_LIBRETRO_FIT_STRETCH = 2, /** Ignore the aspect ratio, and stretch the image to match the destination rectangle. */
+    SDL_LIBRETRO_FIT_COUNT = 3 /** The number of possible fit modes. */
 } SDL_LibretroFitMode;
 
 #ifdef __cplusplus
