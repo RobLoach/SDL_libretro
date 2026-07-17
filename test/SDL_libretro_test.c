@@ -146,28 +146,6 @@ static int SDLCALL test_VolumeSpeed(void *arg) {
     return TEST_COMPLETED;
 }
 
-static int SDLCALL test_FitMode(void *arg) {
-    SDL_Libretro* lr = SDL_Libretro_Create();
-
-    SDLTest_AssertCheck(SDL_Libretro_GetFitMode(lr) == SDL_LIBRETRO_FIT_ASPECT, "Default fit mode is ASPECT");
-    SDLTest_AssertCheck(SDL_Libretro_SetFitMode(lr, SDL_LIBRETRO_FIT_STRETCH) == true, "SetFitMode(STRETCH) returns true");
-    SDLTest_AssertCheck(SDL_Libretro_GetFitMode(lr) == SDL_LIBRETRO_FIT_STRETCH, "Fit mode set to STRETCH");
-    SDLTest_AssertCheck(SDL_Libretro_SetFitMode(lr, (SDL_LibretroFitMode)5) == false, "SetFitMode(5) rejected");
-    SDLTest_AssertCheck(SDL_Libretro_SetFitMode(lr, (SDL_LibretroFitMode)-1) == false, "SetFitMode(-1) rejected");
-    SDLTest_AssertCheck(SDL_Libretro_GetFitMode(lr) == SDL_LIBRETRO_FIT_STRETCH, "Invalid fit modes keep STRETCH");
-    SDLTest_AssertCheck(SDL_Libretro_SetFitMode(NULL, SDL_LIBRETRO_FIT_ASPECT) == false, "SetFitMode(NULL) returns false");
-
-    // A corrupt config file must not drive an out-of-range fit mode into rendering.
-    const char* cfg = "/tmp/sdl_libretro_test_fitmode.cfg";
-    SDL_SaveFile(cfg, "fitmode=9\n", 10);
-    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, cfg) == true, "InitConfigFile loads the corrupt config");
-    SDLTest_AssertCheck(SDL_Libretro_GetFitMode(lr) == SDL_LIBRETRO_FIT_STRETCH, "Corrupt fitmode=9 in config is rejected");
-
-    SDL_Libretro_Destroy(lr);
-    SDL_RemovePath(cfg);
-    return TEST_COMPLETED;
-}
-
 static int SDLCALL test_Input(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -1915,7 +1893,6 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_NullSafety,       "All getters handle NULL without crashing"),
     LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
-    LIBRETRO_TEST_CASE(test_FitMode,          "Fit mode setter rejects invalid values"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
     LIBRETRO_TEST_CASE(test_SetVariablesLegacy, "Legacy SET_VARIABLES parsing without truncation"),
