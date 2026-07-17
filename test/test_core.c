@@ -52,8 +52,29 @@ static bool RETRO_CALLCONV disk_add_image_index(void) {
 
 /* Captures what GET_GAME_INFO_EXT returns during retro_load_game so the
  * frontend test can verify the extended-game-info wiring. Exposed as
- * SYSTEM_RAM: [0..15] lower-case ext, [16] persistent_data, [17] data != NULL. */
+ * SYSTEM_RAM: [0..15] lower-case ext, [16] persistent_data, [17] data != NULL,
+ * [18] GET_INPUT_MAX_USERS result, [19] max users value,
+ * [20] GET_JIT_CAPABLE result, [21] jit capable value,
+ * [22] GET_PREFERRED_HW_RENDER result, [23] preferred context + 1. */
 static uint8_t game_info_probe[32];
+
+/* Probe the trivial environment queries and record the results in
+ * game_info_probe[18..23] for the frontend test to assert on. */
+static void probe_env_queries(void) {
+    if (!environ_cb) return;
+
+    unsigned max_users = 0;
+    game_info_probe[18] = environ_cb(RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS, &max_users) ? 1 : 0;
+    game_info_probe[19] = (uint8_t)max_users;
+
+    bool jit_capable = false;
+    game_info_probe[20] = environ_cb(RETRO_ENVIRONMENT_GET_JIT_CAPABLE, &jit_capable) ? 1 : 0;
+    game_info_probe[21] = jit_capable ? 1 : 0;
+
+    unsigned preferred = (unsigned)-1;
+    game_info_probe[22] = environ_cb(RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER, &preferred) ? 1 : 0;
+    game_info_probe[23] = (uint8_t)(preferred + 1);
+}
 
 static bool RETRO_CALLCONV test_update_display_callback(void) {
     if (!environ_cb) return false;
@@ -319,6 +340,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
         game_info_probe[16] = ext->persistent_data ? 1 : 0;
         game_info_probe[17] = ext->data != NULL ? 1 : 0;
     }
+    probe_env_queries();
     return true;
 }
 
