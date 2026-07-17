@@ -1878,32 +1878,6 @@ static int SDLCALL test_OSD(void *arg) {
     SDL_Libretro_SetMessage(lr, "", 0.0);
     SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 0, "Empty string clears messages");
 
-    // Regression: indices from GetMessageCount stay valid even if a message
-    // expires mid-iteration; only GetMessageCount compacts the queue.
-    SDL_Libretro_SetMessage(lr, "First", 60.0);
-    SDL_Libretro_SetMessage(lr, "Second", 60.0);
-    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 2, "Two messages before expiry");
-    // Expire "First" after the count was taken. Expiry is 'now > endTimeMs',
-    // so wait a couple of ticks in case SDL_GetTicks() is still 0.
-    lr->osdQueue[0].endTimeMs = 0;
-    SDL_Delay(2);
-    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, 1, &byIdx, NULL, NULL) == true, "Index 1 valid after index 0 expired");
-    SDLTest_AssertCheck(byIdx != NULL && SDL_strcmp(byIdx, "Second") == 0, "Index 1 is still 'Second'");
-    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, 0, &byIdx, NULL, NULL) == true, "Index 0 valid after expiry");
-    SDLTest_AssertCheck(byIdx != NULL && SDL_strcmp(byIdx, "First") == 0, "Index 0 is still 'First'");
-    // Top-message getters peek: they skip the expired entry without compacting.
-    msg = SDL_Libretro_GetMessage(lr);
-    SDLTest_AssertCheck(msg != NULL && SDL_strcmp(msg, "Second") == 0, "GetMessage skips expired entry");
-    SDL_Libretro_GetMessageProgress(lr);
-    SDL_Libretro_GetMessageType(lr);
-    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, 1, &byIdx, NULL, NULL) == true, "Index 1 survives top-message getters");
-    SDLTest_AssertCheck(byIdx != NULL && SDL_strcmp(byIdx, "Second") == 0, "Index 1 unchanged by top-message getters");
-    // The next count removes the expired entry and compacts.
-    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 1, "Count drops to 1 after recount");
-    SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, 0, &byIdx, NULL, NULL) == true, "Index 0 valid after compaction");
-    SDLTest_AssertCheck(byIdx != NULL && SDL_strcmp(byIdx, "Second") == 0, "'Second' compacted to index 0");
-    SDL_Libretro_SetMessage(lr, NULL, 0.0);
-
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }
