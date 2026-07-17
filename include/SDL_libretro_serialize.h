@@ -864,8 +864,7 @@ static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t de
  */
 bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
     if (!lr) {
-        SDL_SetError("[SDL_Libretro] Invalid SetRewindEnabled arguments");
-        return false;
+        return SDL_InvalidParamError("lr");
     }
 
     SDL_Libretro_RewindFree(lr);
@@ -1025,8 +1024,7 @@ size_t SDL_Libretro_GetRewindMemoryLimit(const SDL_Libretro* lr) {
  */
 bool SDL_Libretro_SetRewindMemoryDuration(SDL_Libretro* lr, double seconds) {
     if (!lr) {
-        SDL_SetError("[SDL_Libretro] Invalid SetRewindMemoryDuration arguments");
-        return false;
+        return SDL_InvalidParamError("lr");
     }
     if (!(seconds > 0.0)) {
         SDL_SetError("[SDL_Libretro] Rewind duration must be positive");

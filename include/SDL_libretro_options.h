@@ -243,12 +243,11 @@ const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key) 
  */
 bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direction) {
     if (direction == 0) {
-        SDL_SetError("[SDL_Libretro] Invalid CycleOptionValue direction");
-        return false;
+        return SDL_InvalidParamError("direction");
     }
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
     if (!opt) {
-        return SDL_SetError("[SDL_Libretro] No such option '%s'", key);
+        return SDL_InvalidParamError("opt");
     }
     if (opt->valuesCount == 0) {
         return SDL_SetError("[SDL_Libretro] Option '%s' has no declared values to cycle", key);
@@ -278,7 +277,7 @@ bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direct
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
     if (!opt) {
-        return SDL_SetError("[SDL_Libretro] No such option '%s'", key);
+        return SDL_InvalidParamError("opt");
     }
     char* dupicateValue = SDL_Libretro_Strdup(opt->defaultValue);
     if (!dupicateValue) {
