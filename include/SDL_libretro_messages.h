@@ -50,9 +50,9 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
     lr->osdQueue[slot].progress = progress;
 }
 
-/* Frees expired entries and compacts the queue. This is the only place the
-   read API mutates the queue (via SDL_Libretro_GetMessageCount), so indices
-   handed out by a count stay stable for the rest of the iteration. */
+/**
+ * Expires old on-screen-display messages from the OSD queue.
+ */
 static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
     Uint64 now = SDL_GetTicks();
     int dst = 0;
@@ -71,9 +71,11 @@ static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
     lr->osdQueueCount = dst;
 }
 
-/* Returns the index of the highest-priority live entry, or -1 if none.
-   Expired entries are skipped but never freed or compacted here, so
-   indices previously returned by the message API remain valid. */
+/**
+ * Gets the message index of the highest priority message.
+ *
+ * @returns the message index, or -1 if none.
+ */
 static int SDL_Libretro_OsdFindTop(const SDL_Libretro* lr) {
     Uint64 now = SDL_GetTicks();
     int best = -1;
@@ -121,9 +123,6 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
 /**
  * Gets the most relevent libretro message to display from the queue.
  *
- * Only peeks at the queue: expired messages are skipped, not removed, so
- * indices from SDL_Libretro_GetMessageCount() stay valid across this call.
- *
  * @return A string for the message, or NULL if there isn't a message to display.
  */
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
@@ -150,11 +149,7 @@ int SDL_Libretro_GetMessageType(SDL_Libretro* lr) {
 /**
  * Gets the number of messages currently in the queue.
  *
- * This is the one read call that removes expired messages: the queue is
- * expired and compacted before counting, and no other getter mutates it.
- * Indices in [0, count) therefore remain valid for
- * SDL_Libretro_GetMessageByIndex() until the next call to this function
- * or the queue is otherwise modified.
+ * Will expire any old messages to make sure the count is correct.
  *
  * @return The number of queued messages.
  */
@@ -166,10 +161,6 @@ unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr) {
 
 /**
  * Retrieves all message details for the given message index.
- *
- * Never removes or reorders messages, so an index obtained from
- * SDL_Libretro_GetMessageCount() is stable for the whole iteration even if
- * a message expires along the way.
  *
  * @param index The index of the message to retrieve. If -1, will get the most relevent message.
  */
