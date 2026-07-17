@@ -517,7 +517,7 @@ typedef struct SDL_LibretroCoreData {
     char contentPath[SDL_LIBRETRO_MAX_PATH]; /** The path to the content that's being loaded. */
     char contentName[SDL_LIBRETRO_MAX_PATH]; /** The human-readable content name. */
     char contentDir[SDL_LIBRETRO_MAX_PATH]; /** Directory of the content file; backs gameInfoExt.dir. */
-    char contentExt[8]; /** Lower-case content extension; backs gameInfoExt.ext. */
+    char contentExt[32]; /** Lower-case content extension; backs gameInfoExt.ext. */
     char contentTempPath[SDL_LIBRETRO_MAX_PATH]; /** File spilled to disk by SDL_Libretro_LoadGame_IO() for a need_fullpath core; removed when the content unloads. */
 
     struct retro_game_info_ext gameInfoExt; /** Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */

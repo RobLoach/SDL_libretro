@@ -582,9 +582,23 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
+        case RETRO_ENVIRONMENT_GET_PREFERRED_HW_RENDER: {
+            if (!data) return false;
+            // Software rendering only; reporting RETRO_HW_CONTEXT_NONE lets
+            // GL/Vulkan-capable cores fall back to their software path.
+            *(unsigned*)data = RETRO_HW_CONTEXT_NONE;
+            return true;
+        }
+
         case RETRO_ENVIRONMENT_GET_DISK_CONTROL_INTERFACE_VERSION: {
             if (!data) return false;
             *(unsigned*)data = 1;
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: {
+            if (!data) return false;
+            *(unsigned*)data = SDL_LIBRETRO_MAX_GAMEPADS;
             return true;
         }
 
@@ -627,6 +641,16 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 }
             }
 
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_GET_JIT_CAPABLE: {
+            if (!data) return false;
+#if defined(SDL_PLATFORM_EMSCRIPTEN)
+            *(bool*)data = false;
+#else
+            *(bool*)data = true;
+#endif
             return true;
         }
 

@@ -168,9 +168,12 @@ static int SDLCALL test_Input(void *arg) {
     SDL_Libretro_SetVirtualButton(lr, 0, 16, true);
     SDL_Libretro_SetVirtualButton(NULL, 0, 0, true);
 
-    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_NONE, "Port 0 device defaults to NONE");
-    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 0 true");
-    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_JOYPAD, "GetPortDevice returns stored device");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_JOYPAD, "Port 0 device defaults to JOYPAD");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, SDL_LIBRETRO_MAX_GAMEPADS - 1) == RETRO_DEVICE_JOYPAD, "Last port device defaults to JOYPAD");
+    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_MOUSE) == true, "SetPortDevice port 0 true");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_MOUSE, "GetPortDevice returns stored device");
+    SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_NONE) == true, "SetPortDevice port 0 NONE true");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_NONE, "Explicit NONE is preserved");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 1, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 1 true");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 2, RETRO_DEVICE_JOYPAD) == true, "SetPortDevice port 2 true");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 16, RETRO_DEVICE_JOYPAD) == false, "SetPortDevice port 16 false");
@@ -184,6 +187,57 @@ static int SDLCALL test_Input(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptorCount(NULL) == 0, "GetInputDescriptorCount(NULL) 0");
     SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptor(NULL, 0, NULL, NULL, NULL, NULL) == false, "GetInputDescriptor(NULL) false");
 
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
+/* Drives SDL_Libretro_HandleEvent() with gamepad hotplug events backed by
+   virtual joysticks, verifying gamepadCount tracks the highest occupied
+   slot + 1 through additions and removals. */
+static int SDLCALL test_GamepadEvents(void *arg) {
+    SDL_Init(SDL_INIT_GAMEPAD);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    SDLTest_AssertCheck(lr->gamepadCount == 0, "gamepadCount 0 on fresh context");
+
+    SDL_VirtualJoystickDesc desc;
+    SDL_INIT_INTERFACE(&desc);
+    desc.type = SDL_JOYSTICK_TYPE_GAMEPAD;
+    desc.naxes = SDL_GAMEPAD_AXIS_COUNT;
+    desc.nbuttons = SDL_GAMEPAD_BUTTON_COUNT;
+    SDL_JoystickID jid1 = SDL_AttachVirtualJoystick(&desc);
+    SDL_JoystickID jid2 = SDL_AttachVirtualJoystick(&desc);
+    SDLTest_AssertCheck(jid1 != 0 && jid2 != 0, "Attached two virtual gamepads");
+
+    SDL_Event ev;
+    SDL_zero(ev);
+    ev.type = SDL_EVENT_GAMEPAD_ADDED;
+    ev.gdevice.which = jid1;
+    SDL_Libretro_HandleEvent(lr, &ev);
+    SDLTest_AssertCheck(lr->gamepads[0] != NULL, "Slot 0 filled after first add");
+    SDLTest_AssertCheck(lr->gamepadCount == 1, "gamepadCount 1 after first add, got %u", lr->gamepadCount);
+
+    ev.gdevice.which = jid2;
+    SDL_Libretro_HandleEvent(lr, &ev);
+    SDLTest_AssertCheck(lr->gamepads[1] != NULL, "Slot 1 filled after second add");
+    SDLTest_AssertCheck(lr->gamepadCount == 2, "gamepadCount 2 after second add, got %u", lr->gamepadCount);
+
+    // Removing slot 0 leaves slot 1 occupied, so the count stays 2.
+    SDL_zero(ev);
+    ev.type = SDL_EVENT_GAMEPAD_REMOVED;
+    ev.gdevice.which = jid1;
+    SDL_Libretro_HandleEvent(lr, &ev);
+    SDLTest_AssertCheck(lr->gamepads[0] == NULL, "Slot 0 cleared after removal");
+    SDLTest_AssertCheck(lr->gamepadCount == 2, "gamepadCount stays 2 while slot 1 occupied, got %u", lr->gamepadCount);
+
+    // Removing the last gamepad drops the count to 0.
+    ev.gdevice.which = jid2;
+    SDL_Libretro_HandleEvent(lr, &ev);
+    SDLTest_AssertCheck(lr->gamepads[1] == NULL, "Slot 1 cleared after removal");
+    SDLTest_AssertCheck(lr->gamepadCount == 0, "gamepadCount 0 after all removed, got %u", lr->gamepadCount);
+
+    SDL_DetachVirtualJoystick(jid1);
+    SDL_DetachVirtualJoystick(jid2);
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }
@@ -446,7 +500,11 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "Set valid value succeeds");
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Held pointer reflects updated value");
     SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "bogus") == false, "Set invalid value rejected");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "not a valid value") != NULL, "Rejected set reports an error");
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Value unchanged after rejected set");
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "nope", "on") == false, "Set unknown option fails");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "No such option") != NULL, "Unknown option set reports an error");
 
     // GetOptionValueLabel falls back to the raw value when no label was supplied.
     SDLTest_AssertCheck(a && SDL_strcmp(SDL_Libretro_GetOptionValueLabel(lr, "test_option_a"), "off") == 0,
@@ -462,7 +520,9 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     SDL_Libretro_CycleOptionValue(lr, "test_option_a", -1);
     SDLTest_AssertCheck(a && SDL_strcmp(a->value, "off") == 0, "Cycle backward on -> off (wrap)");
     SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "test_option_a", 0) == false, "Cycle 0 direction fails");
+    SDL_ClearError();
     SDLTest_AssertCheck(SDL_Libretro_CycleOptionValue(lr, "nope", 1) == false, "Cycle unknown option fails");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "No such option") != NULL, "Cycle unknown option reports an error");
 
     // ResetAllOptions restores defaults and marks options dirty.
     SDL_Libretro_AreOptionsDirty(lr); // clear the dirty flag set by SetOptionValue
@@ -1894,6 +1954,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
+    LIBRETRO_TEST_CASE(test_GamepadEvents,    "Gamepad hotplug events update gamepadCount"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
     LIBRETRO_TEST_CASE(test_SetVariablesLegacy, "Legacy SET_VARIABLES parsing without truncation"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
