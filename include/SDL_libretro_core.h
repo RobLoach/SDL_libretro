@@ -1104,9 +1104,20 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         unsigned interval = lr->rewindCaptureInterval > 0 ? lr->rewindCaptureInterval : 1;
         double stepPeriod = framePeriod * (double)interval;
         lr->core.speedAccumulator += frameTime * (double)(-lr->core.speed);
+
+        // Protect against infinite rewinds, and clamp it to 1 tick.
+        int maxTicks = (int)(-lr->core.speed + 1.0f);
+        if (maxTicks < 1) maxTicks = 1;
+
+        // Protect with a maximum accumulator, so frame spikes don't drain the rewind buffer.
+        double maxAccumulator = stepPeriod * (double)maxTicks;
+        if (lr->core.speedAccumulator > maxAccumulator) {
+            lr->core.speedAccumulator = maxAccumulator;
+        }
+
         // Mute audio and neutralize input for the throwaway re-runs that produce the displayed frames while scrubbing backward.
         lr->rewindActive = true;
-        while (lr->core.speedAccumulator >= stepPeriod) {
+        while (lr->core.speedAccumulator >= stepPeriod && maxTicks-- > 0) {
             lr->core.speedAccumulator -= stepPeriod;
             if (!SDL_Libretro_RewindStepState(lr)) break;
             lr->core.symbols.retro_run();
