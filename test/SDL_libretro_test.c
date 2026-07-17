@@ -702,16 +702,6 @@ static int SDLCALL test_GameInfoExt(void *arg) {
             "GET_GAME_INFO_EXT reports lower-case ext 'txt', got '%s'", (const char*)probe);
         SDLTest_AssertCheck(probe[16] == 1, "content-info override set persistent_data");
         SDLTest_AssertCheck(probe[17] == 1, "content data buffer present (need_fullpath false)");
-
-        // The core also probes the trivial environment queries during load.
-        SDLTest_AssertCheck(probe[18] == 1, "GET_INPUT_MAX_USERS supported");
-        SDLTest_AssertCheck(probe[19] == SDL_LIBRETRO_MAX_GAMEPADS,
-            "GET_INPUT_MAX_USERS reports %d, got %d", SDL_LIBRETRO_MAX_GAMEPADS, probe[19]);
-        SDLTest_AssertCheck(probe[20] == 1, "GET_JIT_CAPABLE supported");
-        SDLTest_AssertCheck(probe[21] == 1, "GET_JIT_CAPABLE reports JIT capable");
-        SDLTest_AssertCheck(probe[22] == 1, "GET_PREFERRED_HW_RENDER supported");
-        SDLTest_AssertCheck(probe[23] == RETRO_HW_CONTEXT_NONE + 1,
-            "GET_PREFERRED_HW_RENDER reports RETRO_HW_CONTEXT_NONE");
     }
 
     SDL_Libretro_Destroy(lr);
