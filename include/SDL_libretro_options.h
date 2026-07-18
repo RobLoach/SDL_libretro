@@ -11,9 +11,7 @@ static char* SDL_Libretro_Strdup(const char* s) {
     return SDL_strdup(s);
 }
 
-static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
-    const char* desc, const struct retro_core_option_value* values,
-    const char* info, const char* categoryKey) {
+static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, const char* info, const char* categoryKey) {
     if (!lr || !key) return;
 
     // Check if already registered. Ignore any duplicate registrations.
@@ -75,8 +73,7 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     lr->core.optionCount++;
 }
 
-static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key,
-    const char* desc, const char* info) {
+static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key, const char* desc, const char* info) {
     if (!lr || !key || key[0] == '\0') return;
 
     // Check if already registered

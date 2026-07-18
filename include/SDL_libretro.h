@@ -191,9 +191,7 @@ bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio)
 bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
 unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr);
-bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
-    Uint64* flags, void** ptr, size_t* offset, size_t* start,
-    size_t* select, size_t* disconnect, size_t* len, const char** addrspace);
+bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index, Uint64* flags, void** ptr, size_t* offset, size_t* start, size_t* select, size_t* disconnect, size_t* len, const char** addrspace);
 void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining);
 
 // Core Options
@@ -210,23 +208,23 @@ typedef struct SDL_LibretroOptionValue {
  * A core option and its current state.
  */
 typedef struct SDL_LibretroOption {
-    const char* key;          /** Unique identifier the core queries. */
-    const char* desc;         /** Human-readable name. */
-    const char* info;         /** Description / help text; may be empty. */
-    const char* value;        /** The current value. */
+    const char* key; /** Unique identifier the core queries. */
+    const char* desc; /** Human-readable name. */
+    const char* info; /** Description / help text; may be empty. */
+    const char* value; /** The current value. */
     const char* defaultValue; /** The default value. */
-    const char* category;     /** Key of the category it belongs to; empty if none. */
-    bool visible;             /** Whether the frontend should display it. */
-    unsigned valuesCount;     /** The number of populated entries in values. */
+    const char* category; /** Key of the category it belongs to; empty if none. */
+    bool visible; /** Whether the frontend should display it. */
+    unsigned valuesCount; /** The number of populated entries in values. */
     SDL_LibretroOptionValue* values; /** The selectable values; dynamically allocated. */
-    unsigned valuesCapacity;  /** Allocated capacity of the values array. */
+    unsigned valuesCapacity; /** Allocated capacity of the values array. */
 } SDL_LibretroOption;
 
 /**
  * A group of related core options.
  */
 typedef struct SDL_LibretroCategory {
-    const char* key;  /** Unique identifier referenced by SDL_LibretroOption::category. */
+    const char* key; /** Unique identifier referenced by SDL_LibretroOption::category. */
     const char* desc; /** Human-readable name. */
     const char* info; /** Description / help text; may be empty. */
 } SDL_LibretroCategory;
@@ -563,7 +561,7 @@ typedef struct SDL_LibretroCoreData {
 
 typedef struct SDL_LibretroRewindDelta {
     unsigned char* data;
-    size_t length;   /* used bytes of the encoded delta */
+    size_t length; /* used bytes of the encoded delta */
     size_t capacity; /* allocated bytes of data (>= length); enables in-place reuse */
 } SDL_LibretroRewindDelta;
 
@@ -601,7 +599,7 @@ struct SDL_Libretro {
     unsigned char* rewindEncodeScratch; /* reusable worst-case-sized buffer for one-pass delta encoding */
     SDL_LibretroRewindDelta* rewindEntries;
     size_t rewindSlotSize;
-    size_t rewindBytes;    /* live encoded delta bytes currently stored */
+    size_t rewindBytes; /* live encoded delta bytes currently stored */
     size_t rewindMaxBytes; /* memory budget for delta data; 0 = unbounded */
     unsigned rewindCapacity;
     unsigned rewindHead;
@@ -628,10 +626,10 @@ struct SDL_Libretro {
 
     void* userData; /** Generic data available to the implementation. */
 
-    #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+#if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
     bool physfsReady; /** PhysFS is initialized and the VFS overrides are installed. */
     char physfsMountSource[SDL_LIBRETRO_MAX_PATH]; /** The archive currently mounted at the mount point. */
-    #endif
+#endif
 };
 
 /**
@@ -698,11 +696,8 @@ static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
 
 static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList);
 
-static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue,
-    const char* desc, const struct retro_core_option_value* values,
-    const char* info, const char* categoryKey);
-static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key,
-    const char* desc, const char* info);
+static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, const char* info, const char* categoryKey);
+static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key, const char* desc, const char* info);
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr);
@@ -727,6 +722,8 @@ static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr);
 
 static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr);
 
+// Implementation fragments are included in dependency order.
+// clang-format off
 #include "SDL_libretro_video.h"
 #include "SDL_libretro_audio.h"
 #include "SDL_libretro_input.h"
@@ -738,6 +735,7 @@ static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr);
 #include "SDL_libretro_core.h"
 #include "SDL_libretro_config.h"
 #include "SDL_libretro_physfs.h"
+// clang-format on
 
 #endif /* SDL_LIBRETRO_IMPLEMENTATION_ONCE */
 #endif /* SDL_LIBRETRO_IMPLEMENTATION */

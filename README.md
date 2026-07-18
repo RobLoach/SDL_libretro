@@ -117,7 +117,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 
 Use [clang-format](https://clang.llvm.org/docs/ClangFormat.html) to apply coding standards.
 ```sh
-clang-format -i include/*.h
+clang-format -i include/SDL_libre*
 ```
 
 ## License

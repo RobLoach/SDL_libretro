@@ -24,17 +24,18 @@ static void SDL_Libretro_ResetPortDevices(SDL_Libretro* lr) {
  * On failure, unload the shared object and reset lr->core so
  * no handle leaks and no half-initialized state is left behind.
  */
-#define LOAD_SYM(sym) do { \
-    SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
-    SDL_memcpy(&lr->core.symbols.sym, &fp, sizeof(fp)); \
-    if (!fp) { \
-        SDL_SetError("[SDL_Libretro] Failed to load symbol '%s'", #sym); \
-        SDL_UnloadObject(lr->core.symbols.handle); \
-        SDL_memset(&lr->core, 0, sizeof(lr->core)); \
-        SDL_Libretro_ResetPortDevices(lr); \
-        return false; \
-    } \
-} while (0)
+#define LOAD_SYM(sym)                                                             \
+    do {                                                                          \
+        SDL_FunctionPointer fp = SDL_LoadFunction(lr->core.symbols.handle, #sym); \
+        SDL_memcpy(&lr->core.symbols.sym, &fp, sizeof(fp));                       \
+        if (!fp) {                                                                \
+            SDL_SetError("[SDL_Libretro] Failed to load symbol '%s'", #sym);      \
+            SDL_UnloadObject(lr->core.symbols.handle);                            \
+            SDL_memset(&lr->core, 0, sizeof(lr->core));                           \
+            SDL_Libretro_ResetPortDevices(lr);                                    \
+            return false;                                                         \
+        }                                                                         \
+    } while (0)
 
 /**
  * Builds a libretro context.
@@ -57,22 +58,22 @@ SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro_SetUsername(lr, "SDL_libretro");
 
     // Keyboard Mappings
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B]       = SDL_SCANCODE_Z;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y]       = SDL_SCANCODE_A;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_SELECT]  = SDL_SCANCODE_RSHIFT;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START]   = SDL_SCANCODE_RETURN;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_UP]      = SDL_SCANCODE_UP;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_DOWN]    = SDL_SCANCODE_DOWN;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_LEFT]    = SDL_SCANCODE_LEFT;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_RIGHT]   = SDL_SCANCODE_RIGHT;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A]       = SDL_SCANCODE_X;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_X]       = SDL_SCANCODE_S;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L]       = SDL_SCANCODE_Q;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R]       = SDL_SCANCODE_W;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L2]      = SDL_SCANCODE_E;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R2]      = SDL_SCANCODE_R;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L3]      = SDL_SCANCODE_D;
-    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3]      = SDL_SCANCODE_F;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] = SDL_SCANCODE_Z;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_Y] = SDL_SCANCODE_A;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_SELECT] = SDL_SCANCODE_RSHIFT;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START] = SDL_SCANCODE_RETURN;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_UP] = SDL_SCANCODE_UP;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_DOWN] = SDL_SCANCODE_DOWN;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_LEFT] = SDL_SCANCODE_LEFT;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_RIGHT] = SDL_SCANCODE_RIGHT;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] = SDL_SCANCODE_X;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_X] = SDL_SCANCODE_S;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L] = SDL_SCANCODE_Q;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R] = SDL_SCANCODE_W;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L2] = SDL_SCANCODE_E;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R2] = SDL_SCANCODE_R;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L3] = SDL_SCANCODE_D;
+    lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3] = SDL_SCANCODE_F;
 
     return lr;
 }
@@ -343,7 +344,8 @@ size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, c
 
     if (lr->saveDirectory[0] != '\0') {
         SDL_snprintf(dst, dstSize, "%s/%s%s", lr->saveDirectory, lr->core.contentName, extension);
-    } else {
+    }
+    else {
         SDL_snprintf(dst, dstSize, "%s%s", lr->core.contentName, extension);
     }
 
@@ -559,9 +561,9 @@ static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char*
 
     // Initial gameInfoExt.
     lr->core.gameInfoExt.full_path = lr->core.contentPath;
-    lr->core.gameInfoExt.dir       = lr->core.contentDir;
-    lr->core.gameInfoExt.name      = lr->core.contentName;
-    lr->core.gameInfoExt.ext       = lr->core.contentExt;
+    lr->core.gameInfoExt.dir = lr->core.contentDir;
+    lr->core.gameInfoExt.name = lr->core.contentName;
+    lr->core.gameInfoExt.ext = lr->core.contentExt;
 
     return ext;
 }
@@ -643,8 +645,7 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
         SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio failed to initialize: %s", SDL_GetError());
     }
 
-    SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName,
-        lr->core.width, lr->core.height, lr->core.fps);
+    SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName, lr->core.width, lr->core.height, lr->core.fps);
 
     // Allocate rewind buffer now that serialize size is known.
     if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
@@ -699,17 +700,19 @@ static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, 
             }
             gameInfo.data = fileData;
             gameInfo.size = fileSize;
-        } else if (fileData) {
+        }
+        else if (fileData) {
             // The core wants a path, not bytes; drop a pre-read buffer.
             SDL_free(fileData);
             fileData = NULL;
         }
 
         // The string fields are set above; fill in the content buffer.
-        lr->core.gameInfoExt.data            = gameInfo.data;
-        lr->core.gameInfoExt.size            = gameInfo.size;
+        lr->core.gameInfoExt.data = gameInfo.data;
+        lr->core.gameInfoExt.size = gameInfo.size;
         lr->core.gameInfoExt.persistent_data = persistData;
-    } else if (fileData) {
+    }
+    else if (fileData) {
         SDL_free(fileData);
         fileData = NULL;
     }
@@ -831,7 +834,8 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
     char dir[SDL_LIBRETRO_MAX_PATH];
     if (saveDir && saveDir[0]) {
         SDL_snprintf(dir, sizeof(dir), "%s/", saveDir);
-    } else {
+    }
+    else {
         const char* base = SDL_GetBasePath();
         SDL_strlcpy(dir, base ? base : "./", sizeof(dir));
     }
@@ -866,7 +870,8 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
     bool result = SDL_Libretro_LoadGameCommon(lr, tempPath, NULL, 0);
     if (result) {
         SDL_strlcpy(lr->core.contentTempPath, tempPath, sizeof(lr->core.contentTempPath));
-    } else {
+    }
+    else {
         SDL_RemovePath(tempPath);
     }
     return result;
@@ -941,10 +946,11 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
     if (paths[0]) {
         SDL_Libretro_SetContentIdentity(lr, paths[0]);
-        lr->core.gameInfoExt.data            = gameInfos[0].data;
-        lr->core.gameInfoExt.size            = gameInfos[0].size;
+        lr->core.gameInfoExt.data = gameInfos[0].data;
+        lr->core.gameInfoExt.size = gameInfos[0].size;
         lr->core.gameInfoExt.persistent_data = false;
-    } else {
+    }
+    else {
         SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
     }
 
@@ -1215,7 +1221,7 @@ static void SDL_Libretro_FreeCoreLibrary(SDL_Libretro* lr) {
 #define SDL_LIBRETRO_CORE_EXTENSION ".so"
 #endif
 
-static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void *userdata, const char *dirname, const char *fname) {
+static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void* userdata, const char* dirname, const char* fname) {
     SDL_Libretro* lr = (SDL_Libretro*)userdata;
 
     // Find all .info files in the core directory.
@@ -1243,7 +1249,8 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
 
     // Grow the core library by one entry.
     SDL_Libretro_CoreInfo* grown = (SDL_Libretro_CoreInfo*)SDL_realloc(
-        lr->coreLibrary, (lr->coreLibraryCount + 1) * sizeof(SDL_Libretro_CoreInfo));
+        lr->coreLibrary,
+        (lr->coreLibraryCount + 1) * sizeof(SDL_Libretro_CoreInfo));
     if (!grown) {
         INI_Destroy(ini);
         return SDL_ENUM_CONTINUE;
@@ -1333,7 +1340,8 @@ bool SDL_Libretro_SetSaveDirectory(SDL_Libretro* lr, const char* path) {
         char pref[SDL_LIBRETRO_MAX_PATH];
         if (SDL_Libretro_GetPrefDirectory(pref, sizeof(pref))) {
             SDL_snprintf(lr->saveDirectory, sizeof(lr->saveDirectory), "%s/saves", pref);
-        } else {
+        }
+        else {
             lr->saveDirectory[0] = '\0';
         }
         return true;
@@ -1359,7 +1367,8 @@ bool SDL_Libretro_SetSystemDirectory(SDL_Libretro* lr, const char* path) {
         char pref[SDL_LIBRETRO_MAX_PATH];
         if (SDL_Libretro_GetPrefDirectory(pref, sizeof(pref))) {
             SDL_snprintf(lr->systemDirectory, sizeof(lr->systemDirectory), "%s/system", pref);
-        } else {
+        }
+        else {
             lr->systemDirectory[0] = '\0';
         }
         return true;
@@ -1436,7 +1445,8 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
             // the forward path (which sets the ratio to speed * drcAdjustment).
             SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, -speed);
         }
-    } else {
+    }
+    else {
         lr->core.speed = SDL_max(speed, 0.0f);
     }
 

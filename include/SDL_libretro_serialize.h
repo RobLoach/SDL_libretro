@@ -40,7 +40,6 @@
  * @return The number of disk images, or 0 if disk control is not available.
  */
 unsigned SDL_Libretro_GetDiskCount(const SDL_Libretro* lr) {
-
     if (!SDL_Libretro_IsGameReady(lr) || !lr->core.disk_control.get_num_images) return 0;
     return lr->core.disk_control.get_num_images();
 }
@@ -276,19 +275,23 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
     bool ok = false;
     if (!SDL_Libretro_IsGameReady(lr) || !dst) {
         SDL_SetError("[SDL_Libretro] Invalid SaveState_IO arguments");
-    } else {
+    }
+    else {
         size_t size = lr->core.symbols.retro_serialize_size();
         if (size == 0) {
             SDL_SetError("[SDL_Libretro] Core does not support save states");
-        } else {
+        }
+        else {
             void* data = SDL_malloc(size);
             if (!data) {
                 SDL_SetError("[SDL_Libretro] Failed to allocate save state buffer");
-            } else {
+            }
+            else {
                 if (lr->core.symbols.retro_serialize(data, size)) {
                     // On a short write, SDL_WriteIO sets its own error.
                     ok = (SDL_WriteIO(dst, data, size) == size);
-                } else {
+                }
+                else {
                     SDL_SetError("[SDL_Libretro] Core failed to serialize state");
                 }
                 SDL_free(data);
@@ -325,9 +328,11 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
     bool ok = false;
     if (size == 0) {
         SDL_SetError("[SDL_Libretro] Save state is empty");
-    } else if (!lr->core.symbols.retro_unserialize(data, size)) {
+    }
+    else if (!lr->core.symbols.retro_unserialize(data, size)) {
         SDL_SetError("[SDL_Libretro] Core rejected save state");
-    } else {
+    }
+    else {
         ok = true;
     }
     SDL_free(data);
@@ -457,9 +462,7 @@ unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr) {
  * @param addrspace receives the address-space label (may be NULL itself), or NULL.
  * @returns true on success, false if the index is out of range or no core is loaded.
  */
-bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index,
-    Uint64* flags, void** ptr, size_t* offset, size_t* start,
-    size_t* select, size_t* disconnect, size_t* len, const char** addrspace) {
+bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index, Uint64* flags, void** ptr, size_t* offset, size_t* start, size_t* select, size_t* disconnect, size_t* len, const char** addrspace) {
     if (!SDL_Libretro_IsGameReady(lr) || index >= lr->core.memoryMapDescriptorCount) {
         return false;
     }
@@ -508,7 +511,8 @@ void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t*
         // Does this descriptor's address space contain `address`?
         if (d->select != 0) {
             if (((address ^ d->start) & d->select) != 0) continue;
-        } else if (address < d->start || (address - d->start) >= d->len) {
+        }
+        else if (address < d->start || (address - d->start) >= d->len) {
             continue;
         }
 
@@ -531,11 +535,11 @@ void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t*
  */
 static const char* SDL_Libretro_GetMemoryTypeName(unsigned memoryType) {
     switch (memoryType) {
-        case RETRO_MEMORY_SAVE_RAM:   return "SRAM";
-        case RETRO_MEMORY_RTC:        return "RTC";
+        case RETRO_MEMORY_SAVE_RAM: return "SRAM";
+        case RETRO_MEMORY_RTC: return "RTC";
         case RETRO_MEMORY_SYSTEM_RAM: return "system RAM";
-        case RETRO_MEMORY_VIDEO_RAM:  return "video RAM";
-        default:                      return "memory";
+        case RETRO_MEMORY_VIDEO_RAM: return "video RAM";
+        default: return "memory";
     }
 }
 
@@ -554,12 +558,14 @@ bool SDL_Libretro_SaveMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStr
     bool ok = false;
     if (!lr || !lr->core.gameLoaded || !dst) {
         SDL_SetError("[SDL_Libretro] Invalid SaveMemory_IO arguments");
-    } else {
+    }
+    else {
         size_t size = 0;
         void* mem = SDL_Libretro_GetMemoryData(lr, memoryType, &size);
         if (!mem || size == 0) {
             ok = true; // core has no such memory; nothing to save
-        } else {
+        }
+        else {
             ok = (SDL_WriteIO(dst, mem, size) == size);
         }
     }
@@ -593,8 +599,7 @@ bool SDL_Libretro_SaveMemory(SDL_Libretro* lr, unsigned memoryType, const char* 
     if (!io) return false;
     bool ok = SDL_Libretro_SaveMemory_IO(lr, memoryType, io, true);
     if (ok) {
-        SDL_Log("[SDL_Libretro] %s saved to %s (%zu bytes)",
-            SDL_Libretro_GetMemoryTypeName(memoryType), file, size);
+        SDL_Log("[SDL_Libretro] %s saved to %s (%zu bytes)", SDL_Libretro_GetMemoryTypeName(memoryType), file, size);
     }
     return ok;
 }
@@ -634,10 +639,7 @@ bool SDL_Libretro_LoadMemory_IO(SDL_Libretro* lr, unsigned memoryType, SDL_IOStr
 
     // A size mismatch is the usual cause of a save that loads only partially.
     if (fileSize != capacity) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "[SDL_Libretro] %s size mismatch (file %zu bytes, region %zu bytes); loading %zu",
-            SDL_Libretro_GetMemoryTypeName(memoryType), fileSize, capacity,
-            fileSize < capacity ? fileSize : capacity);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s size mismatch (file %zu bytes, region %zu bytes); loading %zu", SDL_Libretro_GetMemoryTypeName(memoryType), fileSize, capacity, fileSize < capacity ? fileSize : capacity);
     }
 
     // SetMemoryData clamps to the region capacity.
@@ -665,8 +667,7 @@ bool SDL_Libretro_LoadMemory(SDL_Libretro* lr, unsigned memoryType, const char* 
     if (!io) return false;
     bool ok = SDL_Libretro_LoadMemory_IO(lr, memoryType, io, true);
     if (ok) {
-        SDL_Log("[SDL_Libretro] %s loaded from %s",
-            SDL_Libretro_GetMemoryTypeName(memoryType), file);
+        SDL_Log("[SDL_Libretro] %s loaded from %s", SDL_Libretro_GetMemoryTypeName(memoryType), file);
     }
     return ok;
 }
@@ -761,19 +762,27 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
             i += run;
             while (run > 0) {
                 if (run <= 127) {
-                    if (out) { if (op >= outCap) return 0; out[op] = (unsigned char)run; }
+                    if (out) {
+                        if (op >= outCap) return 0;
+                        out[op] = (unsigned char)run;
+                    }
                     op++;
                     run = 0;
-                } else if (run < 255) {
+                }
+                else if (run < 255) {
                     // Two short skips (2 bytes) beat one extended skip (3)
-                    if (out) { if (op >= outCap) return 0; out[op] = 127; }
+                    if (out) {
+                        if (op >= outCap) return 0;
+                        out[op] = 127;
+                    }
                     op++;
                     run -= 127;
-                } else {
+                }
+                else {
                     size_t chunk = run > 65535 ? 65535 : run;
                     if (out) {
                         if (op + 3 > outCap) return 0;
-                        out[op]     = 0x00;
+                        out[op] = 0x00;
                         out[op + 1] = (unsigned char)(chunk & 0xFF);
                         out[op + 2] = (unsigned char)(chunk >> 8);
                     }
@@ -781,7 +790,8 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
                     run -= chunk;
                 }
             }
-        } else {
+        }
+        else {
             // Literal segment: a span of differing bytes that absorbs any matching gaps shorter than kMinSkip (folded as zero XOR bytes).
             size_t segStart = i;
             size_t segEnd = i;
@@ -795,7 +805,7 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
                 if ((j - gapStart) >= kMinSkip || j >= len) break;
             }
             i = segEnd;
-            for (size_t pos = segStart; pos < segEnd; ) {
+            for (size_t pos = segStart; pos < segEnd;) {
                 size_t chunk = segEnd - pos;
                 if (chunk > 128) chunk = 128;
                 if (out) {
@@ -832,9 +842,11 @@ static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t de
             size_t skip = delta[dp] | ((size_t)delta[dp + 1] << 8);
             dp += 2;
             sp += skip;
-        } else if (tag <= 0x7F) {
+        }
+        else if (tag <= 0x7F) {
             sp += tag;
-        } else {
+        }
+        else {
             size_t count = (tag & 0x7F) + 1;
             if (dp + count > deltaLen || sp + count > stateLen) return false;
             for (size_t j = 0; j < count; j++)
@@ -896,8 +908,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
 
     // Cores that flag their state as incomplete warn the frontend not to rely on it for frame-sensitive features (netplay, rerecording).
     if (lr->core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_INCOMPLETE) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "[SDL_Libretro] Core reports incomplete serialization, so rewind may be unreliable");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core reports incomplete serialization, so rewind may be unreliable");
     }
 
     // Initialize the rewind slots.
@@ -1121,8 +1132,11 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     // state both times; for multi-megabyte states (e.g. PSX) that second pass
     // dominated capture cost. The copy here is only of the compressed delta.
     size_t storeSize = SDL_Libretro_RewindEncodeDelta(
-        lr->rewindScratch, lr->rewindReference, lr->rewindSlotSize,
-        lr->rewindEncodeScratch, SDL_Libretro_RewindMaxEncodedSize(lr->rewindSlotSize));
+        lr->rewindScratch,
+        lr->rewindReference,
+        lr->rewindSlotSize,
+        lr->rewindEncodeScratch,
+        SDL_Libretro_RewindMaxEncodedSize(lr->rewindSlotSize));
     if (storeSize == 0) return;
 
     // Reuse the slot's existing allocation when it's already big enough; only (re)allocate when the snapshot needs more room. At steady state this stops allocating entirely, avoiding a malloc/free on every captured frame.
@@ -1201,8 +1215,7 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
     if (!entry->data || entry->length == 0) return false;
 
 #ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
-    bool reconstructed = SDL_Libretro_RewindDecodeDelta(entry->data, entry->length,
-        lr->rewindReference, lr->rewindSlotSize);
+    bool reconstructed = SDL_Libretro_RewindDecodeDelta(entry->data, entry->length, lr->rewindReference, lr->rewindSlotSize);
 #else
     // Full-state mode: the entry is the previous state verbatim.
     bool reconstructed = (entry->length == lr->rewindSlotSize);

@@ -44,9 +44,7 @@ static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const float* samples, int 
     if (queued >= lr->core.audioQueueThresholdBytes) {
         // Dropping is expected back-pressure when ramping up, so this can be debug noise.
         if (lr->core.audioDropWarnCount < 10) {
-            SDL_LogDebug(SDL_LOG_CATEGORY_AUDIO,
-                "[SDL_Libretro] Audio queue full with %d bytes queued, dropping %d bytes",
-                queued, bytes);
+            SDL_LogDebug(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio queue full with %d bytes queued, dropping %d bytes", queued, bytes);
             lr->core.audioDropWarnCount++;
         }
         return;

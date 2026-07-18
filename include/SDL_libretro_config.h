@@ -99,7 +99,7 @@ bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app)
 /**
  * Callback to set the given config option as a core option.
  */
-static void SDL_Libretro_SetCoreConfigOption(void *userdata, const SDL_ini *ini, const char* section, const char *key, const char *value) {
+static void SDL_Libretro_SetCoreConfigOption(void* userdata, const SDL_ini* ini, const char* section, const char* key, const char* value) {
     (void)ini;
     (void)section;
     SDL_Libretro_SetOptionValue((SDL_Libretro*)userdata, key, value);

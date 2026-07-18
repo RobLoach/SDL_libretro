@@ -4,7 +4,7 @@
  * @file SDL_libretro_env.h
  */
 
- #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_ENV_IMPL_ONCE)
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_ENV_IMPL_ONCE)
 #define SDL_LIBRETRO_ENV_IMPL_ONCE
 
 #include <stdarg.h>
@@ -28,8 +28,8 @@ static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...
     if (len > 0 && buf[len - 1] == '\n') buf[len - 1] = '\0';
 
     switch (level) {
-        case RETRO_LOG_INFO:  SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
-        case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
+        case RETRO_LOG_INFO: SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
+        case RETRO_LOG_WARN: SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
         case RETRO_LOG_DEBUG:
         default: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] %s", buf); break;
@@ -69,9 +69,7 @@ static void SDL_Libretro_PerfRegister(struct retro_perf_counter* counter) {
     }
 
     if (lr->core.perfCounterCount >= SDL_arraysize(lr->core.perfCounters)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                    "PERF: counter registry full (%u), dropping '%s'",
-                    lr->core.perfCounterCount, counter->ident ? counter->ident : "?");
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "PERF: counter registry full (%u), dropping '%s'", lr->core.perfCounterCount, counter->ident ? counter->ident : "?");
         return;
     }
 
@@ -102,11 +100,7 @@ static void SDL_Libretro_PerfLog(void) {
         if (!counter) continue;
 
         double ms = freq ? ((double)counter->total / (double)freq) * 1000.0 : 0.0;
-        SDL_Log("[PERF] %s: %llu calls, %llu ticks (%.4f ms)",
-                counter->ident ? counter->ident : "?",
-                (unsigned long long)counter->call_cnt,
-                (unsigned long long)counter->total,
-                ms);
+        SDL_Log("[PERF] %s: %llu calls, %llu ticks (%.4f ms)", counter->ident ? counter->ident : "?", (unsigned long long)counter->call_cnt, (unsigned long long)counter->total, ms);
     }
 }
 
@@ -117,7 +111,8 @@ static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect 
     float normalized = (float)strength / 65535.0f;
     if (effect == RETRO_RUMBLE_STRONG) {
         lr->core.rumbleStrong[port] = normalized;
-    } else {
+    }
+    else {
         lr->core.rumbleWeak[port] = normalized;
     }
 
@@ -136,7 +131,8 @@ static void SDL_Libretro_SetLEDState(int led, int state) {
     Uint8 v = state ? 255 : 0;
     if (led >= 0 && led < SDL_LIBRETRO_MAX_GAMEPADS) {
         if (lr->gamepads[led]) SDL_SetGamepadLED(lr->gamepads[led], v, v, v);
-    } else {
+    }
+    else {
         for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
             if (lr->gamepads[i]) SDL_SetGamepadLED(lr->gamepads[i], v, v, v);
         }
@@ -395,11 +391,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                         defaultVal = opts;
                     }
                 }
-                SDL_Libretro_InitCoreOption(lr, var->key,
-                    defaultVal,
-                    label,
-                    values,
-                    NULL, NULL);
+                SDL_Libretro_InitCoreOption(lr, var->key, defaultVal, label, values, NULL, NULL);
                 SDL_free(values);
                 SDL_free(valueBuffer);
             }
@@ -560,12 +552,12 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (lr->core.fastforwardOverride.fastforward) {
                 float ratio = lr->core.fastforwardOverride.ratio;
                 lr->core.speed = ratio > 1.0f ? ratio : 10.0f;
-            } else {
+            }
+            else {
                 lr->core.speed = 1.0f;
             }
             if (lr->core.fastforwardOverride.notification) {
-                SDL_Libretro_SetMessage(lr, lr->core.fastforwardOverride.fastforward
-                    ? "Fast-Forward" : "Normal Speed", 3.0);
+                SDL_Libretro_SetMessage(lr, lr->core.fastforwardOverride.fastforward ? "Fast-Forward" : "Normal Speed", 3.0);
             }
             return true;
         }
@@ -672,7 +664,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                         subs[i].num_roms = info[i].num_roms;
                         if (info[i].num_roms > 0 && info[i].roms) {
                             struct retro_subsystem_rom_info* roms = (struct retro_subsystem_rom_info*)SDL_calloc(
-                                info[i].num_roms, sizeof(*roms));
+                                info[i].num_roms,
+                                sizeof(*roms));
                             subs[i].roms = roms;
                             if (roms) {
                                 for (unsigned r = 0; r < info[i].num_roms; r++) {
@@ -684,7 +677,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                                     roms[r].required = info[i].roms[r].required;
                                     if (info[i].roms[r].num_memory > 0 && info[i].roms[r].memory) {
                                         struct retro_subsystem_memory_info* memory = (struct retro_subsystem_memory_info*)SDL_calloc(
-                                            info[i].roms[r].num_memory, sizeof(*memory));
+                                            info[i].roms[r].num_memory,
+                                            sizeof(*memory));
                                         roms[r].memory = memory;
                                         if (memory) {
                                             roms[r].num_memory = info[i].roms[r].num_memory;
@@ -810,13 +804,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 (struct retro_core_option_v2_definition*)SDL_calloc(count + 1, sizeof(*v2defs));
             if (!v2defs) return false;
             for (unsigned i = 0; i < count; i++) {
-                v2defs[i].key           = defs[i].key;
-                v2defs[i].desc          = defs[i].desc;
-                v2defs[i].info          = defs[i].info;
+                v2defs[i].key = defs[i].key;
+                v2defs[i].desc = defs[i].desc;
+                v2defs[i].info = defs[i].info;
                 v2defs[i].default_value = defs[i].default_value;
                 SDL_memcpy(v2defs[i].values, defs[i].values, sizeof(defs[i].values));
             }
-            struct retro_core_options_v2 opts = { NULL, v2defs };
+            struct retro_core_options_v2 opts = {NULL, v2defs};
             bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts);
             SDL_free(v2defs);
             return result;
@@ -833,13 +827,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 (struct retro_core_option_v2_definition*)SDL_calloc(count + 1, sizeof(*v2defs));
             if (!v2defs) return false;
             for (unsigned i = 0; i < count; i++) {
-                v2defs[i].key           = defs[i].key;
-                v2defs[i].desc          = defs[i].desc;
-                v2defs[i].info          = defs[i].info;
+                v2defs[i].key = defs[i].key;
+                v2defs[i].desc = defs[i].desc;
+                v2defs[i].info = defs[i].info;
                 v2defs[i].default_value = defs[i].default_value;
                 SDL_memcpy(v2defs[i].values, defs[i].values, sizeof(defs[i].values));
             }
-            struct retro_core_options_v2 opts = { NULL, v2defs };
+            struct retro_core_options_v2 opts = {NULL, v2defs};
             bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts);
             SDL_free(v2defs);
             return result;
@@ -870,8 +864,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             // Register the option categories (if any) before the options that reference them.
             if (opts->categories) {
                 for (unsigned c = 0; opts->categories[c].key; c++) {
-                    SDL_Libretro_InitCoreOptionCategory(lr, opts->categories[c].key,
-                        opts->categories[c].desc, opts->categories[c].info);
+                    SDL_Libretro_InitCoreOptionCategory(lr, opts->categories[c].key, opts->categories[c].desc, opts->categories[c].info);
                 }
             }
 
@@ -881,12 +874,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 // Prefer the *_categorized text when the option belongs to a category.
                 const char* desc = SDL_Libretro_PickCoreOptionText(def->desc, def->desc_categorized, def->category_key);
                 const char* info = SDL_Libretro_PickCoreOptionText(def->info, def->info_categorized, def->category_key);
-                SDL_Libretro_InitCoreOption(lr, def->key,
-                    defaultVal,
-                    desc,
-                    def->values,
-                    info,
-                    def->category_key);
+                SDL_Libretro_InitCoreOption(lr, def->key, defaultVal, desc, def->values, info, def->category_key);
             }
             return true;
         }
@@ -924,9 +912,9 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (msg->target == RETRO_MESSAGE_TARGET_LOG || msg->target == RETRO_MESSAGE_TARGET_ALL) {
                 switch (msg->level) {
                     case RETRO_LOG_DEBUG: SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
-                    case RETRO_LOG_WARN:  SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    case RETRO_LOG_WARN: SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
                     case RETRO_LOG_ERROR: SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
-                    default:              SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
+                    default: SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[Core] %s", msg->msg); break;
                 }
             }
 
@@ -977,9 +965,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!data) return true;
             struct retro_vfs_interface_info* info = (struct retro_vfs_interface_info*)data;
             if (info->required_interface_version > 4) {
-                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-                            "[SDL_Libretro] GET_VFS_INTERFACE: unsupported required_interface_version %u",
-                            info->required_interface_version);
+                SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] GET_VFS_INTERFACE: unsupported required_interface_version %u", info->required_interface_version);
                 return false;
             }
 
@@ -1037,10 +1023,12 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (lr->core.audioStream && SDL_GetAudioStreamFormat(lr->core.audioStream, NULL, &spec) && spec.freq > 0) {
                 // Active Device
                 *(unsigned*)data = (unsigned)spec.freq;
-            } else if (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL) && spec.freq > 0) {
+            }
+            else if (SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL) && spec.freq > 0) {
                 // Default Device
                 *(unsigned*)data = (unsigned)spec.freq;
-            } else {
+            }
+            else {
                 // Desired Frequency
                 *(unsigned*)data = SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE;
             }
