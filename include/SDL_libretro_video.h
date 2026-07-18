@@ -4,7 +4,7 @@
  * @file SDL_libretro_video.h
  */
 
- #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
+#if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_VIDEO_IMPL_ONCE)
 #define SDL_LIBRETRO_VIDEO_IMPL_ONCE
 
 /**
@@ -15,9 +15,9 @@
 static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt) {
     switch (fmt) {
         case RETRO_PIXEL_FORMAT_XRGB8888: return SDL_PIXELFORMAT_XRGB8888;
-        case RETRO_PIXEL_FORMAT_RGB565:   return SDL_PIXELFORMAT_RGB565;
+        case RETRO_PIXEL_FORMAT_RGB565: return SDL_PIXELFORMAT_RGB565;
         case RETRO_PIXEL_FORMAT_0RGB1555: return SDL_PIXELFORMAT_XRGB1555;
-        default:                          return SDL_PIXELFORMAT_RGB565;
+        default: return SDL_PIXELFORMAT_RGB565;
     }
 }
 
@@ -56,10 +56,7 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
 
     // Build the Texture.
-    lr->core.texture = SDL_CreateTexture(lr->renderer,
-        SDL_Libretro_GetTextureFormat(lr->core.pixelFormat),
-        SDL_TEXTUREACCESS_STREAMING,
-        lr->core.width, lr->core.height);
+    lr->core.texture = SDL_CreateTexture(lr->renderer, SDL_Libretro_GetTextureFormat(lr->core.pixelFormat), SDL_TEXTUREACCESS_STREAMING, lr->core.width, lr->core.height);
 
     if (!lr->core.texture) {
         SDL_SetError("[SDL_Libretro] Failed to create texture: %s", SDL_GetError());
@@ -67,11 +64,11 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
     lr->core.videoReinitPending = false;
 
-    // Scale Mode
-    #if SDL_VERSION_ATLEAST(3, 4, 0)
+// Scale Mode
+#if SDL_VERSION_ATLEAST(3, 4, 0)
     if (lr->core.textureScaleMode == SDL_SCALEMODE_NEAREST)
         lr->core.textureScaleMode = SDL_SCALEMODE_PIXELART; // SDL >= 3.4
-    #endif
+#endif
     SDL_SetTextureScaleMode(lr->core.texture, lr->core.textureScaleMode);
     return true;
 }
@@ -129,7 +126,8 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     if (pitch == (size_t)lockPitch) {
         // The strides match, so we can do a straight copy.
         SDL_memcpy(dst, src, rowBytes * height);
-    } else {
+    }
+    else {
         for (size_t y = 0; y < height; y++) {
             SDL_memcpy(dst + y * lockPitch, src + y * pitch, rowBytes);
         }
@@ -196,9 +194,7 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
     int w = (int)lr->core.width;
     int h = (int)lr->core.height;
 
-    SDL_Texture* target = SDL_CreateTexture(renderer,
-        SDL_Libretro_GetTextureFormat(lr->core.pixelFormat),
-        SDL_TEXTUREACCESS_TARGET, w, h);
+    SDL_Texture* target = SDL_CreateTexture(renderer, SDL_Libretro_GetTextureFormat(lr->core.pixelFormat), SDL_TEXTUREACCESS_TARGET, w, h);
     if (!target) return NULL;
 
     SDL_Texture* prevTarget = SDL_GetRenderTarget(renderer);
@@ -242,7 +238,8 @@ static void SDL_Libretro_FitRect(const SDL_Libretro* lr, SDL_FRect* rect, bool r
         if (aspect > avail.w / avail.h) {
             rect->h = avail.w / aspect;
             rect->y = avail.y + (avail.h - rect->h) * 0.5f;
-        } else {
+        }
+        else {
             rect->w = avail.h * aspect;
             rect->x = avail.x + (avail.w - rect->w) * 0.5f;
         }
@@ -285,10 +282,11 @@ bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRe
     // Determine the destination area: the given rect, or the full render output.
     if (dstRect) {
         lr->core.renderDstRect = *dstRect;
-    } else {
+    }
+    else {
         int w, h;
         if (!SDL_GetRenderOutputSize(renderer, &w, &h)) return false;
-        lr->core.renderDstRect = (SDL_FRect){ 0.0f, 0.0f, (float)w, (float)h };
+        lr->core.renderDstRect = (SDL_FRect){0.0f, 0.0f, (float)w, (float)h};
     }
 
     // A 90/270 turn swaps the image's on-screen extents.

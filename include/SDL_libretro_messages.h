@@ -164,8 +164,7 @@ unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr) {
  *
  * @param index The index of the message to retrieve. If -1, will get the most relevent message.
  */
-bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index,
-    const char** msg, int* progress, int* type) {
+bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index, const char** msg, int* progress, int* type) {
     if (!lr) return false;
     if (index < 0) {
         index = SDL_Libretro_OsdFindTop(lr);

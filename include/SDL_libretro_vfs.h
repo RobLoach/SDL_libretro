@@ -67,7 +67,7 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_WrapIO(SDL_IOStream* io, c
         SDL_CloseIO(io);
         return NULL;
     }
-    h->io   = io;
+    h->io = io;
     h->path = SDL_strdup(path);
     h->mode = mode;
     return h;
@@ -86,15 +86,17 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_Open(const char* path, uns
 
     const char* sdlMode;
     bool update = (mode & RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING) != 0;
-    bool read   = (mode & RETRO_VFS_FILE_ACCESS_READ)  != 0;
-    bool write  = (mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
+    bool read = (mode & RETRO_VFS_FILE_ACCESS_READ) != 0;
+    bool write = (mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
 
     if (read && write) {
         sdlMode = update ? "r+b" : "w+b";
-    } else if (write) {
+    }
+    else if (write) {
         // UPDATE_EXISTING must preserve existing contents rather than truncate.
         sdlMode = update ? "r+b" : "wb";
-    } else {
+    }
+    else {
         sdlMode = "rb";
     }
 
@@ -143,9 +145,9 @@ static int64_t SDL_Libretro_VFS_Seek(struct retro_vfs_file_handle* stream, int64
     if (!stream) return -1;
     SDL_IOWhence whence;
     switch (seek_position) {
-        case RETRO_VFS_SEEK_POSITION_START:   whence = SDL_IO_SEEK_SET; break;
+        case RETRO_VFS_SEEK_POSITION_START: whence = SDL_IO_SEEK_SET; break;
         case RETRO_VFS_SEEK_POSITION_CURRENT: whence = SDL_IO_SEEK_CUR; break;
-        case RETRO_VFS_SEEK_POSITION_END:     whence = SDL_IO_SEEK_END; break;
+        case RETRO_VFS_SEEK_POSITION_END: whence = SDL_IO_SEEK_END; break;
         default: return -1;
     }
     return SDL_SeekIO(stream->io, offset, whence);
@@ -294,9 +296,7 @@ static int SDL_Libretro_VFS_Stat64(const char* path, int64_t* size) {
  */
 static int32_t SDL_Libretro_VFS_ClampStatSize(const char* path, int64_t size) {
     if (size > SDL_MAX_SINT32) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "[SDL_Libretro] VFS stat size %" SDL_PRIs64 " for '%s' exceeds int32. Clamping to SDL_MAX_SINT32.",
-            size, path);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] VFS stat size %" SDL_PRIs64 " for '%s' exceeds int32. Clamping to SDL_MAX_SINT32.", size, path);
         return SDL_MAX_SINT32;
     }
     return (int32_t)size;
@@ -350,7 +350,7 @@ static SDL_EnumerationResult SDL_Libretro_DirCallback(void* userdata, const char
         // Store each successful realloc back immediately: realloc frees the old block, so on partial failure the cleanup path must not be left holding a dangling pointer (use-after-free / double-free).
         char** newNames = (char**)SDL_realloc(ctx->names, newCap * sizeof(char*));
         if (newNames) ctx->names = newNames;
-        bool* newIsDir  = (bool*)SDL_realloc(ctx->isDir,  newCap * sizeof(bool));
+        bool* newIsDir = (bool*)SDL_realloc(ctx->isDir, newCap * sizeof(bool));
         if (newIsDir) ctx->isDir = newIsDir;
         if (!newNames || !newIsDir) return SDL_ENUM_FAILURE;
         ctx->capacity = newCap;
@@ -394,7 +394,7 @@ static struct retro_vfs_dir_handle* SDL_Libretro_VFS_Opendir(const char* dir, bo
         SDL_free(ctx.isDir);
         return NULL;
     }
-    h->dir   = SDL_strdup(dir);
+    h->dir = SDL_strdup(dir);
     h->names = ctx.names;
     h->isDir = ctx.isDir;
     h->count = ctx.count;

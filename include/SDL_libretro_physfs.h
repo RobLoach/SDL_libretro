@@ -104,7 +104,7 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
 
     struct retro_vfs_dir_handle* h = (struct retro_vfs_dir_handle*)SDL_calloc(1, sizeof(*h));
     char** names = count > 0 ? (char**)SDL_calloc(count, sizeof(char*)) : NULL;
-    bool* isDir  = count > 0 ? (bool*)SDL_calloc(count, sizeof(bool)) : NULL;
+    bool* isDir = count > 0 ? (bool*)SDL_calloc(count, sizeof(bool)) : NULL;
     if (!h || (count > 0 && (!names || !isDir))) {
         SDL_free(h);
         SDL_free(names);
@@ -125,7 +125,7 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
     }
     PHYSFS_freeList(entries);
 
-    h->dir   = SDL_strdup(dir);
+    h->dir = SDL_strdup(dir);
     h->names = names;
     h->isDir = isDir;
     h->count = stored;
@@ -169,8 +169,8 @@ bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
     }
 
     struct retro_vfs_interface vfs = {0};
-    vfs.open    = SDL_Libretro_PhysFS_VFS_Open;
-    vfs.stat    = SDL_Libretro_PhysFS_VFS_Stat;
+    vfs.open = SDL_Libretro_PhysFS_VFS_Open;
+    vfs.stat = SDL_Libretro_PhysFS_VFS_Stat;
     vfs.stat_64 = SDL_Libretro_PhysFS_VFS_Stat64;
     vfs.opendir = SDL_Libretro_PhysFS_VFS_Opendir;
     SDL_Libretro_SetVFS(lr, &vfs);
@@ -220,7 +220,8 @@ static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysF
         if (!PHYSFS_stat(full, &st)) continue;
         if (st.filetype == PHYSFS_FILETYPE_DIRECTORY) {
             SDL_Libretro_PhysFS_CollectFiles(full, list);
-        } else if (st.filetype == PHYSFS_FILETYPE_REGULAR) {
+        }
+        else if (st.filetype == PHYSFS_FILETYPE_REGULAR) {
             if (list->count >= list->capacity) {
                 int newCapacity = list->capacity > 0 ? list->capacity * 2 : 16;
                 char** grown = (char**)SDL_realloc(list->paths, (size_t)newCapacity * sizeof(char*));
@@ -272,7 +273,7 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archiv
     const char* found = NULL;
 
     // Pass 1: Disc metadata, gated on the core actually supporting it.
-    static const char* discExts[] = { "m3u", "cue" };
+    static const char* discExts[] = {"m3u", "cue"};
     for (size_t d = 0; !found && d < SDL_arraysize(discExts); d++) {
         if (hasExts && !SDL_Libretro_ExtensionInList(discExts[d], validExts)) continue;
         for (int i = 0; !found && i < list.count; i++) {
@@ -298,7 +299,8 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archiv
             if (SDL_Libretro_ExtensionInList(ext, validExts)) {
                 found = list.paths[i];
             }
-        } else {
+        }
+        else {
             for (unsigned c = 0; c < lr->coreLibraryCount; c++) {
                 if (SDL_Libretro_ExtensionInList(ext, lr->coreLibrary[c].supported_extensions)) {
                     found = list.paths[i];
@@ -370,8 +372,8 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
             return SDL_Libretro_LoadGameFile(lr, gamePath);
         }
     }
-    // Skip this for now, since it will force using .zip core for all content.
-    #if 0
+// Skip this for now, since it will force using .zip core for all content.
+#if 0
     else {
         for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
             if (SDL_Libretro_ExtensionInList("zip", lr->coreLibrary[i].supported_extensions)) {
@@ -379,7 +381,7 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
             }
         }
     }
-    #endif
+#endif
 
     // Mount the .zip file.
     if (!SDL_PhysFS_Mount(gamePath, SDL_LIBRETRO_PHYSFS_MOUNT_POINT)) {
@@ -410,7 +412,8 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
         // VFS-aware full-path core: pass the virtual path; the PhysFS-backed
         // VFS serves it straight out of the mount.
         result = SDL_Libretro_LoadGameFile(lr, virtualPath);
-    } else {
+    }
+    else {
         // Byte-oriented cores get the content bytes.
         SDL_IOStream* io = SDL_PhysFS_IOFromFile(virtualPath);
         result = io != NULL && SDL_Libretro_LoadGame_IO(lr, io, virtualPath, true);
