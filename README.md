@@ -8,14 +8,10 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Audio via `SDL_AudioStream` with dynamic rate control
 - Input with gamepad, keyboard, mouse, lightgun, or pointer
 - Save states and SRAM
-- Memory access and memory-map descriptors (cheats, debuggers, RAM watching)
 - Core options
-- Fast-forward and slow-motion
-- Rewind with delta compression
-- Rumble
-- Sensors (accelerometer, gyroscope)
+- Fast-forward, slow-motion, rewind
+- Rumble, accelerometer, gyroscope
 - Microphone input
-- LED interface
 - Disk control for multi-disc games
 - Virtual file system
 - Config system for saving and loading settings
