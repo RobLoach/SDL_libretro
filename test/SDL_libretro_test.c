@@ -1989,6 +1989,19 @@ static int SDLCALL test_Menu(void *arg) {
         }
         SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
 
+        // About page without a loaded core: frontend lines fill, core and
+        // content lines hide.
+        SDL_Libretro_MenuUpdateAbout(menu);
+        SDLTest_AssertCheck(SDL_strncmp(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_VERSION], "SDL_libretro ", 13) == 0,
+            "About shows the SDL_libretro version");
+        SDLTest_AssertCheck(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SDL][0] != '\0', "About shows the SDL version");
+        SDLTest_AssertCheck(menu->aboutLabels[SDL_LIBRETRO_MENU_ABOUT_RENDERER]->visible == nk_true,
+            "About renderer line is visible");
+        SDLTest_AssertCheck(menu->aboutLabels[SDL_LIBRETRO_MENU_ABOUT_CORE]->visible == nk_false,
+            "About core line hides without a core");
+        SDLTest_AssertCheck(menu->aboutLabels[SDL_LIBRETRO_MENU_ABOUT_CONTENT]->visible == nk_false,
+            "About content line hides without a game");
+
         // With nothing to run, the menu opens itself.
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
@@ -2018,6 +2031,17 @@ static int SDLCALL test_Menu(void *arg) {
             SDL_Libretro_RenderMenu(menu);
         }
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
+
+        // About page with a loaded core: core and content lines fill in.
+        SDL_Libretro_MenuUpdateAbout(menu);
+        SDLTest_AssertCheck(SDL_strncmp(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CORE], "Core: ", 6) == 0,
+            "About shows the loaded core");
+        SDLTest_AssertCheck(menu->aboutLabels[SDL_LIBRETRO_MENU_ABOUT_CORE]->visible == nk_true,
+            "About core line shows with a core");
+        SDLTest_AssertCheck(menu->aboutLabels[SDL_LIBRETRO_MENU_ABOUT_CONTENT]->visible == nk_true,
+            "About content line shows with a game");
+        SDLTest_AssertCheck(SDL_strncmp(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SIZE], "Size: ", 6) == 0,
+            "About shows the video size");
 #endif
 
         SDL_Libretro_DestroyMenu(menu);
