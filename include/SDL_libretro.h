@@ -148,6 +148,8 @@ double SDL_Libretro_GetFPS(const SDL_Libretro* lr);
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr);
 bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode);
 SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr);
+bool SDL_Libretro_SetTextureScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode);
+SDL_ScaleMode SDL_Libretro_GetTextureScaleMode(const SDL_Libretro* lr);
 
 // Audio
 

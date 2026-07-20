@@ -177,6 +177,11 @@ struct SDL_LibretroMenu {
     int fitModeIndex;
     int styleIndex;
     SDL_LibretroMenuStyle style; /** The active menu style. */
+    int filterIndex; /** 0 = Nearest (Pixel Art where available), 1 = Linear. */
+    nk_bool fullscreenChecked;
+    nk_bool vsyncChecked;
+    nk_bool muteChecked;
+    float preMuteVolume; /** Volume to restore when unmuting. */
 
     // Load Game
     char loadGamePath[SDL_LIBRETRO_MAX_PATH];
@@ -372,6 +377,62 @@ static void SDL_Libretro_MenuFitModeChanged(nk_console* widget, void* user_data)
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetFitMode(menu->lr, (SDL_LibretroFitMode)menu->fitModeIndex);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuFilterChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetTextureScaleMode(menu->lr, menu->filterIndex == 1 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuFullscreenChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_SetWindowFullscreen(menu->lr->window, menu->fullscreenChecked == nk_true);
+    if (menu->lr->ini != NULL) {
+        INI_SetBoolean(menu->lr->ini, NULL, "menufullscreen", menu->fullscreenChecked == nk_true);
+    }
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuVSyncChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_SetRenderVSync(menu->lr->renderer, menu->vsyncChecked == nk_true ? 1 : 0);
+    if (menu->lr->ini != NULL) {
+        INI_SetBoolean(menu->lr->ini, NULL, "menuvsync", menu->vsyncChecked == nk_true);
+    }
+}
+
+/**
+ * Mute drops the volume to zero and restores the previous level on unmute.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuMuteChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro* lr = menu->lr;
+    if (menu->muteChecked) {
+        menu->preMuteVolume = SDL_Libretro_GetVolume(lr);
+        SDL_Libretro_SetVolume(lr, 0.0f);
+    }
+    else {
+        SDL_Libretro_SetVolume(lr, menu->preMuteVolume > 0.0f ? menu->preMuteVolume : 1.0f);
+        menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
+    }
+    if (lr->ini != NULL) {
+        INI_SetBoolean(lr->ini, NULL, "menumuted", menu->muteChecked == nk_true);
+        INI_SetFloat(lr->ini, NULL, "menumutevolume", menu->preMuteVolume);
+    }
 }
 
 /**
@@ -1296,16 +1357,57 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
             nk_console_button_onclick(settings, "Settings", &nk_console_button_back),
             NK_SYMBOL_TRIANGLE_UP);
 
-        menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
-        nk_console* volume = nk_console_property_int(settings, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f);
-        nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVolumeChanged, menu, NULL);
+        // Apply the saved window/audio state before the widgets snapshot it.
+        if (lr->ini != NULL) {
+            if (INI_HasValue(lr->ini, NULL, "menufullscreen")) {
+                SDL_SetWindowFullscreen(lr->window, INI_GetBoolean(lr->ini, NULL, "menufullscreen", false));
+            }
+            if (INI_HasValue(lr->ini, NULL, "menuvsync")) {
+                SDL_SetRenderVSync(lr->renderer, INI_GetBoolean(lr->ini, NULL, "menuvsync", false) ? 1 : 0);
+            }
+            if (INI_GetBoolean(lr->ini, NULL, "menumuted", false)) {
+                menu->muteChecked = nk_true;
+                menu->preMuteVolume = INI_GetFloat(lr->ini, NULL, "menumutevolume", 1.0f);
+                SDL_Libretro_SetVolume(lr, 0.0f);
+            }
+        }
 
-        menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
-        nk_console* fitMode = nk_console_combobox(settings, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex);
-        nk_console_add_event_handler(fitMode, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFitModeChanged, menu, NULL);
+        // Audio & Video
+        nk_console* audioVideo = nk_console_button(settings, "Audio & Video");
+        nk_console_button_set_symbol(audioVideo, NK_SYMBOL_TRIANGLE_RIGHT);
+        {
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(audioVideo, "Audio & Video", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_UP);
 
-        nk_console* theme = nk_console_combobox(settings, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex);
-        nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuStyleChanged, menu, NULL);
+            menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
+            nk_console* volume = nk_console_property_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f);
+            nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVolumeChanged, menu, NULL);
+
+            nk_console* mute = nk_console_checkbox(audioVideo, "Mute", &menu->muteChecked);
+            nk_console_add_event_handler(mute, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuMuteChanged, menu, NULL);
+
+            menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
+            nk_console* fullscreen = nk_console_checkbox(audioVideo, "Fullscreen", &menu->fullscreenChecked);
+            nk_console_add_event_handler(fullscreen, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFullscreenChanged, menu, NULL);
+
+            int vsync = 0;
+            SDL_GetRenderVSync(lr->renderer, &vsync);
+            menu->vsyncChecked = vsync != 0;
+            nk_console* vsyncBox = nk_console_checkbox(audioVideo, "VSync", &menu->vsyncChecked);
+            nk_console_add_event_handler(vsyncBox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVSyncChanged, menu, NULL);
+
+            menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
+            nk_console* filter = nk_console_combobox(audioVideo, "Filter", "Nearest|Linear", '|', &menu->filterIndex);
+            nk_console_add_event_handler(filter, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFilterChanged, menu, NULL);
+
+            menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
+            nk_console* fitMode = nk_console_combobox(audioVideo, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex);
+            nk_console_add_event_handler(fitMode, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFitModeChanged, menu, NULL);
+
+            nk_console* theme = nk_console_combobox(audioVideo, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex);
+            nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuStyleChanged, menu, NULL);
+        }
     }
 
     // Quit
@@ -1452,6 +1554,8 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     if (justOpened) {
         menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
         menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
+        menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
+        menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
     }
 
     int width = 0;
