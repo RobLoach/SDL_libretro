@@ -138,11 +138,7 @@ static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
         const SDL_LibretroOption* option = SDL_Libretro_GetOptionByIndex(lr, i);
         if (!option) continue;
         const char* val = option->value ? option->value : option->defaultValue;
-        // Only set the value in the config if they're different from the defaults.
-        if (option->defaultValue && SDL_strcmp(val, option->defaultValue) == 0) {
-            INI_RemoveKey(lr->ini, section, option->key);
-            continue;
-        }
+        // Save the value in the config even if it matches the default.
         INI_SetString(lr->ini, section, option->key, val);
     }
     return true;
