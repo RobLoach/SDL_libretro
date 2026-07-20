@@ -2018,6 +2018,28 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_DestroyMenu(menu);
     }
 
+    // Theme persistence round-trip through the config file.
+    SDL_RemovePath("menu_test.cfg");
+    SDL_Libretro* lrSave = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lrSave, "menu_test.cfg");
+    SDL_Libretro_SetRenderer(lrSave, renderer);
+    SDL_LibretroMenu* menuSave = SDL_Libretro_CreateMenu(lrSave);
+    if (menuSave != NULL) {
+        SDL_Libretro_SetMenuStyle(menuSave, SDL_LIBRETRO_MENU_STYLE_DRACULA);
+        SDL_Libretro_DestroyMenu(menuSave);
+    }
+    SDL_Libretro_Destroy(lrSave); // Writes the config file.
+
+    SDL_Libretro* lrLoad = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lrLoad, "menu_test.cfg");
+    SDL_Libretro_SetRenderer(lrLoad, renderer);
+    SDL_LibretroMenu* menuLoad = SDL_Libretro_CreateMenu(lrLoad);
+    SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuStyle(menuLoad) == SDL_LIBRETRO_MENU_STYLE_DRACULA,
+        "Menu theme persists through the config file");
+    SDL_Libretro_DestroyMenu(menuLoad);
+    SDL_Libretro_Destroy(lrLoad);
+    SDL_RemovePath("menu_test.cfg");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

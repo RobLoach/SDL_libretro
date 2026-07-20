@@ -90,6 +90,10 @@
 #include SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H
 #include "nuklear_console_sdl.h"
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
 #ifndef SDL_LIBRETRO_MENU_TOGGLE_KEY
 /**
  * The keyboard key that toggles the menu.
@@ -136,6 +140,20 @@ typedef struct SDL_LibretroMenuOptionState {
     char* displayList; /** Pipe-separated labels backing the combobox; owned. */
 } SDL_LibretroMenuOptionState;
 
+/**
+ * Per-port UI state for the "Controllers" submenu.
+ *
+ * @see SDL_LibretroMenuOptionState
+ * @internal
+ */
+typedef struct SDL_LibretroMenuPortState {
+    SDL_LibretroMenu* menu;
+    unsigned port;
+    int selected; /** Selected combobox entry. */
+    char* deviceList; /** Pipe-separated device names backing the combobox; owned. */
+    char label[16]; /** The "Port N" combobox label; must outlive the widget. */
+} SDL_LibretroMenuPortState;
+
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
     struct nk_context* ctx;
@@ -151,6 +169,8 @@ struct SDL_LibretroMenu {
     nk_console* stateRow;
     nk_console* resetButton;
     nk_console* optionsButton;
+    nk_console* controllersButton;
+    nk_console* loadGameButton;
 
     // Settings state the widgets write into.
     int volumePercent;
@@ -167,6 +187,9 @@ struct SDL_LibretroMenu {
     bool optionsStale; /** The Core Options submenu no longer matches the core's options. */
     unsigned builtOptionCount; /** Option count when the submenu was last built. */
     char builtCoreName[128]; /** Core library name when the submenu was last built. */
+
+    // Controllers
+    SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
 };
 
 /**
@@ -185,10 +208,11 @@ static void SDL_Libretro_MenuResumeClicked(nk_console* widget, void* user_data) 
 }
 
 /**
+ * Load the game waiting in loadGamePath, closing the menu on success.
+ *
  * @internal
  */
-static void SDL_Libretro_MenuGameFileChanged(nk_console* widget, void* user_data) {
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     if (menu->loadGamePath[0] == '\0') {
         return;
     }
@@ -206,10 +230,77 @@ static void SDL_Libretro_MenuGameFileChanged(nk_console* widget, void* user_data
     }
     else {
         SDL_Log("Failed to load game: %s", SDL_GetError());
-        nk_console_show_message(nk_console_get_top(widget), "Failed to load game");
+        nk_console_show_message(menu->console, "Failed to load game");
     }
     menu->loadGamePath[0] = '\0';
 }
+
+#ifndef __EMSCRIPTEN__
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuGameFileChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_Libretro_MenuLoadPendingGame((SDL_LibretroMenu*)user_data);
+}
+#endif
+
+#ifdef __EMSCRIPTEN__
+/**
+ * Opens a browser file picker; the chosen file is written into the virtual
+ * file system and handed back through SDL_Libretro_MenuLoadGameFromJS().
+ *
+ * Requires ccall and FS in -sEXPORTED_RUNTIME_METHODS.
+ *
+ * @internal
+ */
+EM_JS(void, SDL_Libretro_MenuOpenWebFilePicker, (SDL_LibretroMenu * menu), {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.onchange = function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        var reader = new FileReader();
+        reader.onload = function() {
+            var path = '/' + file.name;
+            try {
+                Module.FS.writeFile(path, new Uint8Array(reader.result));
+            } catch (err) {
+                console.error('SDL_libretro: failed to write picked file to FS:', err);
+                return;
+            }
+            Module.ccall('SDL_Libretro_MenuLoadGameFromJS', null, ['number', 'string'], [menu, path]);
+        };
+        reader.onerror = function() {
+            console.error('SDL_libretro: failed to read picked file:', reader.error);
+        };
+        reader.readAsArrayBuffer(file);
+    };
+    input.click();
+});
+
+/**
+ * Called from SDL_Libretro_MenuOpenWebFilePicker()'s JS once the picked file
+ * lands in the virtual file system.
+ *
+ * @internal
+ */
+EMSCRIPTEN_KEEPALIVE void SDL_Libretro_MenuLoadGameFromJS(SDL_LibretroMenu* menu, const char* path) {
+    if (menu == NULL || path == NULL) {
+        return;
+    }
+    SDL_strlcpy(menu->loadGamePath, path, sizeof(menu->loadGamePath));
+    SDL_Libretro_MenuLoadPendingGame(menu);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuWebLoadGameClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_Libretro_MenuOpenWebFilePicker((SDL_LibretroMenu*)user_data);
+}
+#endif /* __EMSCRIPTEN__ */
 
 /**
  * @internal
@@ -566,6 +657,196 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
         NK_SYMBOL_TRIANGLE_LEFT);
 }
 
+#ifndef __EMSCRIPTEN__
+/**
+ * Append each extension from a pipe-separated list (e.g. "gb|gbc") to a
+ * semicolon-separated file filter (e.g. ".gb;.GB;.gbc;.GBC"), deduplicated.
+ *
+ * The filter matching is case-sensitive, so both lower and upper case
+ * variants are added.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuAppendExtensions(char* filter, size_t filterSize, const char* extensions) {
+    if (extensions == NULL) {
+        return;
+    }
+    for (const char* token = extensions; *token != '\0';) {
+        const char* end = token;
+        while (*end != '\0' && *end != '|') {
+            end++;
+        }
+        size_t tokenLen = (size_t)(end - token);
+        char lower[34];
+        char upper[34];
+        if (tokenLen > 0 && tokenLen + 2 <= sizeof(lower)) {
+            lower[0] = '.';
+            upper[0] = '.';
+            for (size_t i = 0; i < tokenLen; i++) {
+                lower[i + 1] = (char)SDL_tolower((int)(unsigned char)token[i]);
+                upper[i + 1] = (char)SDL_toupper((int)(unsigned char)token[i]);
+            }
+            lower[tokenLen + 1] = '\0';
+            upper[tokenLen + 1] = '\0';
+
+            // Skip if the extension is already in the filter.
+            bool found = false;
+            for (const char* existing = filter; *existing != '\0' && !found;) {
+                const char* existingEnd = existing;
+                while (*existingEnd != '\0' && *existingEnd != ';') {
+                    existingEnd++;
+                }
+                size_t existingLen = (size_t)(existingEnd - existing);
+                if (existingLen == tokenLen + 1 && SDL_strncasecmp(existing, lower, existingLen) == 0) {
+                    found = true;
+                }
+                existing = (*existingEnd == ';') ? existingEnd + 1 : existingEnd;
+            }
+
+            if (!found) {
+                size_t length = SDL_strlen(filter);
+                // Reserve room for ";lower;UPPER" and the terminator.
+                if (length + (tokenLen + 2) * 2 + 2 < filterSize) {
+                    if (length > 0) {
+                        filter[length++] = ';';
+                    }
+                    length += SDL_strlcpy(filter + length, lower, filterSize - length);
+                    filter[length++] = ';';
+                    SDL_strlcpy(filter + length, upper, filterSize - length);
+                }
+            }
+        }
+        token = (*end == '|') ? end + 1 : end;
+    }
+}
+#endif /* !__EMSCRIPTEN__ */
+
+/**
+ * Restrict the Load Game file browser to content the scanned cores (and the
+ * loaded core) can open.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
+#ifndef __EMSCRIPTEN__
+    if (menu->loadGameButton == NULL) {
+        return;
+    }
+    SDL_Libretro* lr = menu->lr;
+
+    char filter[1024] = "";
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        SDL_Libretro_MenuAppendExtensions(filter, sizeof(filter), lr->coreLibrary[i].supported_extensions);
+    }
+    if (SDL_Libretro_IsCoreReady(lr)) {
+        SDL_Libretro_MenuAppendExtensions(filter, sizeof(filter), lr->core.validExtensions);
+    }
+#if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+    SDL_Libretro_MenuAppendExtensions(filter, sizeof(filter), "zip");
+#endif
+
+    // With nothing to filter against, show every file.
+    nk_console_file_set_filter(menu->loadGameButton, filter[0] != '\0' ? filter : NULL);
+#else
+    (void)menu;
+#endif
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuFreePortStates(SDL_LibretroMenu* menu) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+        SDL_free(menu->portStates[i].deviceList);
+        menu->portStates[i].deviceList = NULL;
+    }
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuPortDeviceChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuPortState* state = (SDL_LibretroMenuPortState*)user_data;
+    SDL_Libretro* lr = state->menu->lr;
+    if (state->port >= lr->core.controllerInfoCount) {
+        return;
+    }
+    const struct retro_controller_info* info = &lr->core.controllerInfo[state->port];
+    if (state->selected < 0 || (unsigned)state->selected >= info->num_types) {
+        return;
+    }
+    SDL_Libretro_SetPortDevice(lr, state->port, info->types[state->selected].id);
+}
+
+/**
+ * Populate the "Controllers" submenu with a device combobox per port that
+ * offers more than one controller type.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
+    if (menu->controllersButton == NULL) {
+        return;
+    }
+    SDL_Libretro* lr = menu->lr;
+
+    // Drop the previous widgets before the port states they point into.
+    nk_console_free_children(menu->controllersButton);
+    SDL_Libretro_MenuFreePortStates(menu);
+
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(menu->controllersButton, "Controllers", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+
+    unsigned count = lr->core.controllerInfoCount;
+    if (count > SDL_LIBRETRO_MAX_GAMEPADS) {
+        count = SDL_LIBRETRO_MAX_GAMEPADS;
+    }
+
+    bool anyWidget = false;
+    for (unsigned port = 0; port < count; port++) {
+        const struct retro_controller_info* info = &lr->core.controllerInfo[port];
+        if (info->types == NULL || info->num_types <= 1) {
+            continue;
+        }
+
+        // The combobox reads the pipe-separated list lazily, so keep it alive in the state.
+        size_t length = 0;
+        for (unsigned i = 0; i < info->num_types; i++) {
+            length += SDL_strlen(info->types[i].desc != NULL ? info->types[i].desc : "Unknown") + 1;
+        }
+        SDL_LibretroMenuPortState* state = &menu->portStates[port];
+        state->deviceList = (char*)SDL_malloc(length + 1);
+        if (state->deviceList == NULL) {
+            continue;
+        }
+        state->menu = menu;
+        state->port = port;
+        state->selected = 0;
+        state->deviceList[0] = '\0';
+
+        unsigned currentDevice = SDL_Libretro_GetPortDevice(lr, port);
+        size_t offset = 0;
+        for (unsigned i = 0; i < info->num_types; i++) {
+            if (i > 0) {
+                state->deviceList[offset++] = '|';
+            }
+            offset += SDL_strlcpy(state->deviceList + offset, info->types[i].desc != NULL ? info->types[i].desc : "Unknown", length + 1 - offset);
+            if (info->types[i].id == currentDevice) {
+                state->selected = (int)i;
+            }
+        }
+
+        SDL_snprintf(state->label, sizeof(state->label), "Port %u", port + 1);
+        nk_console* combobox = nk_console_combobox(menu->controllersButton, state->label, state->deviceList, '|', &state->selected);
+        nk_console_add_event_handler(combobox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuPortDeviceChanged, state, NULL);
+        anyWidget = true;
+    }
+
+    menu->controllersButton->visible = (nk_bool)anyWidget;
+}
+
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style) {
     if (menu == NULL || menu->ctx == NULL || (int)style < 0 || style >= SDL_LIBRETRO_MENU_STYLE_COUNT) {
         return false;
@@ -881,6 +1162,11 @@ bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle sty
 
     menu->style = style;
     menu->styleIndex = (int)style;
+
+    // Persist the theme; the config is written to disk when the context closes.
+    if (menu->lr != NULL && menu->lr->ini != NULL) {
+        INI_SetInt(menu->lr->ini, NULL, "menutheme", (Sint64)style);
+    }
     return true;
 }
 
@@ -944,7 +1230,15 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     nk_gamepad_init(&menu->gamepads, menu->ctx, NULL);
     nk_console_set_gamepads(menu->console, &menu->gamepads);
 
-    SDL_Libretro_SetMenuStyle(menu, SDL_LIBRETRO_MENU_DEFAULT_STYLE);
+    // Apply the saved theme when the config has one, the default otherwise.
+    SDL_LibretroMenuStyle initialStyle = SDL_LIBRETRO_MENU_DEFAULT_STYLE;
+    if (lr->ini != NULL && INI_HasValue(lr->ini, NULL, "menutheme")) {
+        Sint64 savedStyle = INI_GetInt(lr->ini, NULL, "menutheme", (Sint64)initialStyle);
+        if (savedStyle >= 0 && savedStyle < (Sint64)SDL_LIBRETRO_MENU_STYLE_COUNT) {
+            initialStyle = (SDL_LibretroMenuStyle)savedStyle;
+        }
+    }
+    SDL_Libretro_SetMenuStyle(menu, initialStyle);
 
     // Backing out of the top level acts like Resume.
     nk_console_add_event_handler(menu->console, NK_CONSOLE_EVENT_BACK, &SDL_Libretro_MenuResumeClicked, menu, NULL);
@@ -954,11 +1248,18 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     nk_console_button_set_symbol(menu->resumeButton, NK_SYMBOL_TRIANGLE_RIGHT);
 
     // Load Game
-    nk_console* loadGame = nk_console_file_action(menu->console, "Load Game", menu->loadGamePath, sizeof(menu->loadGamePath));
-    nk_console_add_event_handler(loadGame, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuGameFileChanged, menu, NULL);
+#ifdef __EMSCRIPTEN__
+    // Browsing the virtual file system isn't useful on the web; a JS file
+    // picker brings the user's own files in instead.
+    menu->loadGameButton = nk_console_button_onclick_handler(menu->console, "Load Game", &SDL_Libretro_MenuWebLoadGameClicked, menu, NULL);
+#else
+    menu->loadGameButton = nk_console_file_action(menu->console, "Load Game", menu->loadGamePath, sizeof(menu->loadGamePath));
+    nk_console_add_event_handler(menu->loadGameButton, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuGameFileChanged, menu, NULL);
     if (lr->fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(loadGame, lr->fileBrowserStartDirectory);
+        nk_console_file_set_directory(menu->loadGameButton, lr->fileBrowserStartDirectory);
     }
+    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+#endif
 
     // Save State / Load State
     menu->stateRow = nk_console_row_begin(menu->console);
@@ -981,6 +1282,11 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     menu->optionsButton = nk_console_button(menu->console, "Core Options");
     nk_console_button_set_symbol(menu->optionsButton, NK_SYMBOL_TRIANGLE_RIGHT);
     menu->optionsButton->visible = nk_false;
+
+    // Controllers, populated lazily once a core registers controller info.
+    menu->controllersButton = nk_console_button(menu->console, "Controllers");
+    nk_console_button_set_symbol(menu->controllersButton, NK_SYMBOL_TRIANGLE_RIGHT);
+    menu->controllersButton->visible = nk_false;
 
     // Settings
     nk_console* settings = nk_console_button(menu->console, "Settings");
@@ -1022,6 +1328,7 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
         nk_console_free(menu->console);
     }
     SDL_Libretro_MenuFreeOptionStates(menu);
+    SDL_Libretro_MenuFreePortStates(menu);
     nk_gamepad_free(&menu->gamepads);
     if (menu->ctx != NULL) {
         nk_sdl_shutdown(menu->ctx);
@@ -1128,6 +1435,8 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
             SDL_Libretro_AreOptionsDirty(lr);
         }
         SDL_Libretro_MenuBuildOptions(menu);
+        SDL_Libretro_MenuBuildControllers(menu);
+        SDL_Libretro_MenuUpdateLoadGameFilter(menu);
         menu->optionsStale = false;
         menu->builtOptionCount = lr->core.optionCount;
         SDL_strlcpy(menu->builtCoreName, lr->core.libraryName, sizeof(menu->builtCoreName));
