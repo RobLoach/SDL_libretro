@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SDL_libretro embed example</title>
+    <style>
+        body {
+            margin: 0 auto;
+            max-width: 720px;
+            padding: 1rem;
+            font-family: sans-serif;
+            background: #1e1e2e;
+            color: #cdd6f4;
+        }
+        #player {
+            width: 100%;
+            aspect-ratio: 4 / 3;
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <h1>SDL_libretro embed example</h1>
+    <p>
+        The emulator below is embedded with <code>SDL_libretro.js</code>:
+        a <code>&lt;div&gt;</code>, one script include, and one call.
+        Drag and drop a game onto it to play.
+    </p>
+    <div id="player"></div>
+    <script src="SDL_libretro.js"></script>
+    <script>
+        SDL_libretro.embed('#player', {
+            script: 'SDL_libretro_demo.js',
+            onReady: function () {
+                console.log('SDL_libretro is running.');
+            }
+        });
+    </script>
+</body>
+</html>
