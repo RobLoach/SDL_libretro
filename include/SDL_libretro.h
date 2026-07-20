@@ -357,6 +357,32 @@ bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle sty
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
 
 /**
+ * The kind of menu notification, carried in SDL_UserEvent::code.
+ *
+ * The menu pushes an SDL event of type SDL_Libretro_GetMenuEventType() when
+ * one of these happens; data1 is the SDL_LibretroMenu, data2 the SDL_Libretro.
+ *
+ * \see SDL_Libretro_GetMenuEventType()
+ */
+typedef enum SDL_LibretroMenuEventCode {
+    SDL_LIBRETRO_MENU_EVENT_OPENED = 0, /** The menu became visible; the game pauses. */
+    SDL_LIBRETRO_MENU_EVENT_CLOSED, /** The menu was dismissed; the game resumes. */
+    SDL_LIBRETRO_MENU_EVENT_GAME_LOADED /** A game was loaded through the menu. */
+} SDL_LibretroMenuEventCode;
+
+/**
+ * A callback for menu entries added by the application.
+ *
+ * \see SDL_Libretro_AddMenuButton()
+ * \see SDL_Libretro_AddMenuCheckbox()
+ */
+typedef void (*SDL_LibretroMenuCallback)(SDL_LibretroMenu* menu, void* userdata);
+
+Uint32 SDL_Libretro_GetMenuEventType(void);
+bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata);
+bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
+
+/**
  * @}
  */
 

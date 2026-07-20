@@ -195,7 +195,50 @@ struct SDL_LibretroMenu {
 
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
+
+    nk_console* quitButton; /** Kept as the last top-level entry when the app adds its own. */
 };
+
+/**
+ * The registered SDL event type for menu notifications; 0 until first use.
+ *
+ * @see SDL_Libretro_GetMenuEventType()
+ * @internal
+ */
+static Uint32 SDL_Libretro_menuEventType = 0;
+
+/**
+ * The SDL event type the menu pushes its notifications with.
+ *
+ * Registered on first use. Returns 0 if SDL has no event numbers available.
+ */
+Uint32 SDL_Libretro_GetMenuEventType(void) {
+    if (SDL_Libretro_menuEventType == 0) {
+        SDL_Libretro_menuEventType = SDL_RegisterEvents(1);
+    }
+    return SDL_Libretro_menuEventType;
+}
+
+/**
+ * Push a menu notification as an SDL event.
+ *
+ * @internal
+ * @see SDL_LibretroMenuEventCode
+ */
+static void SDL_Libretro_MenuPushEvent(SDL_LibretroMenu* menu, SDL_LibretroMenuEventCode code) {
+    Uint32 type = SDL_Libretro_GetMenuEventType();
+    if (type == 0) {
+        return;
+    }
+    SDL_Event event;
+    SDL_zero(event);
+    event.user.type = type;
+    event.user.timestamp = SDL_GetTicksNS();
+    event.user.code = (Sint32)code;
+    event.user.data1 = menu;
+    event.user.data2 = menu->lr;
+    SDL_PushEvent(&event);
+}
 
 /**
  * Closes the menu when a game is available to resume.
@@ -231,6 +274,7 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     bool loaded = SDL_Libretro_LoadGame(menu->lr, menu->loadGamePath);
 #endif
     if (loaded) {
+        SDL_Libretro_MenuPushEvent(menu, SDL_LIBRETRO_MENU_EVENT_GAME_LOADED);
         SDL_Libretro_SetMenuOpen(menu, false);
     }
     else {
@@ -1411,8 +1455,8 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     }
 
     // Quit
-    nk_console* quit = nk_console_button_onclick_handler(menu->console, "Quit", &SDL_Libretro_MenuQuitClicked, menu, NULL);
-    nk_console_button_set_symbol(quit, NK_SYMBOL_X);
+    menu->quitButton = nk_console_button_onclick_handler(menu->console, "Quit", &SDL_Libretro_MenuQuitClicked, menu, NULL);
+    nk_console_button_set_symbol(menu->quitButton, NK_SYMBOL_X);
 
     nk_input_begin(menu->ctx);
 
@@ -1450,6 +1494,7 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
     }
+    SDL_Libretro_MenuPushEvent(menu, open ? SDL_LIBRETRO_MENU_EVENT_OPENED : SDL_LIBRETRO_MENU_EVENT_CLOSED);
 }
 
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
@@ -1477,6 +1522,12 @@ bool SDL_Libretro_MenuHandleEvent(SDL_LibretroMenu* menu, const SDL_Event* event
     }
 
     if (!menu->open) {
+        return false;
+    }
+
+    // Application events, including the menu's own notifications, are never
+    // swallowed and mean nothing to the UI.
+    if (event->type >= SDL_EVENT_USER) {
         return false;
     }
 
@@ -1580,6 +1631,119 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
         menu->uiBuilt = false;
     }
     nk_input_begin(menu->ctx);
+}
+
+/**
+ * One application-added menu entry.
+ *
+ * Owns the label copy; freed through the widget's event destructor.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuCustomItem {
+    SDL_LibretroMenu* menu;
+    SDL_LibretroMenuCallback callback;
+    void* userdata;
+    char* label;
+    nk_bool checked; /** Backing checkbox state, mirrored into the app's bool. */
+    bool* value; /** The app's checkbox value; NULL for buttons. */
+} SDL_LibretroMenuCustomItem;
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuCustomItemChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuCustomItem* item = (SDL_LibretroMenuCustomItem*)user_data;
+    if (item->value != NULL) {
+        *item->value = item->checked == nk_true;
+    }
+    if (item->callback != NULL) {
+        item->callback(item->menu, item->userdata);
+    }
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuCustomItemDestroy(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuCustomItem* item = (SDL_LibretroMenuCustomItem*)user_data;
+    SDL_free(item->label);
+    SDL_free(item);
+}
+
+/**
+ * Allocate the shared state for an application-added entry.
+ *
+ * @internal
+ */
+static SDL_LibretroMenuCustomItem* SDL_Libretro_MenuCreateCustomItem(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata) {
+    if (menu == NULL || menu->console == NULL || label == NULL) {
+        SDL_InvalidParamError("menu");
+        return NULL;
+    }
+    SDL_LibretroMenuCustomItem* item = (SDL_LibretroMenuCustomItem*)SDL_calloc(1, sizeof(SDL_LibretroMenuCustomItem));
+    if (item == NULL) {
+        return NULL;
+    }
+    item->menu = menu;
+    item->callback = callback;
+    item->userdata = userdata;
+    item->label = SDL_strdup(label);
+    if (item->label == NULL) {
+        SDL_free(item);
+        return NULL;
+    }
+    return item;
+}
+
+/**
+ * New entries append after Quit; swap them so Quit stays the last entry.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuKeepQuitLast(SDL_LibretroMenu* menu) {
+    nk_console** children = menu->console->children;
+    size_t count = cvector_size(children);
+    if (menu->quitButton == NULL || count < 2 || children[count - 2] != menu->quitButton) {
+        return;
+    }
+    children[count - 2] = children[count - 1];
+    children[count - 1] = menu->quitButton;
+}
+
+bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata) {
+    SDL_LibretroMenuCustomItem* item = SDL_Libretro_MenuCreateCustomItem(menu, label, callback, userdata);
+    if (item == NULL) {
+        return false;
+    }
+    nk_console* button = nk_console_button_onclick_handler(menu->console, item->label, &SDL_Libretro_MenuCustomItemChanged, item, &SDL_Libretro_MenuCustomItemDestroy);
+    if (button == NULL) {
+        SDL_free(item->label);
+        SDL_free(item);
+        return false;
+    }
+    SDL_Libretro_MenuKeepQuitLast(menu);
+    return true;
+}
+
+bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata) {
+    SDL_LibretroMenuCustomItem* item = SDL_Libretro_MenuCreateCustomItem(menu, label, callback, userdata);
+    if (item == NULL) {
+        return false;
+    }
+    item->value = value;
+    item->checked = (nk_bool)(value != NULL && *value);
+    nk_console* checkbox = nk_console_checkbox(menu->console, item->label, &item->checked);
+    if (checkbox == NULL) {
+        SDL_free(item->label);
+        SDL_free(item);
+        return false;
+    }
+    nk_console_add_event_handler(checkbox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuCustomItemChanged, item, &SDL_Libretro_MenuCustomItemDestroy);
+    SDL_Libretro_MenuKeepQuitLast(menu);
+    return true;
 }
 
 #endif /* SDL_LIBRETRO_MENU_IMPL_ONCE */

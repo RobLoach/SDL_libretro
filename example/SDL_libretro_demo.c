@@ -34,6 +34,21 @@ static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) 
     SDL_Libretro_LoadGame(app->lr, path);
 }
 
+#ifdef SDL_LIBRETRO_ENABLE_MENU
+/**
+ * Menu entry added by the demo: saves a screenshot of the current frame.
+ */
+static void SDL_Libretro_DemoScreenshotClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)menu;
+    AppContext* app = userdata;
+    SDL_Surface* screenshot = SDL_Libretro_CreateSurface(app->lr);
+    if (screenshot) {
+        SDL_SavePNG(screenshot, "screenshot.png");
+        SDL_DestroySurface(screenshot);
+    }
+}
+#endif
+
 #ifdef __EMSCRIPTEN__
 /**
  * Called from SDL_libretro_demo_web.js to pass over to DemoLoadDroppedGame()
@@ -130,6 +145,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if (!app->menu) {
         SDL_Log("Failed to create menu: %s", SDL_GetError());
     }
+    SDL_Libretro_AddMenuButton(app->menu, "Screenshot", &SDL_Libretro_DemoScreenshotClicked, app);
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -154,6 +170,12 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     // The menu consumes input while it is open, and handles its toggle keys.
     if (SDL_Libretro_MenuHandleEvent(app->menu, event)) {
+        return SDL_APP_CONTINUE;
+    }
+
+    // Name the window after the core when a game loads through the menu.
+    if (event->type == SDL_Libretro_GetMenuEventType() && event->user.code == SDL_LIBRETRO_MENU_EVENT_GAME_LOADED) {
+        SDL_SetWindowTitle(app->window, SDL_Libretro_GetCoreName(lr));
         return SDL_APP_CONTINUE;
     }
 #endif
