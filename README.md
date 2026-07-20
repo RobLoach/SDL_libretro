@@ -16,8 +16,8 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Virtual file system
 - Config system for saving and loading settings
 - On-screen display messages
-- Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optionally)
-- In-app menu with [nuklear_console](https://github.com/RobLoach/nuklear_console) (optionally)
+- Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optional)
+- Menu with [nuklear_console](https://github.com/RobLoach/nuklear_console) (optional)
 
 ## Usage
 
