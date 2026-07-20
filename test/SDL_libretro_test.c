@@ -1969,6 +1969,21 @@ static int SDLCALL test_Menu(void *arg) {
     if (menu != NULL) {
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu starts closed");
 
+        // Styles
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuStyle(menu) == SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+            "Menu starts with the default style");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuStyle(NULL, SDL_LIBRETRO_MENU_STYLE_DARK) == false,
+            "SetMenuStyle(NULL) fails");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuStyle(menu, SDL_LIBRETRO_MENU_STYLE_COUNT) == false,
+            "SetMenuStyle rejects an out-of-range style");
+        bool stylesApplied = true;
+        for (int style = 0; style < (int)SDL_LIBRETRO_MENU_STYLE_COUNT; style++) {
+            stylesApplied = stylesApplied &&
+                SDL_Libretro_SetMenuStyle(menu, (SDL_LibretroMenuStyle)style) &&
+                SDL_Libretro_GetMenuStyle(menu) == (SDL_LibretroMenuStyle)style;
+        }
+        SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
+
         // With nothing to run, the menu opens itself.
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);

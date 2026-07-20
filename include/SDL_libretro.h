@@ -328,6 +328,21 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
  */
 typedef struct SDL_LibretroMenu SDL_LibretroMenu;
 
+/**
+ * Color themes for the menu.
+ *
+ * @see SDL_Libretro_SetMenuStyle()
+ */
+typedef enum SDL_LibretroMenuStyle {
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA = 0,
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE,
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE,
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO,
+    SDL_LIBRETRO_MENU_STYLE_DRACULA,
+    SDL_LIBRETRO_MENU_STYLE_DARK,
+    SDL_LIBRETRO_MENU_STYLE_COUNT
+} SDL_LibretroMenuStyle;
+
 SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr);
 void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu);
 void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu);
@@ -336,6 +351,8 @@ bool SDL_Libretro_MenuHandleEvent(SDL_LibretroMenu* menu, const SDL_Event* event
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open);
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu);
 bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
+bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style);
+SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
 
 /**
  * @}

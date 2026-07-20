@@ -76,7 +76,7 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 ### Menu
 
-To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options and settings, navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button.
+To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options, settings and themes, navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION
@@ -132,6 +132,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - `SDL_LIBRETRO_ENABLE_MENU`: Enable the nuklear_console menu
 - `SDL_LIBRETRO_MENU_TOGGLE_KEY`: The key that toggles the menu (default `SDLK_F1`)
 - `SDL_LIBRETRO_MENU_FONT_HEIGHT`: Base menu font height in pixels (default `16`)
+- `SDL_LIBRETRO_MENU_DEFAULT_STYLE`: The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA`)
 
 ## Dependencies
 
