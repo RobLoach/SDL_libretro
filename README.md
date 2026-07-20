@@ -16,7 +16,7 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Virtual file system
 - Config system for saving and loading settings
 - On-screen display messages
-- Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optionally)
+- Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optional)
 
 ## Usage
 
