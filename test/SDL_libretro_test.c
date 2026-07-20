@@ -1989,10 +1989,29 @@ static int SDLCALL test_Menu(void *arg) {
         }
         SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
 
+        // UI scale: the resolution thresholds step the automatic scale.
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(1279) == 1.0f, "Auto scale 1x below 1280");
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(1280) == 2.0f, "Auto scale 2x at 1280");
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(2560) == 3.0f, "Auto scale 3x at 2560");
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(3840) == 4.0f, "Auto scale 4x at 3840");
+        SDLTest_AssertCheck(menu->uiScaleIndex == 0, "UI scale defaults to Auto");
+        SDLTest_AssertCheck(menu->bakedFontHeight > 0.0f, "A font is baked at creation");
+
         // With nothing to run, the menu opens itself.
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
+
+        // A manual override rebakes the font at the multiplied size.
+        float autoFontHeight = menu->bakedFontHeight;
+        menu->uiScaleIndex = 2;
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->bakedFontHeight == autoFontHeight * 2.0f, "UI scale 2x doubles the font height");
+        menu->uiScaleIndex = 0;
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->bakedFontHeight == autoFontHeight, "Auto scale restores the base font height");
 
         // The toggle key closes it and the event is consumed.
         SDL_Event event;
@@ -2032,6 +2051,10 @@ static int SDLCALL test_Menu(void *arg) {
     if (menuSave != NULL) {
         SDL_Libretro_SetMenuStyle(menuSave, SDL_LIBRETRO_MENU_STYLE_DRACULA);
 
+        // UI scale persists like the theme.
+        menuSave->uiScaleIndex = 3;
+        SDL_Libretro_MenuUIScaleChanged(NULL, menuSave);
+
         // Mute captures the pre-mute volume and silences the output.
         SDL_Libretro_SetVolume(lrSave, 0.5f);
         menuSave->muteChecked = nk_true;
@@ -2048,6 +2071,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_LibretroMenu* menuLoad = SDL_Libretro_CreateMenu(lrLoad);
     SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuStyle(menuLoad) == SDL_LIBRETRO_MENU_STYLE_DRACULA,
         "Menu theme persists through the config file");
+    SDLTest_AssertCheck(menuLoad != NULL && menuLoad->uiScaleIndex == 3, "UI scale persists through the config file");
     SDLTest_AssertCheck(menuLoad != NULL && menuLoad->muteChecked == nk_true, "Mute state persists through the config file");
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
     if (menuLoad != NULL) {
