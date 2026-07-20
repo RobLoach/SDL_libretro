@@ -2046,6 +2046,80 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Quit();
     return TEST_COMPLETED;
 }
+#if defined(TEST_CORE_PATH) && defined(TEST_CORE_NOVFS_PATH) && defined(TEST_CONTENT_PATH)
+static int SDLCALL test_MenuCorePicker(void *arg) {
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    // Write .info files next to the built test cores so the directory scan
+    // offers two candidates for .txt content.
+    char coreDir[4096];
+    SDL_strlcpy(coreDir, TEST_CORE_PATH, sizeof(coreDir));
+    char* slash = SDL_strrchr(coreDir, '/');
+    if (slash != NULL) {
+        *slash = '\0';
+    }
+    char infoPath[4096];
+    char infoPathNovfs[4096];
+    const char* info1 = "corename = \"Test Core\"\nsupported_extensions = \"txt\"\n";
+    const char* info2 = "corename = \"Test Core NoVFS\"\nsupported_extensions = \"txt\"\n";
+    SDL_snprintf(infoPath, sizeof(infoPath), "%s/test_core.info", coreDir);
+    SDL_snprintf(infoPathNovfs, sizeof(infoPathNovfs), "%s/test_core_novfs.info", coreDir);
+    SDL_SaveFile(infoPath, info1, SDL_strlen(info1));
+    SDL_SaveFile(infoPathNovfs, info2, SDL_strlen(info2));
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_SetCoreDirectory(lr, coreDir);
+    SDLTest_AssertCheck(lr->coreLibraryCount == 2, "Core scan finds two cores, got %u", lr->coreLibraryCount);
+
+    SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
+    SDLTest_AssertCheck(menu != NULL, "CreateMenu succeeds");
+    if (menu != NULL) {
+        // Ambiguous content requests the picker instead of loading.
+        SDL_strlcpy(menu->loadGamePath, TEST_CONTENT_PATH, sizeof(menu->loadGamePath));
+        SDL_Libretro_MenuLoadPendingGame(menu);
+        SDLTest_AssertCheck(menu->corePickerPending == true, "Ambiguous content queues the core picker");
+        SDLTest_AssertCheck(menu->pendingCoreCount == 2, "Two candidates collected, got %u", menu->pendingCoreCount);
+        SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game is not loaded until a core is chosen");
+
+        // The next update builds the picker and navigates into it.
+        SDL_Libretro_SetMenuOpen(menu, true);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->corePickerButton,
+            "Picker is the active menu level");
+
+        // Choosing a candidate loads the core and the pending game.
+        SDL_Libretro_MenuCoreChoiceClicked(NULL, &menu->coreChoices[0]);
+        SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Choosing a core loads the pending game");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu closes after the picked core loads");
+        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->console,
+            "Navigation resets to the top level");
+
+        // With a single matching core, the game loads directly.
+        SDL_RemovePath(infoPathNovfs);
+        SDL_Libretro_SetCoreDirectory(lr, coreDir);
+        SDL_Libretro_UnloadCore(lr);
+        SDL_strlcpy(menu->loadGamePath, TEST_CONTENT_PATH, sizeof(menu->loadGamePath));
+        SDL_Libretro_MenuLoadPendingGame(menu);
+        SDLTest_AssertCheck(menu->corePickerPending == false, "Single match skips the picker");
+        SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Single match loads the game directly");
+
+        SDL_Libretro_DestroyMenu(menu);
+    }
+
+    SDL_RemovePath(infoPath);
+    SDL_RemovePath(infoPathNovfs);
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+}
+#endif /* TEST_CORE_NOVFS_PATH */
 #endif /* SDL_LIBRETRO_ENABLE_MENU */
 
 /* Test case references. The function name doubles as the test name via #fn,
@@ -2101,6 +2175,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     LIBRETRO_TEST_CASE(test_Menu,             "Menu create/toggle/update/render lifecycle"),
+#if defined(TEST_CORE_PATH) && defined(TEST_CORE_NOVFS_PATH) && defined(TEST_CONTENT_PATH)
+    LIBRETRO_TEST_CASE(test_MenuCorePicker,   "Select Core picker for ambiguous content"),
+#endif
 #endif
     NULL
 };

@@ -110,6 +110,13 @@
 #define SDL_LIBRETRO_MENU_FONT_HEIGHT 16
 #endif
 
+#ifndef SDL_LIBRETRO_MENU_WINDOW_TITLE
+/**
+ * The Nuklear window title of the menu.
+ */
+#define SDL_LIBRETRO_MENU_WINDOW_TITLE "SDL_libretro"
+#endif
+
 #ifndef SDL_LIBRETRO_MENU_DEFAULT_STYLE
 /**
  * The style applied when the menu is created.
@@ -154,6 +161,27 @@ typedef struct SDL_LibretroMenuPortState {
     char label[16]; /** The "Port N" combobox label; must outlive the widget. */
 } SDL_LibretroMenuPortState;
 
+#ifndef SDL_LIBRETRO_MENU_MAX_GAME_CORES
+/**
+ * Maximum number of cores the "Select Core" picker offers for one game file.
+ */
+#define SDL_LIBRETRO_MENU_MAX_GAME_CORES 16
+#endif
+
+/**
+ * One candidate core in the "Select Core" picker.
+ *
+ * The picker buttons reference these entries, so the array must stay
+ * allocated for as long as the widgets exist.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuCoreChoice {
+    SDL_LibretroMenu* menu;
+    char path[512]; /** Path to the core's shared library. */
+    char name[128]; /** Display name; backs the picker button label. */
+} SDL_LibretroMenuCoreChoice;
+
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
     struct nk_context* ctx;
@@ -180,6 +208,13 @@ struct SDL_LibretroMenu {
 
     // Load Game
     char loadGamePath[SDL_LIBRETRO_MAX_PATH];
+
+    // Core picker for content whose extension matches several cores.
+    nk_console* corePickerButton;
+    SDL_LibretroMenuCoreChoice coreChoices[SDL_LIBRETRO_MENU_MAX_GAME_CORES];
+    unsigned pendingCoreCount; /** Number of populated coreChoices entries. */
+    bool corePickerPending; /** A picker build + navigation is queued for the next update. */
+    char pendingGamePath[SDL_LIBRETRO_MAX_PATH]; /** Content waiting on a core choice. */
 
     // Core Options rebuild tracking
     SDL_LibretroMenuOptionState* optionStates;
@@ -208,22 +243,17 @@ static void SDL_Libretro_MenuResumeClicked(nk_console* widget, void* user_data) 
 }
 
 /**
- * Load the game waiting in loadGamePath, closing the menu on success.
+ * Load the given game with whatever core is (or gets) loaded for it.
+ *
+ * Closes the menu on success.
  *
  * @internal
  */
-static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
-    if (menu->loadGamePath[0] == '\0') {
-        return;
-    }
-
-    // Drop the previous core so the loader picks the right one by extension.
-    SDL_Libretro_UnloadCore(menu->lr);
-
+static bool SDL_Libretro_MenuLoadGameNow(SDL_LibretroMenu* menu, const char* path) {
 #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
-    bool loaded = SDL_Libretro_PhysFS_LoadGame(menu->lr, menu->loadGamePath);
+    bool loaded = SDL_Libretro_PhysFS_LoadGame(menu->lr, path);
 #else
-    bool loaded = SDL_Libretro_LoadGame(menu->lr, menu->loadGamePath);
+    bool loaded = SDL_Libretro_LoadGame(menu->lr, path);
 #endif
     if (loaded) {
         SDL_Libretro_SetMenuOpen(menu, false);
@@ -232,7 +262,150 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
         nk_console_show_message(menu->console, "Failed to load game");
     }
+    return loaded;
+}
+
+/**
+ * Fill coreChoices with the scanned cores that list the path's extension.
+ *
+ * The .info extension data is a pre-load hint for the picker only, never a
+ * hard gate; the chosen core's own runtime info stays authoritative.
+ *
+ * @return The number of candidates collected.
+ *
+ * @internal
+ */
+static unsigned SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, const char* path) {
+    SDL_Libretro* lr = menu->lr;
+    const char* dot = SDL_strrchr(path, '.');
+    if (dot == NULL || dot[1] == '\0') {
+        return 0;
+    }
+    const char* extension = dot + 1;
+
+    unsigned count = 0;
+    for (unsigned i = 0; i < lr->coreLibraryCount && count < SDL_LIBRETRO_MENU_MAX_GAME_CORES; i++) {
+        if (lr->coreLibrary[i].path == NULL ||
+            !SDL_Libretro_ExtensionInList(extension, lr->coreLibrary[i].supported_extensions)) {
+            continue;
+        }
+        SDL_LibretroMenuCoreChoice* choice = &menu->coreChoices[count];
+        choice->menu = menu;
+        SDL_strlcpy(choice->path, lr->coreLibrary[i].path, sizeof(choice->path));
+        if (lr->coreLibrary[i].corename != NULL && lr->coreLibrary[i].corename[0] != '\0') {
+            SDL_strlcpy(choice->name, lr->coreLibrary[i].corename, sizeof(choice->name));
+        }
+        else {
+            SDL_Libretro_GetFileName(choice->name, sizeof(choice->name), lr->coreLibrary[i].path, false);
+        }
+        count++;
+    }
+    return count;
+}
+
+/**
+ * Load the game waiting in loadGamePath, closing the menu on success.
+ *
+ * When the file's extension matches more than one scanned core, defers to
+ * the "Select Core" picker instead of loading immediately.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
+    if (menu->loadGamePath[0] == '\0') {
+        return;
+    }
+
+    // More than one core can open this file: let the user pick. The current
+    // core keeps running until a choice is made.
+    unsigned candidates = SDL_Libretro_MenuCollectCoreCandidates(menu, menu->loadGamePath);
+    if (candidates > 1) {
+        SDL_strlcpy(menu->pendingGamePath, menu->loadGamePath, sizeof(menu->pendingGamePath));
+        menu->pendingCoreCount = candidates;
+        menu->corePickerPending = true;
+        menu->loadGamePath[0] = '\0';
+        return;
+    }
+
+    // Drop the previous core so the loader picks the right one by extension.
+    SDL_Libretro_UnloadCore(menu->lr);
+    SDL_Libretro_MenuLoadGameNow(menu, menu->loadGamePath);
     menu->loadGamePath[0] = '\0';
+}
+
+/**
+ * Switch the visible menu level, safely from inside or outside the window.
+ *
+ * nk_console_set_active_parent() resets the window scroll through the
+ * current window, which asserts outside nk_begin(); when called between
+ * frames (the deferred picker build), switch directly and reset the scroll
+ * through the window handle instead.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSetActiveParent(SDL_LibretroMenu* menu, nk_console* parent) {
+    if (menu->ctx->current != NULL) {
+        nk_console_set_active_parent(parent);
+        return;
+    }
+    nk_console_top_data* data = (nk_console_top_data*)menu->console->data;
+    data->active_parent = parent;
+    struct nk_window* window = nk_window_find(menu->ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE);
+    if (window != NULL) {
+        window->scrollbar.x = 0;
+        window->scrollbar.y = 0;
+    }
+}
+
+/**
+ * A core was chosen in the "Select Core" picker: load it, then the game.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuCoreChoiceClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuCoreChoice* choice = (SDL_LibretroMenuCoreChoice*)user_data;
+    SDL_LibretroMenu* menu = choice->menu;
+
+    SDL_Libretro_UnloadCore(menu->lr);
+    bool loaded = SDL_Libretro_LoadCore(menu->lr, choice->path);
+    if (!loaded) {
+        SDL_Log("Failed to load core: %s", SDL_GetError());
+        nk_console_show_message(menu->console, "Failed to load core");
+        return;
+    }
+    if (SDL_Libretro_MenuLoadGameNow(menu, menu->pendingGamePath)) {
+        // Leave the picker so the next open starts at the top level.
+        SDL_Libretro_MenuSetActiveParent(menu, menu->console);
+        menu->pendingGamePath[0] = '\0';
+    }
+}
+
+/**
+ * Populate the "Select Core" picker with the collected candidates and make
+ * it the active menu level.
+ *
+ * Deferred to the update step so the widget tree never changes from inside
+ * the file browser's own event.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildCorePicker(SDL_LibretroMenu* menu) {
+    if (menu->corePickerButton == NULL) {
+        return;
+    }
+    nk_console_free_children(menu->corePickerButton);
+
+    // Backing out cancels and returns to the top level.
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(menu->corePickerButton, "Select Core", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+
+    for (unsigned i = 0; i < menu->pendingCoreCount; i++) {
+        nk_console_button_onclick_handler(menu->corePickerButton, menu->coreChoices[i].name, &SDL_Libretro_MenuCoreChoiceClicked, &menu->coreChoices[i], NULL);
+    }
+
+    SDL_Libretro_MenuSetActiveParent(menu, menu->corePickerButton);
 }
 
 #ifndef __EMSCRIPTEN__
@@ -1288,6 +1461,11 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     nk_console_button_set_symbol(menu->controllersButton, NK_SYMBOL_TRIANGLE_RIGHT);
     menu->controllersButton->visible = nk_false;
 
+    // Select Core picker; never listed at the top level, only navigated into
+    // when a Load Game pick matches several cores.
+    menu->corePickerButton = nk_console_button(menu->console, "Select Core");
+    menu->corePickerButton->visible = nk_false;
+
     // Settings
     nk_console* settings = nk_console_button(menu->console, "Settings");
     nk_console_button_set_symbol(settings, NK_SYMBOL_HAMBURGER);
@@ -1442,6 +1620,12 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         SDL_strlcpy(menu->builtCoreName, lr->core.libraryName, sizeof(menu->builtCoreName));
     }
 
+    // A Load Game pick that matched several cores queued the picker.
+    if (menu->corePickerPending) {
+        SDL_Libretro_MenuBuildCorePicker(menu);
+        menu->corePickerPending = false;
+    }
+
     // Game-dependent entries.
     bool gameReady = SDL_Libretro_IsGameReady(lr);
     menu->resumeButton->visible = (nk_bool)gameReady;
@@ -1459,9 +1643,9 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     SDL_GetRenderOutputSize(lr->renderer, &width, &height);
 
     menu->uiBuilt = true;
-    nk_console_render_window(menu->console, "SDL_libretro", nk_rect(0.0f, 0.0f, (float)width, (float)height), NK_WINDOW_SCROLL_AUTO_HIDE |
-                                                                                                                  // Show the window title only on the top level.
-                                                                                                                  ((nk_console_active_parent(menu->console) == menu->console) ? NK_WINDOW_TITLE : 0));
+    nk_console_render_window(menu->console, SDL_LIBRETRO_MENU_WINDOW_TITLE, nk_rect(0.0f, 0.0f, (float)width, (float)height), NK_WINDOW_SCROLL_AUTO_HIDE |
+                                                                                                                                  // Show the window title only on the top level.
+                                                                                                                                  ((nk_console_active_parent(menu->console) == menu->console) ? NK_WINDOW_TITLE : 0));
 }
 
 void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
