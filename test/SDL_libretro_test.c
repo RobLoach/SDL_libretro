@@ -1942,6 +1942,102 @@ static int SDLCALL test_OSD(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_ScaleMode(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+
+    // Defaults and NULL safety.
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_NEAREST, "Default scale mode is nearest");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(NULL) == SDL_SCALEMODE_NEAREST, "GetScaleMode(NULL) nearest");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL context) rejected");
+
+    // Invalid modes are rejected with an SDL error, leaving the setting unchanged.
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, (SDL_ScaleMode)999) == false, "SetScaleMode(999) rejected");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "Invalid mode sets an SDL error");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_INVALID) == false, "SetScaleMode(INVALID) rejected");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_NEAREST, "Rejected mode leaves the setting unchanged");
+
+    // Set/get round-trip before any texture exists.
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetScaleMode(linear) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetScaleMode round-trips linear");
+
+    // The stored mode is applied when the texture is built...
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL);
+    SDL_ScaleMode texMode = SDL_SCALEMODE_INVALID;
+    SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_LINEAR, "Texture built with the stored scale mode");
+
+    // ...and immediately when one exists. Explicit nearest skips the pixelart upgrade.
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_NEAREST) == true, "SetScaleMode(nearest) succeeds");
+    SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Explicit nearest applied to the live texture");
+
+    // The mode survives a core reload.
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_NEAREST, "Scale mode survives UnloadCore");
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL);
+    SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Explicit nearest re-applied after core reload");
+    SDL_Libretro_Destroy(lr);
+
+    // Without an explicit choice, nearest upgrades to pixelart on SDL >= 3.4.
+    lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDL_Libretro_LoadGame(lr, NULL);
+    SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
+#if SDL_VERSION_ATLEAST(3, 4, 0)
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_PIXELART, "Default nearest upgrades to pixelart");
+#else
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Default nearest kept without pixelart support");
+#endif
+    SDL_Libretro_Destroy(lr);
+
+    // Config save/load restores an explicit mode.
+    const char* cfg = "/tmp/sdl_libretro_scalemode_test.cfg";
+    SDL_RemovePath(cfg);
+    lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, cfg) == true, "InitConfigFile succeeds");
+    SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_LINEAR);
+    SDL_Libretro_Destroy(lr); // Saves the config.
+
+    lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, cfg) == true, "InitConfigFile reload succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "Config restores the scale mode");
+    SDLTest_AssertCheck(lr->scaleModeExplicit == true, "Config-restored mode counts as explicit");
+    SDL_Libretro_Destroy(lr);
+
+    // A default (never-set) config round-trip keeps the automatic upgrade eligible.
+    SDL_RemovePath(cfg);
+    lr = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDL_Libretro_Destroy(lr);
+    lr = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDLTest_AssertCheck(lr->scaleModeExplicit == false, "Default round-trip stays non-explicit");
+    SDL_Libretro_Destroy(lr);
+    SDL_RemovePath(cfg);
+
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -1984,6 +2080,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
     LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),
     LIBRETRO_TEST_CASE(test_Rotation,          "Rotation-aware fit rect and pointer mapping"),
+    LIBRETRO_TEST_CASE(test_ScaleMode,         "Scale mode set/get, texture apply, and config persistence"),
     LIBRETRO_TEST_CASE(test_InputDescriptorCopy, "Input descriptors and controller info are deep-copied"),
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),

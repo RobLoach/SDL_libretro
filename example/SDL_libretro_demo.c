@@ -171,6 +171,19 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
     }
 
+    // Scale Mode (cycle nearest -> linear -> pixelart)
+    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F3) {
+        SDL_ScaleMode mode = SDL_Libretro_GetScaleMode(lr);
+        switch (mode) {
+            case SDL_SCALEMODE_NEAREST: mode = SDL_SCALEMODE_LINEAR; break;
+#if SDL_VERSION_ATLEAST(3, 4, 0)
+            case SDL_SCALEMODE_LINEAR: mode = SDL_SCALEMODE_PIXELART; break;
+#endif
+            default: mode = SDL_SCALEMODE_NEAREST; break;
+        }
+        SDL_Libretro_SetScaleMode(lr, mode);
+    }
+
     // Screenshot
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F12) {
         SDL_Surface* screenshot = SDL_Libretro_CreateSurface(lr);

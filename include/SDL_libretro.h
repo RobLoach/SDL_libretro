@@ -148,6 +148,8 @@ double SDL_Libretro_GetFPS(const SDL_Libretro* lr);
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr);
 bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode);
 SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr);
+bool SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode);
+SDL_ScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr);
 
 // Audio
 
@@ -453,7 +455,6 @@ typedef struct SDL_LibretroCoreData {
 
     // Video
     SDL_Texture* texture;
-    SDL_ScaleMode textureScaleMode;
     SDL_FRect renderDstRect; /** The desired destination rendering rectangle. */
     bool videoReinitPending; /** True when the video requires a re-initialization. */
 
@@ -569,6 +570,8 @@ struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /** The audio volume. */
     SDL_LibretroFitMode fitMode; /** How the libretro context should fit into its destination when rendering. */
+    SDL_ScaleMode scaleMode; /** The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
+    bool scaleModeExplicit; /** True once SDL_Libretro_SetScaleMode() has been called; suppresses the automatic nearest to pixelart upgrade. */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
