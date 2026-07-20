@@ -76,7 +76,7 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 ### Menu
 
-To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options, controller selection, settings and themes, navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button. The theme persists through the config file when one is initialized, and on the web the Load Game button opens the browser's file picker.
+To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options, controller selection, settings (including directories and username) and themes, navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button. The theme persists through the config file when one is initialized, and on the web the Load Game button opens the browser's file picker.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION

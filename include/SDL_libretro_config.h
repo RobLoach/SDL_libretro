@@ -71,6 +71,8 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         SDL_Libretro_SetCoreAssetsDirectory(lr, INI_GetString(ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr)));
     if (INI_HasValue(ini, NULL, "rewindenabled"))
         SDL_Libretro_SetRewindEnabled(lr, INI_GetBoolean(ini, NULL, "rewindenabled", false), 0, 0);
+    if (INI_HasValue(ini, NULL, "filebrowserdirectory"))
+        SDL_strlcpy(lr->fileBrowserStartDirectory, INI_GetString(ini, NULL, "filebrowserdirectory", ""), sizeof(lr->fileBrowserStartDirectory));
 
     return true;
 }
@@ -162,6 +164,7 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetString(lr->ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr));
     INI_SetString(lr->ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr));
     INI_SetBoolean(lr->ini, NULL, "rewindenabled", SDL_Libretro_GetRewindEnabled(lr));
+    INI_SetString(lr->ini, NULL, "filebrowserdirectory", lr->fileBrowserStartDirectory);
 
     return INI_Save(lr->ini, lr->iniFile);
 }

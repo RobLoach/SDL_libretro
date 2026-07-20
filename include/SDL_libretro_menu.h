@@ -190,6 +190,13 @@ struct SDL_LibretroMenu {
 
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
+
+    // Directories and username buffers the Settings textedits write into.
+    char coreDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char saveDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char systemDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char browseDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char usernameBuffer[64];
 };
 
 /**
@@ -753,6 +760,76 @@ static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * Refresh the Settings textedit buffers from the current context values.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSyncSettingsBuffers(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    const char* value = SDL_Libretro_GetCoreDirectory(lr);
+    SDL_strlcpy(menu->coreDirBuffer, value != NULL ? value : "", sizeof(menu->coreDirBuffer));
+    value = SDL_Libretro_GetSaveDirectory(lr);
+    SDL_strlcpy(menu->saveDirBuffer, value != NULL ? value : "", sizeof(menu->saveDirBuffer));
+    value = SDL_Libretro_GetSystemDirectory(lr);
+    SDL_strlcpy(menu->systemDirBuffer, value != NULL ? value : "", sizeof(menu->systemDirBuffer));
+    SDL_strlcpy(menu->browseDirBuffer, lr->fileBrowserStartDirectory, sizeof(menu->browseDirBuffer));
+    value = SDL_Libretro_GetUsername(lr);
+    SDL_strlcpy(menu->usernameBuffer, value != NULL ? value : "", sizeof(menu->usernameBuffer));
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuCoreDirChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    // The setter rescans the core library, so the file filter follows suit.
+    SDL_Libretro_SetCoreDirectory(menu->lr, menu->coreDirBuffer);
+    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuSaveDirChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetSaveDirectory(menu->lr, menu->saveDirBuffer);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuSystemDirChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetSystemDirectory(menu->lr, menu->systemDirBuffer);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuBrowseDirChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_strlcpy(menu->lr->fileBrowserStartDirectory, menu->browseDirBuffer, sizeof(menu->lr->fileBrowserStartDirectory));
+#ifndef __EMSCRIPTEN__
+    if (menu->loadGameButton != NULL && menu->browseDirBuffer[0] != '\0') {
+        nk_console_file_set_directory(menu->loadGameButton, menu->browseDirBuffer);
+    }
+#endif
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuUsernameChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetUsername(menu->lr, menu->usernameBuffer);
+}
+
+/**
  * @internal
  */
 static void SDL_Libretro_MenuFreePortStates(SDL_LibretroMenu* menu) {
@@ -1306,6 +1383,32 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
 
         nk_console* theme = nk_console_combobox(settings, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex);
         nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuStyleChanged, menu, NULL);
+
+        // Username
+        SDL_Libretro_MenuSyncSettingsBuffers(menu);
+        nk_console* username = nk_console_textedit(settings, "Username", menu->usernameBuffer, sizeof(menu->usernameBuffer));
+        nk_console_add_event_handler(username, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuUsernameChanged, menu, NULL);
+
+        // Directories
+        nk_console* directories = nk_console_button(settings, "Directories");
+        nk_console_button_set_symbol(directories, NK_SYMBOL_TRIANGLE_RIGHT);
+        {
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(directories, "Directories", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_UP);
+
+            nk_console* coreDir = nk_console_textedit(directories, "Cores", menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
+            nk_console_add_event_handler(coreDir, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuCoreDirChanged, menu, NULL);
+
+            nk_console* saveDir = nk_console_textedit(directories, "Saves", menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
+            nk_console_add_event_handler(saveDir, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuSaveDirChanged, menu, NULL);
+
+            nk_console* systemDir = nk_console_textedit(directories, "System", menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
+            nk_console_add_event_handler(systemDir, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuSystemDirChanged, menu, NULL);
+
+            nk_console* browseDir = nk_console_textedit(directories, "Content", menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
+            nk_console_add_event_handler(browseDir, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuBrowseDirChanged, menu, NULL);
+        }
     }
 
     // Quit
@@ -1452,6 +1555,7 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     if (justOpened) {
         menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
         menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
+        SDL_Libretro_MenuSyncSettingsBuffers(menu);
     }
 
     int width = 0;
