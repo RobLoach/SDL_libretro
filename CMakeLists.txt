@@ -62,6 +62,36 @@ if(SDL_LIBRETRO_PHYSFS)
         physfs-static)
 endif()
 
+# Menu system (SDL_libretro_menu.h) built on nuklear_console. Kept out of the
+# base SDL_libretro target so consumers that don't want it pull in no Nuklear.
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+    option(SDL_LIBRETRO_MENU "Enable the nuklear_console menu (SDL_libretro_menu.h)" ON)
+else()
+    option(SDL_LIBRETRO_MENU "Enable the nuklear_console menu (SDL_libretro_menu.h)" OFF)
+endif()
+
+if(SDL_LIBRETRO_MENU)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/Nuklear/nuklear.h")
+        message(FATAL_ERROR "SDL_LIBRETRO_MENU requires the vendored submodules: git submodule update --init")
+    endif()
+
+    add_library(SDL_libretro_menu INTERFACE)
+    # The repository root is on the path so nuklear_console's default
+    # "vendor/c-vector/cvector.h" and "vendor/tinydir/tinydir.h" includes
+    # resolve against the sibling submodules in vendor/.
+    target_include_directories(SDL_libretro_menu INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/Nuklear>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_console>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_gamepad>)
+    target_compile_definitions(SDL_libretro_menu INTERFACE SDL_LIBRETRO_ENABLE_MENU)
+    target_link_libraries(SDL_libretro_menu INTERFACE SDL_libretro)
+    if(UNIX)
+        # Nuklear's font baking uses libm.
+        target_link_libraries(SDL_libretro_menu INTERFACE m)
+    endif()
+endif()
+
 # Example
 option(SDL_LIBRETRO_BUILD_EXAMPLES "Build example applications" ON)
 if(SDL_LIBRETRO_BUILD_EXAMPLES)
@@ -70,6 +100,9 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
 
     add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
     target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs)
+    if(SDL_LIBRETRO_MENU)
+        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro_menu)
+    endif()
 endif()
 
 # Tests

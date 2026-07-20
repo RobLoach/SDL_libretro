@@ -1942,6 +1942,112 @@ static int SDLCALL test_OSD(void *arg) {
     return TEST_COMPLETED;
 }
 
+#ifdef SDL_LIBRETRO_ENABLE_MENU
+static int SDLCALL test_Menu(void *arg) {
+    // NULL safety
+    SDLTest_AssertCheck(SDL_Libretro_CreateMenu(NULL) == NULL, "CreateMenu(NULL) returns NULL");
+    SDL_Libretro_DestroyMenu(NULL);
+    SDL_Libretro_UpdateMenu(NULL);
+    SDL_Libretro_RenderMenu(NULL);
+    SDL_Libretro_ToggleMenu(NULL);
+    SDL_Libretro_SetMenuOpen(NULL, true);
+    SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(NULL) == false, "IsMenuOpen(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(NULL, NULL) == false, "MenuHandleEvent(NULL, NULL) false");
+
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_CreateMenu(lr) == NULL, "CreateMenu without a renderer returns NULL");
+
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+    SDL_Libretro_SetRenderer(lr, renderer);
+
+    SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
+    SDLTest_AssertCheck(menu != NULL, "CreateMenu succeeds with a renderer");
+    if (menu != NULL) {
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu starts closed");
+
+        // Styles
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuStyle(menu) == SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+            "Menu starts with the default style");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuStyle(NULL, SDL_LIBRETRO_MENU_STYLE_DARK) == false,
+            "SetMenuStyle(NULL) fails");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuStyle(menu, SDL_LIBRETRO_MENU_STYLE_COUNT) == false,
+            "SetMenuStyle rejects an out-of-range style");
+        bool stylesApplied = true;
+        for (int style = 0; style < (int)SDL_LIBRETRO_MENU_STYLE_COUNT; style++) {
+            stylesApplied = stylesApplied &&
+                SDL_Libretro_SetMenuStyle(menu, (SDL_LibretroMenuStyle)style) &&
+                SDL_Libretro_GetMenuStyle(menu) == (SDL_LibretroMenuStyle)style;
+        }
+        SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
+
+        // With nothing to run, the menu opens itself.
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
+
+        // The toggle key closes it and the event is consumed.
+        SDL_Event event;
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_UP;
+        event.key.key = SDLK_F1;
+        SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(menu, &event) == true, "Toggle key event is consumed");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Toggle key closes the menu");
+
+#if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
+        // With a game running the menu stays closed; opening it builds the
+        // Core Options submenu from the test core's options.
+        SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+        SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
+        SDL_Libretro_Update(lr);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu stays closed while a game runs");
+
+        SDL_Libretro_SetMenuOpen(menu, true);
+        for (int i = 0; i < 3; i++) {
+            SDL_Libretro_UpdateMenu(menu);
+            SDL_Libretro_RenderMenu(menu);
+        }
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
+#endif
+
+        SDL_Libretro_DestroyMenu(menu);
+    }
+
+    // Theme persistence round-trip through the config file.
+    SDL_RemovePath("menu_test.cfg");
+    SDL_Libretro* lrSave = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lrSave, "menu_test.cfg");
+    SDL_Libretro_SetRenderer(lrSave, renderer);
+    SDL_LibretroMenu* menuSave = SDL_Libretro_CreateMenu(lrSave);
+    if (menuSave != NULL) {
+        SDL_Libretro_SetMenuStyle(menuSave, SDL_LIBRETRO_MENU_STYLE_DRACULA);
+        SDL_Libretro_DestroyMenu(menuSave);
+    }
+    SDL_Libretro_Destroy(lrSave); // Writes the config file.
+
+    SDL_Libretro* lrLoad = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lrLoad, "menu_test.cfg");
+    SDL_Libretro_SetRenderer(lrLoad, renderer);
+    SDL_LibretroMenu* menuLoad = SDL_Libretro_CreateMenu(lrLoad);
+    SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuStyle(menuLoad) == SDL_LIBRETRO_MENU_STYLE_DRACULA,
+        "Menu theme persists through the config file");
+    SDL_Libretro_DestroyMenu(menuLoad);
+    SDL_Libretro_Destroy(lrLoad);
+    SDL_RemovePath("menu_test.cfg");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+}
+#endif /* SDL_LIBRETRO_ENABLE_MENU */
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -1993,6 +2099,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
+#ifdef SDL_LIBRETRO_ENABLE_MENU
+    LIBRETRO_TEST_CASE(test_Menu,             "Menu create/toggle/update/render lifecycle"),
+#endif
     NULL
 };
 

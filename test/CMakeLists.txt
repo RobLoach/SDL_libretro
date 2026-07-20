@@ -13,6 +13,10 @@ target_compile_definitions(SDL_libretro_test PRIVATE
     TEST_CORE_PATH="$<TARGET_FILE:test_core>"
     TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test_content.txt")
 
+if(SDL_LIBRETRO_MENU)
+    target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro_menu)
+endif()
+
 if(SDL_LIBRETRO_PHYSFS)
     target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro_physfs)
 
