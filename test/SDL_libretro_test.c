@@ -729,6 +729,11 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == true, "SaveState succeeds");
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
 
+    // Texture scale mode applies to the live texture and reads back.
+    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetTextureScaleMode(NULL) fails");
+    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetTextureScaleMode(LINEAR) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetTextureScaleMode returns LINEAR");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -2026,6 +2031,13 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_LibretroMenu* menuSave = SDL_Libretro_CreateMenu(lrSave);
     if (menuSave != NULL) {
         SDL_Libretro_SetMenuStyle(menuSave, SDL_LIBRETRO_MENU_STYLE_DRACULA);
+
+        // Mute captures the pre-mute volume and silences the output.
+        SDL_Libretro_SetVolume(lrSave, 0.5f);
+        menuSave->muteChecked = nk_true;
+        SDL_Libretro_MenuMuteChanged(NULL, menuSave);
+        SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrSave) == 0.0f, "Mute drops the volume to zero");
+
         SDL_Libretro_DestroyMenu(menuSave);
     }
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
@@ -2036,6 +2048,14 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_LibretroMenu* menuLoad = SDL_Libretro_CreateMenu(lrLoad);
     SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuStyle(menuLoad) == SDL_LIBRETRO_MENU_STYLE_DRACULA,
         "Menu theme persists through the config file");
+    SDLTest_AssertCheck(menuLoad != NULL && menuLoad->muteChecked == nk_true, "Mute state persists through the config file");
+    SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
+    if (menuLoad != NULL) {
+        menuLoad->muteChecked = nk_false;
+        SDL_Libretro_MenuMuteChanged(NULL, menuLoad);
+        SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lrLoad) - 0.5f) < 0.001f,
+            "Unmute restores the pre-mute volume");
+    }
     SDL_Libretro_DestroyMenu(menuLoad);
     SDL_Libretro_Destroy(lrLoad);
     SDL_RemovePath("menu_test.cfg");
