@@ -78,11 +78,10 @@
 #endif
 #include SDL_LIBRETRO_MENU_NUKLEAR_GAMEPAD_H
 
+// The file browser enumerates directories through nuklear_console's SDL3
+// backend, selected automatically since SDL is included first.
 #ifndef SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION
 #define NK_CONSOLE_IMPLEMENTATION
-#endif
-#ifndef NK_CONSOLE_ENABLE_TINYDIR
-#define NK_CONSOLE_ENABLE_TINYDIR
 #endif
 #ifndef SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H
 #define SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H "nuklear_console.h"
