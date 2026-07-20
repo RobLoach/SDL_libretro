@@ -17,6 +17,7 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 - Config system for saving and loading settings
 - On-screen display messages
 - Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optionally)
+- In-app menu with [nuklear_console](https://github.com/RobLoach/nuklear_console) (optionally)
 
 ## Usage
 
@@ -73,6 +74,33 @@ To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake o
 SDL_Libretro_LoadGame(lr, "game.zip");
 ```
 
+### Menu
+
+To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options and settings, navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button.
+
+```c
+#define SDL_LIBRETRO_IMPLEMENTATION
+#define SDL_LIBRETRO_ENABLE_MENU
+#include "SDL_libretro.h"
+
+SDL_Libretro_SetRenderer(lr, renderer);
+SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
+
+// For each event...
+if (!SDL_Libretro_MenuHandleEvent(menu, &event)) {
+    SDL_Libretro_HandleEvent(lr, &event);
+}
+
+// Each frame...
+if (!SDL_Libretro_IsMenuOpen(menu)) {
+    SDL_Libretro_Update(lr);
+}
+SDL_Libretro_Render(renderer, lr, NULL);
+SDL_Libretro_UpdateMenu(menu);
+SDL_Libretro_RenderMenu(menu);
+SDL_RenderPresent(renderer);
+```
+
 ## Build
 
 ```sh
@@ -101,6 +129,9 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
 - `SDL_LIBRETRO_ENABLE_PHYSFS`: Enable .zip loading with PhysFS
 - `SDL_LIBRETRO_PHYSFS_MOUNT_POINT`: The PhysFS mount point archives are mounted at (default `"game"`)
+- `SDL_LIBRETRO_ENABLE_MENU`: Enable the nuklear_console menu
+- `SDL_LIBRETRO_MENU_TOGGLE_KEY`: The key that toggles the menu (default `SDLK_F1`)
+- `SDL_LIBRETRO_MENU_FONT_HEIGHT`: Base menu font height in pixels (default `16`)
 
 ## Dependencies
 
@@ -108,6 +139,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
 - [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
 - [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (optional)
+- [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear), [nuklear_console](https://github.com/RobLoach/nuklear_console), [nuklear_gamepad](https://github.com/RobLoach/nuklear_gamepad), [c-vector](https://github.com/eteran/c-vector) and [tinydir](https://github.com/cxong/tinydir) (git submodules, optional, for the menu)
 
 ## Development
 

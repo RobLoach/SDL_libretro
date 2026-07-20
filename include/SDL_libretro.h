@@ -316,6 +316,27 @@ bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr);
 void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr);
 bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
 
+// Menu
+
+/**
+ * An in-app menu built on nuklear_console.
+ *
+ * Only available when the implementation is compiled with
+ * SDL_LIBRETRO_ENABLE_MENU.
+ *
+ * @see SDL_Libretro_CreateMenu()
+ */
+typedef struct SDL_LibretroMenu SDL_LibretroMenu;
+
+SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr);
+void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu);
+void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu);
+void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu);
+bool SDL_Libretro_MenuHandleEvent(SDL_LibretroMenu* menu, const SDL_Event* event);
+void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open);
+void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu);
+bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
+
 /**
  * @}
  */
@@ -735,6 +756,7 @@ static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr);
 #include "SDL_libretro_core.h"
 #include "SDL_libretro_config.h"
 #include "SDL_libretro_physfs.h"
+#include "SDL_libretro_menu.h"
 // clang-format on
 
 #endif /* SDL_LIBRETRO_IMPLEMENTATION_ONCE */
