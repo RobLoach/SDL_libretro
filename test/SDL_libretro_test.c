@@ -1948,6 +1948,20 @@ static int SDLCALL test_OSD(void *arg) {
 }
 
 #ifdef SDL_LIBRETRO_ENABLE_MENU
+/**
+ * Applies the style and checks three probe colors in the resulting Nuklear
+ * style: text, window background, and the toggle cursor accent.
+ */
+static bool test_MenuStyleHasColors(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style,
+        struct nk_color text, struct nk_color window, struct nk_color toggleCursor) {
+    if (!SDL_Libretro_SetMenuStyle(menu, style)) {
+        return false;
+    }
+    return SDL_memcmp(&menu->ctx->style.text.color, &text, sizeof(text)) == 0 &&
+        SDL_memcmp(&menu->ctx->style.window.background, &window, sizeof(window)) == 0 &&
+        SDL_memcmp(&menu->ctx->style.checkbox.cursor_normal.data.color, &toggleCursor, sizeof(toggleCursor)) == 0;
+}
+
 static int SDLCALL test_Menu(void *arg) {
     // NULL safety
     SDLTest_AssertCheck(SDL_Libretro_CreateMenu(NULL) == NULL, "CreateMenu(NULL) returns NULL");
@@ -1988,6 +2002,23 @@ static int SDLCALL test_Menu(void *arg) {
                 SDL_Libretro_GetMenuStyle(menu) == (SDL_LibretroMenuStyle)style;
         }
         SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
+
+        // Regression probes for the theme colors.
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+            nk_rgba(205, 214, 244, 255), nk_rgba(30, 30, 46, 235), nk_rgba(180, 190, 254, 255)),
+            "Mocha colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE,
+            nk_rgba(76, 79, 105, 255), nk_rgba(239, 241, 245, 235), nk_rgba(223, 142, 29, 255)),
+            "Latte colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE,
+            nk_rgba(198, 208, 245, 255), nk_rgba(48, 52, 70, 235), nk_rgba(244, 184, 228, 255)),
+            "Frappe colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO,
+            nk_rgba(202, 211, 245, 255), nk_rgba(36, 39, 58, 235), nk_rgba(238, 212, 159, 255)),
+            "Macchiato colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_DRACULA,
+            nk_rgba(248, 248, 242, 255), nk_rgba(40, 42, 54, 235), nk_rgba(255, 121, 198, 255)),
+            "Dracula colors match");
 
         // With nothing to run, the menu opens itself.
         SDL_Libretro_UpdateMenu(menu);
