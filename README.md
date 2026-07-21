@@ -87,7 +87,7 @@ SDL_Libretro_SetRenderer(lr, renderer);
 SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
 
 // For each event...
-if (!SDL_Libretro_MenuHandleEvent(menu, &event)) {
+if (!SDL_Libretro_HandleMenuEvent(menu, &event)) {
     SDL_Libretro_HandleEvent(lr, &event);
 }
 

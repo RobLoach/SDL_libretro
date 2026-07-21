@@ -10,7 +10,7 @@
  * nuklear_console, nuklear_gamepad, c-vector and tinydir submodules on the
  * include path (handled by the SDL_libretro_menu CMake target).
  *
- * Frame contract, with SDL_Libretro_MenuHandleEvent() called for each event:
+ * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:
  *
  *     if (!SDL_Libretro_IsMenuOpen(menu)) SDL_Libretro_Update(lr);
  *     SDL_Libretro_Render(renderer, lr, NULL);
@@ -100,7 +100,7 @@
 /**
  * The keyboard key that toggles the menu.
  *
- * @see SDL_Libretro_MenuHandleEvent()
+ * @see SDL_Libretro_HandleMenuEvent()
  */
 #define SDL_LIBRETRO_MENU_TOGGLE_KEY SDLK_F1
 #endif
@@ -161,6 +161,7 @@ struct SDL_LibretroMenu {
     struct nk_context* ctx;
     nk_console* console;
     struct nk_gamepads gamepads;
+    void* userData; /** Generic data available to the application. */
 
     bool open; /** Whether the menu is currently shown. */
     bool wasOpen; /** The open state of the previous update, to detect fresh opens. */
@@ -1444,6 +1445,20 @@ bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu) {
     return menu != NULL && menu->open;
 }
 
+SDL_Libretro* SDL_Libretro_GetMenuLibretro(const SDL_LibretroMenu* menu) {
+    return menu != NULL ? menu->lr : NULL;
+}
+
+void SDL_Libretro_SetMenuUserData(SDL_LibretroMenu* menu, void* userData) {
+    if (menu != NULL) {
+        menu->userData = userData;
+    }
+}
+
+void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu) {
+    return menu != NULL ? menu->userData : NULL;
+}
+
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (menu == NULL || menu->open == open) {
         return;
@@ -1460,7 +1475,7 @@ void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
     }
 }
 
-bool SDL_Libretro_MenuHandleEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
+bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
     if (menu == NULL || menu->ctx == NULL || event == NULL) {
         return false;
     }

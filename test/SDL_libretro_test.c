@@ -1957,7 +1957,12 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Libretro_ToggleMenu(NULL);
     SDL_Libretro_SetMenuOpen(NULL, true);
     SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(NULL) == false, "IsMenuOpen(NULL) false");
-    SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(NULL, NULL) == false, "MenuHandleEvent(NULL, NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(NULL, NULL) == false, "HandleMenuEvent(NULL, NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
+    SDL_Libretro_SetMenuUserData(NULL, (void*)1);
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(NULL) == NULL, "GetMenuUserData(NULL) NULL");
+    // The deprecated alias still routes to the new name.
+    SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(NULL, NULL) == false, "MenuHandleEvent alias works");
 
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
     SDL_Init(SDL_INIT_VIDEO);
@@ -1973,6 +1978,15 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(menu != NULL, "CreateMenu succeeds with a renderer");
     if (menu != NULL) {
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu starts closed");
+
+        // Context getter and user data
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(menu) == lr, "GetMenuLibretro returns the creating context");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == NULL, "Menu user data starts NULL");
+        int userValue = 42;
+        SDL_Libretro_SetMenuUserData(menu, &userValue);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == &userValue, "Menu user data round-trips");
+        SDL_Libretro_SetMenuUserData(menu, NULL);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == NULL, "Menu user data clears");
 
         // Styles
         SDLTest_AssertCheck(SDL_Libretro_GetMenuStyle(menu) == SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
@@ -1994,13 +2008,27 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
 
-        // The toggle key closes it and the event is consumed.
+        // Gameplay input is swallowed while the menu is open, but lifecycle
+        // events always pass through.
         SDL_Event event;
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_A;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Open menu swallows gameplay input");
+        SDL_zero(event);
+        event.type = SDL_EVENT_QUIT;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Quit passes through an open menu");
+
+        // The toggle key closes it and the event is consumed.
         SDL_zero(event);
         event.type = SDL_EVENT_KEY_UP;
         event.key.key = SDLK_F1;
-        SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(menu, &event) == true, "Toggle key event is consumed");
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Toggle key event is consumed");
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Toggle key closes the menu");
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_A;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
         // With a game running the menu stays closed; opening it builds the
