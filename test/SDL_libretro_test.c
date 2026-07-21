@@ -1979,34 +1979,25 @@ static int SDLCALL test_ScaleMode(void *arg) {
     SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
     SDLTest_AssertCheck(texMode == SDL_SCALEMODE_LINEAR, "Texture built with the stored scale mode");
 
-    // ...and immediately when one exists. Explicit nearest skips the pixelart upgrade.
+    // ...and immediately when one exists.
     SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_NEAREST) == true, "SetScaleMode(nearest) succeeds");
     SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
-    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Explicit nearest applied to the live texture");
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Nearest applied to the live texture");
 
-    // The mode survives a core reload.
+    // The mode survives a core reload; nearest upgrades to pixelart on texture creation.
     SDL_Libretro_UnloadCore(lr);
     SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_NEAREST, "Scale mode survives UnloadCore");
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
     SDL_Libretro_LoadGame(lr, NULL);
     SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
-    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Explicit nearest re-applied after core reload");
-    SDL_Libretro_Destroy(lr);
-
-    // Without an explicit choice, nearest upgrades to pixelart on SDL >= 3.4.
-    lr = SDL_Libretro_Create();
-    SDL_Libretro_SetRenderer(lr, renderer);
-    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
-    SDL_Libretro_LoadGame(lr, NULL);
-    SDL_GetTextureScaleMode(SDL_Libretro_GetTexture(lr), &texMode);
 #if SDL_VERSION_ATLEAST(3, 4, 0)
-    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_PIXELART, "Default nearest upgrades to pixelart");
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_PIXELART, "Nearest upgrades to pixelart after core reload");
 #else
-    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Default nearest kept without pixelart support");
+    SDLTest_AssertCheck(texMode == SDL_SCALEMODE_NEAREST, "Nearest kept without pixelart support after core reload");
 #endif
     SDL_Libretro_Destroy(lr);
 
-    // Config save/load restores an explicit mode.
+    // Config save/load restores the scale mode.
     const char* cfg = "/tmp/sdl_libretro_scalemode_test.cfg";
     SDL_RemovePath(cfg);
     lr = SDL_Libretro_Create();
@@ -2017,17 +2008,6 @@ static int SDLCALL test_ScaleMode(void *arg) {
     lr = SDL_Libretro_Create();
     SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, cfg) == true, "InitConfigFile reload succeeds");
     SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "Config restores the scale mode");
-    SDLTest_AssertCheck(lr->scaleModeExplicit == true, "Config-restored mode counts as explicit");
-    SDL_Libretro_Destroy(lr);
-
-    // A default (never-set) config round-trip keeps the automatic upgrade eligible.
-    SDL_RemovePath(cfg);
-    lr = SDL_Libretro_Create();
-    SDL_Libretro_InitConfigFile(lr, cfg);
-    SDL_Libretro_Destroy(lr);
-    lr = SDL_Libretro_Create();
-    SDL_Libretro_InitConfigFile(lr, cfg);
-    SDLTest_AssertCheck(lr->scaleModeExplicit == false, "Default round-trip stays non-explicit");
     SDL_Libretro_Destroy(lr);
     SDL_RemovePath(cfg);
 

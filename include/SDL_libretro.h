@@ -571,7 +571,6 @@ struct SDL_Libretro {
     float volume; /** The audio volume. */
     SDL_LibretroFitMode fitMode; /** How the libretro context should fit into its destination when rendering. */
     SDL_ScaleMode scaleMode; /** The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
-    bool scaleModeExplicit; /** True once SDL_Libretro_SetScaleMode() has been called; suppresses the automatic nearest to pixelart upgrade. */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];

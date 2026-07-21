@@ -159,9 +159,7 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetString(lr->ini, NULL, "username", SDL_Libretro_GetUsername(lr));
     INI_SetInt(lr->ini, NULL, "audiolatency", (Sint64)SDL_Libretro_GetAudioLatency(lr));
     INI_SetInt(lr->ini, NULL, "fitmode", (Sint64)SDL_Libretro_GetFitMode(lr));
-    // Only an explicit scale mode is saved; a default one must stay eligible for the nearest to pixelart upgrade on reload.
-    if (lr->scaleModeExplicit)
-        INI_SetInt(lr->ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetScaleMode(lr));
+    INI_SetInt(lr->ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetScaleMode(lr));
     INI_SetString(lr->ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr));
     INI_SetString(lr->ini, NULL, "systemdirectory", SDL_Libretro_GetSystemDirectory(lr));
     INI_SetString(lr->ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr));
