@@ -178,7 +178,7 @@ typedef struct SDL_LibretroMenuPortState {
  */
 typedef struct SDL_LibretroMenuCoreChoice {
     SDL_LibretroMenu* menu;
-    char path[512]; /** Path to the core's shared library. */
+    const SDL_Libretro_CoreInfo* info; /** The scanned core this candidate refers to. */
     char name[128]; /** Display name; backs the picker button label. */
 } SDL_LibretroMenuCoreChoice;
 
@@ -291,7 +291,7 @@ static unsigned SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, c
         }
         SDL_LibretroMenuCoreChoice* choice = &menu->coreChoices[count];
         choice->menu = menu;
-        SDL_strlcpy(choice->path, lr->coreLibrary[i].path, sizeof(choice->path));
+        choice->info = &lr->coreLibrary[i];
         if (lr->coreLibrary[i].corename != NULL && lr->coreLibrary[i].corename[0] != '\0') {
             SDL_strlcpy(choice->name, lr->coreLibrary[i].corename, sizeof(choice->name));
         }
@@ -368,7 +368,7 @@ static void SDL_Libretro_MenuCoreChoiceClicked(nk_console* widget, void* user_da
     SDL_LibretroMenu* menu = choice->menu;
 
     SDL_Libretro_UnloadCore(menu->lr);
-    bool loaded = SDL_Libretro_LoadCore(menu->lr, choice->path);
+    bool loaded = SDL_Libretro_LoadCore(menu->lr, choice->info->path);
     if (!loaded) {
         SDL_Log("Failed to load core: %s", SDL_GetError());
         nk_console_show_message(menu->console, "Failed to load core");
