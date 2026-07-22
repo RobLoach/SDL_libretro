@@ -10,7 +10,7 @@
  * nuklear_console, nuklear_gamepad, c-vector and tinydir submodules on the
  * include path (handled by the SDL_libretro_menu CMake target).
  *
- * Frame contract, with SDL_Libretro_MenuHandleEvent() called for each event:
+ * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:
  *
  *     if (!SDL_Libretro_IsMenuOpen(menu)) SDL_Libretro_Update(lr);
  *     SDL_Libretro_Render(renderer, lr, NULL);
@@ -78,11 +78,13 @@
 #endif
 #include SDL_LIBRETRO_MENU_NUKLEAR_GAMEPAD_H
 
+// The file browser enumerates directories through nuklear_console's SDL3
+// backend, selected automatically since SDL is included first.
 #ifndef SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION
 #define NK_CONSOLE_IMPLEMENTATION
 #endif
-#ifndef NK_CONSOLE_ENABLE_TINYDIR
-#define NK_CONSOLE_ENABLE_TINYDIR
+#ifndef NK_CONSOLE_FILE_SDL_NATIVE_DIALOG
+#define NK_CONSOLE_FILE_SDL_NATIVE_DIALOG
 #endif
 #ifndef SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H
 #define SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H "nuklear_console.h"
@@ -98,17 +100,19 @@
 /**
  * The keyboard key that toggles the menu.
  *
- * @see SDL_Libretro_MenuHandleEvent()
+ * @see SDL_Libretro_HandleMenuEvent()
  */
 #define SDL_LIBRETRO_MENU_TOGGLE_KEY SDLK_F1
 #endif
 
 #ifndef SDL_LIBRETRO_MENU_FONT_HEIGHT
 /**
- * Base height in pixels for the menu font, multiplied by the UI scale and the
- * window's display scale.
+ * Base height in pixels for the menu font, multiplied by the UI scale and a
+ * whole-number display scale. The default font (ProggyClean) is a pixel font
+ * that only renders cleanly at 13px and integer multiples of it, so the
+ * height stays on that grid.
  */
-#define SDL_LIBRETRO_MENU_FONT_HEIGHT 16
+#define SDL_LIBRETRO_MENU_FONT_HEIGHT 13
 #endif
 
 #ifndef SDL_LIBRETRO_MENU_DEFAULT_STYLE
@@ -162,6 +166,7 @@ struct SDL_LibretroMenu {
     struct nk_gamepads gamepads;
     struct nk_font_atlas* atlas; /** The backend's font atlas, cleared before each rebake. */
     float bakedFontHeight; /** The font pixel height of the current bake, to detect scale changes. */
+    void* userData; /** Generic data available to the application. */
 
     bool open; /** Whether the menu is currently shown. */
     bool wasOpen; /** The open state of the previous update, to detect fresh opens. */
@@ -940,21 +945,26 @@ static float SDL_Libretro_MenuAutoScale(int width) {
  * @internal
  */
 static float SDL_Libretro_MenuFontHeight(SDL_LibretroMenu* menu) {
+    // Round the display scale to a whole number (>= 1): the default pixel
+    // font only renders cleanly at integer multiples of its base height. The
+    // inverted comparison also rejects 0/negative/NaN (e.g. on the web),
+    // which "displayScale <= 0.0f" would let through for NaN.
     float displayScale = SDL_GetWindowDisplayScale(menu->lr->window);
-    if (displayScale <= 0.0f) {
-        displayScale = 1.0f;
+    int scale = (displayScale > 0.0f) ? (int)(displayScale + 0.5f) : 1;
+    if (scale < 1) {
+        scale = 1;
     }
-    float step;
+    int step;
     if (menu->uiScaleIndex > 0) {
-        step = (float)menu->uiScaleIndex;
+        step = menu->uiScaleIndex;
     }
     else {
         int width = 0;
         int height = 0;
         SDL_GetWindowSize(menu->lr->window, &width, &height);
-        step = SDL_Libretro_MenuAutoScale(width);
+        step = (int)SDL_Libretro_MenuAutoScale(width);
     }
-    return (float)SDL_LIBRETRO_MENU_FONT_HEIGHT * step * displayScale;
+    return (float)SDL_LIBRETRO_MENU_FONT_HEIGHT * (float)(step * scale);
 }
 
 /**
@@ -969,10 +979,35 @@ static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu, float fontHeight) 
         nk_font_atlas_clear(menu->atlas);
         menu->atlas = NULL;
     }
+    struct nk_sdl* sdl = (struct nk_sdl*)menu->ctx->userdata.ptr;
     struct nk_font_config fontConfig = nk_font_config(0);
+    // Keep the font pixely rather than anti-aliased: no sub-pixel oversampling
+    // and snap glyphs to integer pixel positions.
+    fontConfig.oversample_h = 1;
+    fontConfig.oversample_v = 1;
+    fontConfig.pixel_snap = nk_true;
     menu->atlas = nk_sdl_font_stash_begin(menu->ctx);
     struct nk_font* font = nk_font_atlas_add_default(menu->atlas, fontHeight, &fontConfig);
-    nk_sdl_font_stash_end(menu->ctx);
+
+    // Bake the atlas here (instead of nk_sdl_font_stash_end) so the glyph
+    // coverage can be thresholded to hard edges. stb_truetype always produces
+    // anti-aliased (grey) edges; forcing every texel fully on or off yields a
+    // crisp, pixely font. RGBA32 stores coverage in each pixel's alpha byte.
+    int atlasWidth = 0, atlasHeight = 0;
+    const void* fontImage = nk_font_atlas_bake(menu->atlas, &atlasWidth, &atlasHeight, NK_FONT_ATLAS_RGBA32);
+    if (fontImage != NULL) {
+        Uint8* texels = (Uint8*)fontImage;
+        for (int i = 3; i < atlasWidth * atlasHeight * 4; i += 4) {
+            texels[i] = texels[i] >= 128 ? 255 : 0;
+        }
+    }
+    nk_sdl_device_upload_atlas(menu->ctx, fontImage, atlasWidth, atlasHeight);
+    nk_font_atlas_end(menu->atlas, nk_handle_ptr(sdl->ogl.font_tex), &sdl->ogl.tex_null);
+    // Draw the baked atlas with nearest-neighbour sampling so the hard glyph
+    // edges are not smoothed by the renderer's default linear filter.
+    if (sdl->ogl.font_tex != NULL) {
+        SDL_SetTextureScaleMode(sdl->ogl.font_tex, SDL_SCALEMODE_NEAREST);
+    }
     if (font != NULL) {
         nk_style_set_font(menu->ctx, &font->handle);
     }
@@ -1527,6 +1562,20 @@ bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu) {
     return menu != NULL && menu->open;
 }
 
+SDL_Libretro* SDL_Libretro_GetMenuLibretro(const SDL_LibretroMenu* menu) {
+    return menu != NULL ? menu->lr : NULL;
+}
+
+void SDL_Libretro_SetMenuUserData(SDL_LibretroMenu* menu, void* userData) {
+    if (menu != NULL) {
+        menu->userData = userData;
+    }
+}
+
+void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu) {
+    return menu != NULL ? menu->userData : NULL;
+}
+
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (menu == NULL || menu->open == open) {
         return;
@@ -1543,7 +1592,7 @@ void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
     }
 }
 
-bool SDL_Libretro_MenuHandleEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
+bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
     if (menu == NULL || menu->ctx == NULL || event == NULL) {
         return false;
     }
