@@ -2128,7 +2128,7 @@ static int SDLCALL test_MenuCorePicker(void *arg) {
         SDL_strlcpy(menu->loadGamePath, TEST_CONTENT_PATH, sizeof(menu->loadGamePath));
         SDL_Libretro_MenuLoadPendingGame(menu);
         SDLTest_AssertCheck(menu->corePickerPending == true, "Ambiguous content queues the core picker");
-        SDLTest_AssertCheck(menu->pendingCoreCount == 2, "Two candidates collected, got %u", menu->pendingCoreCount);
+        SDLTest_AssertCheck(menu->coreChoicesCount == 2, "Two candidates collected, got %d", menu->coreChoicesCount);
         SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game is not loaded until a core is chosen");
 
         // The next update builds the picker and navigates into it.
@@ -2138,8 +2138,9 @@ static int SDLCALL test_MenuCorePicker(void *arg) {
         SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->corePickerButton,
             "Picker is the active menu level");
 
-        // Choosing a candidate loads the core and the pending game.
-        SDL_Libretro_MenuCoreChoiceClicked(NULL, &menu->coreChoices[0]);
+        // Choosing a candidate loads the core and the pending game. Any
+        // widget in the console tree resolves the menu for the callback.
+        SDL_Libretro_MenuCoreChoiceClicked(menu->corePickerButton, (void*)menu->coreChoices[0]);
         SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Choosing a core loads the pending game");
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu closes after the picked core loads");
         SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->console,
