@@ -179,9 +179,9 @@ struct SDL_LibretroMenu {
     int volumePercent;
     int fitModeIndex;
     int styleIndex;
-    int uiScaleIndex; /** 0 = Auto (resolution-based), 1..4 = fixed multiplier. */
+    int uiScaleIndex; /** 0 = Auto (resolution-based), 1..4 = fixed multiplier; defaults to 2. */
     SDL_LibretroMenuStyle style; /** The active menu style. */
-    int filterIndex; /** 0 = Nearest (Pixel Art where available), 1 = Linear. */
+    int filterIndex; /** 0 = Nearest, 1 = Linear. */
     nk_bool fullscreenChecked;
     nk_bool vsyncChecked;
     nk_bool muteChecked;
@@ -1350,11 +1350,13 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         return NULL;
     }
 
-    // Apply the saved UI scale when the config has one, then bake the default
-    // font for the current resolution and display scale.
-    if (lr->ini != NULL) {
-        Sint64 savedScale = INI_GetInt(lr->ini, NULL, "menuuiscale", 0);
-        if (savedScale > 0 && savedScale <= 4) {
+    // Default the UI scale to 2x, apply the saved choice when the config has
+    // one (including an explicit Auto), then bake the default font for the
+    // current resolution and display scale.
+    menu->uiScaleIndex = 2;
+    if (lr->ini != NULL && INI_HasValue(lr->ini, NULL, "menuuiscale")) {
+        Sint64 savedScale = INI_GetInt(lr->ini, NULL, "menuuiscale", 2);
+        if (savedScale >= 0 && savedScale <= 4) {
             menu->uiScaleIndex = (int)savedScale;
         }
     }

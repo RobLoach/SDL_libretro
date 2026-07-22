@@ -64,11 +64,8 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
     lr->core.videoReinitPending = false;
 
-// Scale Mode
-#if SDL_VERSION_ATLEAST(3, 4, 0)
-    if (lr->core.textureScaleMode == SDL_SCALEMODE_NEAREST)
-        lr->core.textureScaleMode = SDL_SCALEMODE_PIXELART; // SDL >= 3.4
-#endif
+    // Scale Mode: NEAREST stays plain nearest-neighbour so pixel art renders
+    // crisp, without the edge anti-aliasing of SDL_SCALEMODE_PIXELART.
     SDL_SetTextureScaleMode(lr->core.texture, lr->core.textureScaleMode);
     return true;
 }
@@ -353,16 +350,10 @@ SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr) {
 /**
  * Sets the scale mode used when rendering the core's video.
  *
- * Applies to the current texture and any texture built later. As with the
- * default, SDL_SCALEMODE_NEAREST upgrades to SDL_SCALEMODE_PIXELART when
- * available.
+ * Applies to the current texture and any texture built later.
  */
 bool SDL_Libretro_SetTextureScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode) {
     if (!lr) return false;
-#if SDL_VERSION_ATLEAST(3, 4, 0)
-    if (mode == SDL_SCALEMODE_NEAREST)
-        mode = SDL_SCALEMODE_PIXELART;
-#endif
     lr->core.textureScaleMode = mode;
     if (lr->core.texture) {
         return SDL_SetTextureScaleMode(lr->core.texture, mode);

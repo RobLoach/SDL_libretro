@@ -1994,7 +1994,7 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(1280) == 2.0f, "Auto scale 2x at 1280");
         SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(2560) == 3.0f, "Auto scale 3x at 2560");
         SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(3840) == 4.0f, "Auto scale 4x at 3840");
-        SDLTest_AssertCheck(menu->uiScaleIndex == 0, "UI scale defaults to Auto");
+        SDLTest_AssertCheck(menu->uiScaleIndex == 2, "UI scale defaults to 2x");
         SDLTest_AssertCheck(menu->bakedFontHeight > 0.0f, "A font is baked at creation");
 
         // With nothing to run, the menu opens itself.
