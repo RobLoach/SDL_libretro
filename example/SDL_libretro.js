@@ -17,6 +17,7 @@
  *     script     URL of the Emscripten-generated script ('SDL_libretro_demo.js').
  *     arguments  Argument list for the demo, e.g. ['/cores/core.wasm', '/game.rom'].
  *     pixelated  Keep upscaled pixels crisp instead of smoothed (true).
+ *     canvasId   id for the created canvas, matching SDL's selector ('canvas').
  *     onReady    Called with the handle once the runtime is initialized.
  *     onError    Called with an Error when the script fails to load.
  *
@@ -45,8 +46,11 @@
             throw new Error('SDL_libretro.embed: only one instance can run per page');
         }
 
-        // The canvas SDL attaches to, filling the target element.
+        // The canvas SDL attaches to, filling the target element. SDL's
+        // Emscripten backend finds it with document.querySelector() using a CSS
+        // selector (default "#canvas"), so the id must match that selector.
         var canvas = document.createElement('canvas');
+        canvas.id = options.canvasId || 'canvas';
         canvas.tabIndex = -1;
         canvas.style.display = 'block';
         canvas.style.width = '100%';
