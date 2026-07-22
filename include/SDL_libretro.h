@@ -367,9 +367,6 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu);
  */
 bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event);
 
-/** @deprecated Use SDL_Libretro_HandleMenuEvent() instead. */
-#define SDL_Libretro_MenuHandleEvent SDL_Libretro_HandleMenuEvent
-
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open);
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu);
 bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
