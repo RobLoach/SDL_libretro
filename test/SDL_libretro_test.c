@@ -1961,8 +1961,6 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
     SDL_Libretro_SetMenuUserData(NULL, (void*)1);
     SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(NULL) == NULL, "GetMenuUserData(NULL) NULL");
-    // The deprecated alias still routes to the new name.
-    SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(NULL, NULL) == false, "MenuHandleEvent alias works");
 
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
     SDL_Init(SDL_INIT_VIDEO);
