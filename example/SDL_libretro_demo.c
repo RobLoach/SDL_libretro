@@ -169,7 +169,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     // The menu consumes input while it is open, and handles its toggle keys.
-    if (SDL_Libretro_MenuHandleEvent(app->menu, event)) {
+    if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
 

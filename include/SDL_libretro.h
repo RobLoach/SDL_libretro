@@ -349,7 +349,24 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr);
 void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu);
 void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu);
 void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu);
-bool SDL_Libretro_MenuHandleEvent(SDL_LibretroMenu* menu, const SDL_Event* event);
+
+/**
+ * Routes an event to the menu; call this for every event, before
+ * SDL_Libretro_HandleEvent().
+ *
+ * The toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button
+ * flip the menu open or closed, and are always consumed.
+ *
+ * @return true when the menu consumed the event: do not forward it to
+ *         SDL_Libretro_HandleEvent(). This happens for the toggle inputs
+ *         above, and for gameplay input swallowed while the menu is open.
+ *         false when the event should be handled as usual: the menu is
+ *         closed, or the event is a lifecycle event (quit, drop-file,
+ *         window, and gamepad/joystick add/remove) which always passes
+ *         through so the application and frontend still see it.
+ */
+bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event);
+
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open);
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu);
 bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
@@ -381,6 +398,23 @@ typedef void (*SDL_LibretroMenuCallback)(SDL_LibretroMenu* menu, void* userdata)
 Uint32 SDL_Libretro_GetMenuEventType(void);
 bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata);
 bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
+
+/**
+ * The SDL_Libretro context the menu was created for, or NULL.
+ */
+SDL_Libretro* SDL_Libretro_GetMenuLibretro(const SDL_LibretroMenu* menu);
+
+/**
+ * Attaches generic application data to the menu.
+ *
+ * @see SDL_Libretro_GetMenuUserData()
+ */
+void SDL_Libretro_SetMenuUserData(SDL_LibretroMenu* menu, void* userData);
+
+/**
+ * The data set by SDL_Libretro_SetMenuUserData(), or NULL.
+ */
+void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
 
 /**
  * @}
