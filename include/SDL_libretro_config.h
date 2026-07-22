@@ -61,6 +61,8 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         SDL_Libretro_SetAudioLatency(lr, (unsigned)INI_GetInt(ini, NULL, "audiolatency", SDL_Libretro_GetAudioLatency(lr)));
     if (INI_HasValue(ini, NULL, "fitmode"))
         SDL_Libretro_SetFitMode(lr, (SDL_LibretroFitMode)INI_GetInt(ini, NULL, "fitmode", SDL_Libretro_GetFitMode(lr)));
+    if (INI_HasValue(ini, NULL, "scalemode"))
+        SDL_Libretro_SetTextureScaleMode(lr, (SDL_ScaleMode)INI_GetInt(ini, NULL, "scalemode", SDL_Libretro_GetTextureScaleMode(lr)));
     if (INI_HasValue(ini, NULL, "savedirectory"))
         SDL_Libretro_SetSaveDirectory(lr, INI_GetString(ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr)));
     if (INI_HasValue(ini, NULL, "systemdirectory"))
@@ -159,6 +161,7 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetString(lr->ini, NULL, "username", SDL_Libretro_GetUsername(lr));
     INI_SetInt(lr->ini, NULL, "audiolatency", (Sint64)SDL_Libretro_GetAudioLatency(lr));
     INI_SetInt(lr->ini, NULL, "fitmode", (Sint64)SDL_Libretro_GetFitMode(lr));
+    INI_SetInt(lr->ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetTextureScaleMode(lr));
     INI_SetString(lr->ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr));
     INI_SetString(lr->ini, NULL, "systemdirectory", SDL_Libretro_GetSystemDirectory(lr));
     INI_SetString(lr->ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr));

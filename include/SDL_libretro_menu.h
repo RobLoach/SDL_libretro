@@ -10,7 +10,7 @@
  * nuklear_console, nuklear_gamepad, c-vector and tinydir submodules on the
  * include path (handled by the SDL_libretro_menu CMake target).
  *
- * Frame contract, with SDL_Libretro_MenuHandleEvent() called for each event:
+ * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:
  *
  *     if (!SDL_Libretro_IsMenuOpen(menu)) SDL_Libretro_Update(lr);
  *     SDL_Libretro_Render(renderer, lr, NULL);
@@ -78,11 +78,13 @@
 #endif
 #include SDL_LIBRETRO_MENU_NUKLEAR_GAMEPAD_H
 
+// The file browser enumerates directories through nuklear_console's SDL3
+// backend, selected automatically since SDL is included first.
 #ifndef SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION
 #define NK_CONSOLE_IMPLEMENTATION
 #endif
-#ifndef NK_CONSOLE_ENABLE_TINYDIR
-#define NK_CONSOLE_ENABLE_TINYDIR
+#ifndef NK_CONSOLE_FILE_SDL_NATIVE_DIALOG
+#define NK_CONSOLE_FILE_SDL_NATIVE_DIALOG
 #endif
 #ifndef SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H
 #define SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H "nuklear_console.h"
@@ -98,16 +100,18 @@
 /**
  * The keyboard key that toggles the menu.
  *
- * @see SDL_Libretro_MenuHandleEvent()
+ * @see SDL_Libretro_HandleMenuEvent()
  */
 #define SDL_LIBRETRO_MENU_TOGGLE_KEY SDLK_F1
 #endif
 
 #ifndef SDL_LIBRETRO_MENU_FONT_HEIGHT
 /**
- * Base height in pixels for the menu font, multiplied by the window's display scale.
+ * Base height in pixels for the menu font, multiplied by a whole-number display
+ * scale. The default font (ProggyClean) is a pixel font that only renders
+ * cleanly at 13px and integer multiples of it, so the height stays on that grid.
  */
-#define SDL_LIBRETRO_MENU_FONT_HEIGHT 16
+#define SDL_LIBRETRO_MENU_FONT_HEIGHT 13
 #endif
 
 #ifndef SDL_LIBRETRO_MENU_DEFAULT_STYLE
@@ -184,6 +188,7 @@ struct SDL_LibretroMenu {
     struct nk_context* ctx;
     nk_console* console;
     struct nk_gamepads gamepads;
+    void* userData; /** Generic data available to the application. */
 
     bool open; /** Whether the menu is currently shown. */
     bool wasOpen; /** The open state of the previous update, to detect fresh opens. */
@@ -202,6 +207,11 @@ struct SDL_LibretroMenu {
     int fitModeIndex;
     int styleIndex;
     SDL_LibretroMenuStyle style; /** The active menu style. */
+    int filterIndex; /** 0 = Nearest (Pixel Art where available), 1 = Linear. */
+    nk_bool fullscreenChecked;
+    nk_bool vsyncChecked;
+    nk_bool muteChecked;
+    float preMuteVolume; /** Volume to restore when unmuting. */
 
     // Load Game
     char loadGamePath[SDL_LIBRETRO_MAX_PATH];
@@ -405,6 +415,62 @@ static void SDL_Libretro_MenuFitModeChanged(nk_console* widget, void* user_data)
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetFitMode(menu->lr, (SDL_LibretroFitMode)menu->fitModeIndex);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuFilterChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetTextureScaleMode(menu->lr, menu->filterIndex == 1 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuFullscreenChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_SetWindowFullscreen(menu->lr->window, menu->fullscreenChecked == nk_true);
+    if (menu->lr->ini != NULL) {
+        INI_SetBoolean(menu->lr->ini, NULL, "menufullscreen", menu->fullscreenChecked == nk_true);
+    }
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuVSyncChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_SetRenderVSync(menu->lr->renderer, menu->vsyncChecked == nk_true ? 1 : 0);
+    if (menu->lr->ini != NULL) {
+        INI_SetBoolean(menu->lr->ini, NULL, "menuvsync", menu->vsyncChecked == nk_true);
+    }
+}
+
+/**
+ * Mute drops the volume to zero and restores the previous level on unmute.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuMuteChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro* lr = menu->lr;
+    if (menu->muteChecked) {
+        menu->preMuteVolume = SDL_Libretro_GetVolume(lr);
+        SDL_Libretro_SetVolume(lr, 0.0f);
+    }
+    else {
+        SDL_Libretro_SetVolume(lr, menu->preMuteVolume > 0.0f ? menu->preMuteVolume : 1.0f);
+        menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
+    }
+    if (lr->ini != NULL) {
+        INI_SetBoolean(lr->ini, NULL, "menumuted", menu->muteChecked == nk_true);
+        INI_SetFloat(lr->ini, NULL, "menumutevolume", menu->preMuteVolume);
+    }
 }
 
 /**
@@ -1313,17 +1379,48 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         return NULL;
     }
 
-    // Bake the default font, scaled to the window's display scale.
-    float scale = SDL_GetWindowDisplayScale(lr->window);
-    if (scale <= 0.0f) {
-        scale = 1.0f;
+    // Bake the default font at a whole-number multiple of its base height. A
+    // fractional scale would rasterize the pixel font off the grid and break
+    // the glyphs, so round the display scale to the nearest integer (>= 1).
+    // The guard also catches 0/negative/NaN (e.g. on the web), which the
+    // inverted comparison rejects where "scale <= 0.0f" would let NaN through.
+    float displayScale = SDL_GetWindowDisplayScale(lr->window);
+    int scale = (displayScale > 0.0f) ? (int)(displayScale + 0.5f) : 1;
+    if (scale < 1) {
+        scale = 1;
     }
+    struct nk_sdl* sdl = (struct nk_sdl*)menu->ctx->userdata.ptr;
     struct nk_font_config fontConfig = nk_font_config(0);
+    // Keep the font pixely rather than anti-aliased: no sub-pixel oversampling
+    // and snap glyphs to integer pixel positions.
+    fontConfig.oversample_h = 1;
+    fontConfig.oversample_v = 1;
+    fontConfig.pixel_snap = nk_true;
     struct nk_font_atlas* atlas = nk_sdl_font_stash_begin(menu->ctx);
     struct nk_font* font = nk_font_atlas_add_default(atlas, (float)SDL_LIBRETRO_MENU_FONT_HEIGHT * scale, &fontConfig);
-    nk_sdl_font_stash_end(menu->ctx);
+
+    // Bake the atlas here (instead of nk_sdl_font_stash_end) so the glyph
+    // coverage can be thresholded to hard edges. stb_truetype always produces
+    // anti-aliased (grey) edges; forcing every texel fully on or off yields a
+    // crisp, pixely font. RGBA32 stores coverage in each pixel's alpha byte.
+    int fontWidth = 0, fontHeight = 0;
+    const void* fontImage = nk_font_atlas_bake(atlas, &fontWidth, &fontHeight, NK_FONT_ATLAS_RGBA32);
+    if (fontImage != NULL) {
+        Uint8* texels = (Uint8*)fontImage;
+        for (int i = 3; i < fontWidth * fontHeight * 4; i += 4) {
+            texels[i] = texels[i] >= 128 ? 255 : 0;
+        }
+    }
+    nk_sdl_device_upload_atlas(menu->ctx, fontImage, fontWidth, fontHeight);
+    nk_font_atlas_end(atlas, nk_handle_ptr(sdl->ogl.font_tex), &sdl->ogl.tex_null);
     if (font != NULL) {
         nk_style_set_font(menu->ctx, &font->handle);
+    }
+
+    // Draw the baked atlas with nearest-neighbour sampling so the hard glyph
+    // edges are not smoothed by the renderer's default linear filter.
+    if (sdl->ogl.font_tex != NULL) {
+        SDL_SetTextureScaleMode(sdl->ogl.font_tex, SDL_SCALEMODE_NEAREST);
     }
 
     menu->console = nk_console_init(menu->ctx);
@@ -1403,16 +1500,57 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
             nk_console_button_onclick(settings, "Settings", &nk_console_button_back),
             NK_SYMBOL_TRIANGLE_UP);
 
-        menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
-        nk_console* volume = nk_console_property_int(settings, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f);
-        nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVolumeChanged, menu, NULL);
+        // Apply the saved window/audio state before the widgets snapshot it.
+        if (lr->ini != NULL) {
+            if (INI_HasValue(lr->ini, NULL, "menufullscreen")) {
+                SDL_SetWindowFullscreen(lr->window, INI_GetBoolean(lr->ini, NULL, "menufullscreen", false));
+            }
+            if (INI_HasValue(lr->ini, NULL, "menuvsync")) {
+                SDL_SetRenderVSync(lr->renderer, INI_GetBoolean(lr->ini, NULL, "menuvsync", false) ? 1 : 0);
+            }
+            if (INI_GetBoolean(lr->ini, NULL, "menumuted", false)) {
+                menu->muteChecked = nk_true;
+                menu->preMuteVolume = INI_GetFloat(lr->ini, NULL, "menumutevolume", 1.0f);
+                SDL_Libretro_SetVolume(lr, 0.0f);
+            }
+        }
 
-        menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
-        nk_console* fitMode = nk_console_combobox(settings, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex);
-        nk_console_add_event_handler(fitMode, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFitModeChanged, menu, NULL);
+        // Audio & Video
+        nk_console* audioVideo = nk_console_button(settings, "Audio & Video");
+        nk_console_button_set_symbol(audioVideo, NK_SYMBOL_TRIANGLE_RIGHT);
+        {
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(audioVideo, "Audio & Video", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_UP);
 
-        nk_console* theme = nk_console_combobox(settings, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex);
-        nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuStyleChanged, menu, NULL);
+            menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
+            nk_console* volume = nk_console_property_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f);
+            nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVolumeChanged, menu, NULL);
+
+            nk_console* mute = nk_console_checkbox(audioVideo, "Mute", &menu->muteChecked);
+            nk_console_add_event_handler(mute, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuMuteChanged, menu, NULL);
+
+            menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
+            nk_console* fullscreen = nk_console_checkbox(audioVideo, "Fullscreen", &menu->fullscreenChecked);
+            nk_console_add_event_handler(fullscreen, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFullscreenChanged, menu, NULL);
+
+            int vsync = 0;
+            SDL_GetRenderVSync(lr->renderer, &vsync);
+            menu->vsyncChecked = vsync != 0;
+            nk_console* vsyncBox = nk_console_checkbox(audioVideo, "VSync", &menu->vsyncChecked);
+            nk_console_add_event_handler(vsyncBox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVSyncChanged, menu, NULL);
+
+            menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
+            nk_console* filter = nk_console_combobox(audioVideo, "Filter", "Nearest|Linear", '|', &menu->filterIndex);
+            nk_console_add_event_handler(filter, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFilterChanged, menu, NULL);
+
+            menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
+            nk_console* fitMode = nk_console_combobox(audioVideo, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex);
+            nk_console_add_event_handler(fitMode, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFitModeChanged, menu, NULL);
+
+            nk_console* theme = nk_console_combobox(audioVideo, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex);
+            nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuStyleChanged, menu, NULL);
+        }
 
         // Username
         SDL_Libretro_MenuSyncSettingsBuffers(menu);
@@ -1475,6 +1613,20 @@ bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu) {
     return menu != NULL && menu->open;
 }
 
+SDL_Libretro* SDL_Libretro_GetMenuLibretro(const SDL_LibretroMenu* menu) {
+    return menu != NULL ? menu->lr : NULL;
+}
+
+void SDL_Libretro_SetMenuUserData(SDL_LibretroMenu* menu, void* userData) {
+    if (menu != NULL) {
+        menu->userData = userData;
+    }
+}
+
+void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu) {
+    return menu != NULL ? menu->userData : NULL;
+}
+
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (menu == NULL || menu->open == open) {
         return;
@@ -1491,7 +1643,7 @@ void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
     }
 }
 
-bool SDL_Libretro_MenuHandleEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
+bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
     if (menu == NULL || menu->ctx == NULL || event == NULL) {
         return false;
     }
@@ -1587,6 +1739,8 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     if (justOpened) {
         menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
         menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
+        menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
+        menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
         SDL_Libretro_MenuSyncSettingsBuffers(menu);
     }
 

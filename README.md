@@ -76,7 +76,7 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 ### Menu
 
-To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options, controller selection, settings (including directories and username) and themes, navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button. The theme persists through the config file when one is initialized, and on the web the Load Game button opens the browser's file picker.
+To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options, controller selection, directories and username settings, and an Audio & Video settings page (volume, mute, fullscreen, vsync, filter, fit mode and themes), navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button. The theme persists through the config file when one is initialized, and on the web the Load Game button opens the browser's file picker.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION
@@ -87,7 +87,7 @@ SDL_Libretro_SetRenderer(lr, renderer);
 SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
 
 // For each event...
-if (!SDL_Libretro_MenuHandleEvent(menu, &event)) {
+if (!SDL_Libretro_HandleMenuEvent(menu, &event)) {
     SDL_Libretro_HandleEvent(lr, &event);
 }
 
@@ -122,6 +122,28 @@ emcmake cmake -B build-web
 cmake --build build-web
 ```
 
+## Embedding on the Web
+
+The Emscripten build embeds into any webpage with [`SDL_libretro.js`](example/SDL_libretro.js). Serve the build output (`SDL_libretro_demo.js`, `SDL_libretro_demo.wasm` and `SDL_libretro_demo.data`) together with `SDL_libretro.js`, include the script, and point it at an element on the page:
+
+```html
+<div id="player" style="width: 640px; height: 480px"></div>
+<script src="SDL_libretro.js"></script>
+<script>
+    SDL_libretro.embed('#player');
+</script>
+```
+
+`SDL_libretro.embed(target, options)` accepts a CSS selector or an element, creates the canvas inside it, and starts the emulator. Options:
+
+- `script`: URL of the Emscripten-generated script (default `SDL_libretro_demo.js`)
+- `arguments`: Argument list for the demo, e.g. `['/cores/core.wasm', '/game.rom']`
+- `pixelated`: Keep upscaled pixels crisp instead of smoothed (default `true`)
+- `onReady`: Called with the embed handle once the runtime is initialized
+- `onError`: Called with an `Error` when the script fails to load
+
+See [`example/SDL_libretro_embed.html`](example/SDL_libretro_embed.html) for a complete page. The Emscripten build copies both files next to its output, so the build directory is directly servable. One embed can run per page.
+
 ## Configuration
 
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
@@ -140,7 +162,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
 - [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
 - [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (optional)
-- [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear), [nuklear_console](https://github.com/RobLoach/nuklear_console), [nuklear_gamepad](https://github.com/RobLoach/nuklear_gamepad), [c-vector](https://github.com/eteran/c-vector) and [tinydir](https://github.com/cxong/tinydir) (git submodules, optional, for the menu)
+- [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear), [nuklear_console](https://github.com/RobLoach/nuklear_console), [nuklear_gamepad](https://github.com/RobLoach/nuklear_gamepad) and [c-vector](https://github.com/eteran/c-vector) (git submodules, optional, for the menu)
 
 ## Development
 

@@ -31,7 +31,13 @@ typedef struct {
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
     SDL_Libretro_UnloadCore(app->lr);
-    SDL_Libretro_LoadGame(app->lr, path);
+    if (SDL_Libretro_LoadGame(app->lr, path)) {
+#ifdef SDL_LIBRETRO_ENABLE_MENU
+        // Close the menu so the freshly loaded game is visible, matching the
+        // menu's own Load Game flow.
+        SDL_Libretro_SetMenuOpen(app->menu, false);
+#endif
+    }
 }
 
 #ifdef __EMSCRIPTEN__
@@ -153,7 +159,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     // The menu consumes input while it is open, and handles its toggle keys.
-    if (SDL_Libretro_MenuHandleEvent(app->menu, event)) {
+    if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
 #endif

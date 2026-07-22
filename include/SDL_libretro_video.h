@@ -350,4 +350,28 @@ SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr) {
     return lr ? lr->fitMode : SDL_LIBRETRO_FIT_ASPECT;
 }
 
+/**
+ * Sets the scale mode used when rendering the core's video.
+ *
+ * Applies to the current texture and any texture built later. As with the
+ * default, SDL_SCALEMODE_NEAREST upgrades to SDL_SCALEMODE_PIXELART when
+ * available.
+ */
+bool SDL_Libretro_SetTextureScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode) {
+    if (!lr) return false;
+#if SDL_VERSION_ATLEAST(3, 4, 0)
+    if (mode == SDL_SCALEMODE_NEAREST)
+        mode = SDL_SCALEMODE_PIXELART;
+#endif
+    lr->core.textureScaleMode = mode;
+    if (lr->core.texture) {
+        return SDL_SetTextureScaleMode(lr->core.texture, mode);
+    }
+    return true;
+}
+
+SDL_ScaleMode SDL_Libretro_GetTextureScaleMode(const SDL_Libretro* lr) {
+    return lr ? lr->core.textureScaleMode : SDL_SCALEMODE_NEAREST;
+}
+
 #endif /* SDL_LIBRETRO_VIDEO_IMPL_ONCE */
