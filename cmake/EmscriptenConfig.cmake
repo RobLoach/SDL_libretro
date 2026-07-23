@@ -1,6 +1,11 @@
 # Emscripten Configuration
 set(CMAKE_EXECUTABLE_SUFFIX ".html")
 
+# Ship the embed loader and its example page next to the build output, so the
+# build directory is directly servable.
+configure_file("${CMAKE_SOURCE_DIR}/example/SDL_libretro.js" "${CMAKE_BINARY_DIR}/SDL_libretro.js" COPYONLY)
+configure_file("${CMAKE_SOURCE_DIR}/example/SDL_libretro_embed.html" "${CMAKE_BINARY_DIR}/SDL_libretro_embed.html" COPYONLY)
+
 # Preload the Core Files
 set(PRELOAD_FLAGS "")
 foreach(CORE IN LISTS CORES)

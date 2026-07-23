@@ -107,9 +107,11 @@
 
 #ifndef SDL_LIBRETRO_MENU_FONT_HEIGHT
 /**
- * Base height in pixels for the menu font, multiplied by the window's display scale.
+ * Base height in pixels for the menu font, multiplied by a whole-number display
+ * scale. The default font (ProggyClean) is a pixel font that only renders
+ * cleanly at 13px and integer multiples of it, so the height stays on that grid.
  */
-#define SDL_LIBRETRO_MENU_FONT_HEIGHT 16
+#define SDL_LIBRETRO_MENU_FONT_HEIGHT 13
 #endif
 
 #ifndef SDL_LIBRETRO_MENU_WINDOW_TITLE
@@ -1422,17 +1424,48 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         return NULL;
     }
 
-    // Bake the default font, scaled to the window's display scale.
-    float scale = SDL_GetWindowDisplayScale(lr->window);
-    if (scale <= 0.0f) {
-        scale = 1.0f;
+    // Bake the default font at a whole-number multiple of its base height. A
+    // fractional scale would rasterize the pixel font off the grid and break
+    // the glyphs, so round the display scale to the nearest integer (>= 1).
+    // The guard also catches 0/negative/NaN (e.g. on the web), which the
+    // inverted comparison rejects where "scale <= 0.0f" would let NaN through.
+    float displayScale = SDL_GetWindowDisplayScale(lr->window);
+    int scale = (displayScale > 0.0f) ? (int)(displayScale + 0.5f) : 1;
+    if (scale < 1) {
+        scale = 1;
     }
+    struct nk_sdl* sdl = (struct nk_sdl*)menu->ctx->userdata.ptr;
     struct nk_font_config fontConfig = nk_font_config(0);
+    // Keep the font pixely rather than anti-aliased: no sub-pixel oversampling
+    // and snap glyphs to integer pixel positions.
+    fontConfig.oversample_h = 1;
+    fontConfig.oversample_v = 1;
+    fontConfig.pixel_snap = nk_true;
     struct nk_font_atlas* atlas = nk_sdl_font_stash_begin(menu->ctx);
     struct nk_font* font = nk_font_atlas_add_default(atlas, (float)SDL_LIBRETRO_MENU_FONT_HEIGHT * scale, &fontConfig);
-    nk_sdl_font_stash_end(menu->ctx);
+
+    // Bake the atlas here (instead of nk_sdl_font_stash_end) so the glyph
+    // coverage can be thresholded to hard edges. stb_truetype always produces
+    // anti-aliased (grey) edges; forcing every texel fully on or off yields a
+    // crisp, pixely font. RGBA32 stores coverage in each pixel's alpha byte.
+    int fontWidth = 0, fontHeight = 0;
+    const void* fontImage = nk_font_atlas_bake(atlas, &fontWidth, &fontHeight, NK_FONT_ATLAS_RGBA32);
+    if (fontImage != NULL) {
+        Uint8* texels = (Uint8*)fontImage;
+        for (int i = 3; i < fontWidth * fontHeight * 4; i += 4) {
+            texels[i] = texels[i] >= 128 ? 255 : 0;
+        }
+    }
+    nk_sdl_device_upload_atlas(menu->ctx, fontImage, fontWidth, fontHeight);
+    nk_font_atlas_end(atlas, nk_handle_ptr(sdl->ogl.font_tex), &sdl->ogl.tex_null);
     if (font != NULL) {
         nk_style_set_font(menu->ctx, &font->handle);
+    }
+
+    // Draw the baked atlas with nearest-neighbour sampling so the hard glyph
+    // edges are not smoothed by the renderer's default linear filter.
+    if (sdl->ogl.font_tex != NULL) {
+        SDL_SetTextureScaleMode(sdl->ogl.font_tex, SDL_SCALEMODE_NEAREST);
     }
 
     menu->console = nk_console_init(menu->ctx);
