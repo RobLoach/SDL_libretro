@@ -64,8 +64,6 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
     lr->core.videoReinitPending = false;
 
-    // Scale Mode: NEAREST stays plain nearest-neighbour so pixel art renders
-    // crisp, without the edge anti-aliasing of SDL_SCALEMODE_PIXELART.
     SDL_SetTextureScaleMode(lr->core.texture, lr->core.textureScaleMode);
     return true;
 }
