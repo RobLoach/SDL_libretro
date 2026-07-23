@@ -113,6 +113,12 @@ cmake --build .
 
 SDL3 is fetched automatically via CMake FetchContent if not already installed on the system.
 
+With `SDL_LIBRETRO_DOWNLOAD_CORES` enabled (default for native builds), a few libretro cores are downloaded into the build directory for testing:
+
+- [snes9x](https://github.com/libretro/snes9x) (Super Nintendo)
+- [fceumm](https://github.com/libretro/libretro-fceumm) (Nintendo Entertainment System)
+- [genesis_plus_gx](https://github.com/libretro/Genesis-Plus-GX) (Sega Genesis / Master System / Game Gear)
+
 ### Emscripten
 
 With the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) activated, configure through `emcmake`:

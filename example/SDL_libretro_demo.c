@@ -30,14 +30,15 @@ typedef struct {
  * Called when dragging and dropping a game onto the window.
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
-    SDL_Libretro_UnloadCore(app->lr);
-    if (SDL_Libretro_LoadGame(app->lr, path)) {
 #ifdef SDL_LIBRETRO_ENABLE_MENU
-        // Close the menu so the freshly loaded game is visible, matching the
-        // menu's own Load Game flow.
-        SDL_Libretro_SetMenuOpen(app->menu, false);
+    // Route through the menu so an extension claimed by several cores shows the
+    // "Select Core" picker instead of silently loading the first match. The
+    // menu unloads the current core, loads the game, and closes on success.
+    SDL_Libretro_MenuLoadGame(app->menu, path);
+#else
+    SDL_Libretro_UnloadCore(app->lr);
+    SDL_Libretro_LoadGame(app->lr, path);
 #endif
-    }
 }
 
 #ifdef __EMSCRIPTEN__
