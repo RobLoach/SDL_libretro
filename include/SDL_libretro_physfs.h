@@ -251,19 +251,20 @@ static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysF
  *
  * Subdirectories are searched recursively.
  *
+ * @param mountPoint the PhysFS mount point the archive is mounted at.
  * @param archivePath the OS path of the archive (used for the base name).
+ * @param validExts the loaded core's valid extensions to gate passes 1 and 3,
+ *                  or "" for no-core semantics (pick what any core recognizes).
  * @param dst receives the virtual path of the pick.
  * @return true if a candidate was found and copied into `dst`.
  *
  * @internal
  */
-static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archivePath, char* dst, size_t dstSize) {
+static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* mountPoint, const char* archivePath, const char* validExts, char* dst, size_t dstSize) {
     SDL_Libretro_PhysFS_FileList list = {0};
-    SDL_Libretro_PhysFS_CollectFiles(SDL_LIBRETRO_PHYSFS_MOUNT_POINT, &list);
+    SDL_Libretro_PhysFS_CollectFiles(mountPoint, &list);
 
-    // Get the valid extensions for the core.
-    const char* validExts = SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : "";
-    bool hasExts = validExts[0] != '\0';
+    bool hasExts = validExts != NULL && validExts[0] != '\0';
 
     // Get the archive's filename.
     char archiveName[SDL_LIBRETRO_MAX_PATH];
@@ -326,6 +327,55 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archiv
     SDL_free(list.paths);
 
     return found != NULL;
+}
+
+/**
+ * Resolve the content path a load would choose from `path`, without disturbing
+ * an archive already mounted for a running game.
+ *
+ * A non-archive path is copied through unchanged. A .zip is inspected with the
+ * same content selection as loading and the chosen entry's virtual path is
+ * returned. No-core semantics are used (any recognized entry is eligible), so
+ * the result never depends on which core happens to be running.
+ *
+ * Intended for pre-load inspection, such as the menu's core picker resolving
+ * the real content extension inside an archive.
+ *
+ * @param lr the libretro context.
+ * @param path the OS path of the content or archive.
+ * @param dst receives the resolved content path (a virtual path for archives).
+ * @param dstSize the size of `dst`.
+ * @return true if a content path was resolved into `dst`.
+ */
+bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, char* dst, size_t dstSize) {
+    if (!lr || !path || !dst || dstSize == 0) {
+        return false;
+    }
+
+    // Not an archive: the path is the content.
+    if (SDL_strcasecmp(SDL_Libretro_GetExtension(path), "zip") != 0) {
+        SDL_strlcpy(dst, path, dstSize);
+        return true;
+    }
+
+    if (!SDL_Libretro_PhysFS_Init(lr)) {
+        return false;
+    }
+
+    // Already mounted for the running game: inspect it in place rather than
+    // mounting a second copy of the same archive.
+    if (SDL_strcmp(path, lr->physfsMountSource) == 0) {
+        return SDL_Libretro_PhysFS_PickContent(lr, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, path, "", dst, dstSize);
+    }
+
+    // A private mount point keeps any running game's mount ("game") intact.
+    static const char* peekMount = SDL_LIBRETRO_PHYSFS_MOUNT_POINT "_peek";
+    if (!SDL_PhysFS_Mount(path, peekMount)) {
+        return false;
+    }
+    bool found = SDL_Libretro_PhysFS_PickContent(lr, peekMount, path, "", dst, dstSize);
+    SDL_PhysFS_Unmount(path);
+    return found;
 }
 
 /**
@@ -394,7 +444,9 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 
     // Find the content to load within the mount.
     char virtualPath[SDL_LIBRETRO_MAX_PATH];
-    if (!SDL_Libretro_PhysFS_PickContent(lr, gamePath, virtualPath, sizeof(virtualPath))) {
+    if (!SDL_Libretro_PhysFS_PickContent(lr, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, gamePath,
+                                         SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : "",
+                                         virtualPath, sizeof(virtualPath))) {
         SDL_Libretro_PhysFS_ClearMount(lr);
         SDL_SetError("[SDL_Libretro] No suitable content found inside '%s'", gamePath);
         return false;
@@ -440,6 +492,14 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     (void)lr;
     (void)gamePath;
     return SDL_SetError("SDL_Libretro_PhysFS not enabled");
+}
+
+bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, char* dst, size_t dstSize) {
+    (void)lr;
+    (void)path;
+    (void)dst;
+    (void)dstSize;
+    return false;
 }
 
 static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {

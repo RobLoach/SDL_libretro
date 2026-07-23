@@ -266,7 +266,19 @@ static bool SDL_Libretro_MenuLoadGameNow(SDL_LibretroMenu* menu, const char* pat
  */
 static int SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, const char* path) {
     SDL_Libretro* lr = menu->lr;
-    const char* dot = SDL_strrchr(path, '.');
+
+    // Match on the real content extension. For an archive that's the extension
+    // of the file inside it, so the picker keys on the actual system rather than
+    // "zip" (which no content core claims).
+    const char* contentPath = path;
+#if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+    char resolved[SDL_LIBRETRO_MAX_PATH];
+    if (SDL_Libretro_PhysFS_PeekContent(lr, path, resolved, sizeof(resolved))) {
+        contentPath = resolved;
+    }
+#endif
+
+    const char* dot = SDL_strrchr(contentPath, '.');
     if (dot == NULL || dot[1] == '\0') {
         return 0;
     }
@@ -306,11 +318,14 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     }
 
     // More than one core can open this file: let the user pick. The current
-    // core keeps running until a choice is made.
+    // core keeps running until a choice is made. Open the menu so the picker is
+    // visible even when the load was triggered from outside it (e.g. a drop
+    // while a game is running); a no-op when the menu is already open.
     if (SDL_Libretro_MenuCollectCoreCandidates(menu, menu->loadGamePath) > 1) {
         SDL_strlcpy(menu->pendingGamePath, menu->loadGamePath, sizeof(menu->pendingGamePath));
         menu->corePickerPending = true;
         menu->loadGamePath[0] = '\0';
+        SDL_Libretro_SetMenuOpen(menu, true);
         return;
     }
 
@@ -318,6 +333,28 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     SDL_Libretro_UnloadCore(menu->lr);
     SDL_Libretro_MenuLoadGameNow(menu, menu->loadGamePath);
     menu->loadGamePath[0] = '\0';
+}
+
+/**
+ * Load a game through the menu, honoring the "Select Core" picker.
+ *
+ * When the content's extension is claimed by more than one scanned core, the
+ * "Select Core" picker is shown (opening the menu if needed) instead of
+ * silently loading the first match. Otherwise the game loads immediately and
+ * the menu closes, matching the menu's own Load Game flow.
+ *
+ * Use this for external load triggers such as drag & drop so they get the same
+ * core-picker behavior as the in-menu file browser.
+ *
+ * @param menu the menu, from SDL_Libretro_CreateMenu().
+ * @param path the content path to load.
+ */
+void SDL_Libretro_MenuLoadGame(SDL_LibretroMenu* menu, const char* path) {
+    if (menu == NULL || path == NULL || path[0] == '\0') {
+        return;
+    }
+    SDL_strlcpy(menu->loadGamePath, path, sizeof(menu->loadGamePath));
+    SDL_Libretro_MenuLoadPendingGame(menu);
 }
 
 /**
