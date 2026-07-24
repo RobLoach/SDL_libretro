@@ -129,6 +129,26 @@
 #define SDL_LIBRETRO_MENU_STYLE_NAMES "Mocha|Latte|Frappe|Macchiato|Dracula|Dark"
 
 /**
+ * The lines of the About page, in display order.
+ *
+ * @internal
+ */
+typedef enum SDL_LibretroMenuAboutLine {
+    SDL_LIBRETRO_MENU_ABOUT_VERSION = 0,
+    SDL_LIBRETRO_MENU_ABOUT_SDL,
+    SDL_LIBRETRO_MENU_ABOUT_RENDERER,
+    SDL_LIBRETRO_MENU_ABOUT_CORE,
+    SDL_LIBRETRO_MENU_ABOUT_CORE_VERSION,
+    SDL_LIBRETRO_MENU_ABOUT_EXTENSIONS,
+    SDL_LIBRETRO_MENU_ABOUT_PIXEL_FORMAT,
+    SDL_LIBRETRO_MENU_ABOUT_SAMPLE_RATE,
+    SDL_LIBRETRO_MENU_ABOUT_CONTENT,
+    SDL_LIBRETRO_MENU_ABOUT_SIZE,
+    SDL_LIBRETRO_MENU_ABOUT_ASPECT,
+    SDL_LIBRETRO_MENU_ABOUT_COUNT
+} SDL_LibretroMenuAboutLine;
+
+/**
  * Per-option UI state for the "Core Options" submenu.
  *
  * The comboboxes and checkboxes write directly into these fields, so the array
@@ -200,6 +220,11 @@ struct SDL_LibretroMenu {
 
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
+
+    // About page labels, refreshed when the page opens. The widgets read the
+    // buffers lazily, so they must stay allocated for as long as the menu.
+    char aboutLines[SDL_LIBRETRO_MENU_ABOUT_COUNT][192];
+    nk_console* aboutLabels[SDL_LIBRETRO_MENU_ABOUT_COUNT];
 };
 
 /**
@@ -351,6 +376,123 @@ static void SDL_Libretro_MenuResetClicked(nk_console* widget, void* user_data) {
     if (SDL_Libretro_Reset(menu->lr)) {
         SDL_Libretro_SetMenuOpen(menu, false);
     }
+}
+
+/**
+ * Human-readable name for the core's pixel format.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_MenuPixelFormatName(enum retro_pixel_format format) {
+    switch (format) {
+        case RETRO_PIXEL_FORMAT_0RGB1555:
+            return "0RGB1555";
+        case RETRO_PIXEL_FORMAT_XRGB8888:
+            return "XRGB8888";
+        case RETRO_PIXEL_FORMAT_RGB565:
+            return "RGB565";
+        default:
+            return "Unknown";
+    }
+}
+
+/**
+ * Refreshes the About page label buffers, hiding the core and content lines
+ * when nothing is loaded.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuUpdateAbout(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    const size_t lineSize = sizeof(menu->aboutLines[0]);
+
+    // Frontend
+    SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_VERSION], lineSize, "SDL_libretro %d.%d.%d",
+        SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
+    int sdlVersion = SDL_GetVersion();
+    SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SDL], lineSize, "SDL %d.%d.%d %s",
+        SDL_VERSIONNUM_MAJOR(sdlVersion), SDL_VERSIONNUM_MINOR(sdlVersion), SDL_VERSIONNUM_MICRO(sdlVersion),
+        SDL_GetRevision());
+    const char* rendererName = SDL_GetRendererName(lr->renderer);
+    SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_RENDERER], lineSize, "Renderer: %s",
+        rendererName != NULL ? rendererName : "Unknown");
+
+    // Core
+    if (SDL_Libretro_IsCoreReady(lr)) {
+        SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CORE], lineSize, "Core: %s",
+            SDL_Libretro_GetCoreName(lr));
+        const char* coreVersion = SDL_Libretro_GetCoreVersion(lr);
+        if (coreVersion[0] != '\0') {
+            SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CORE_VERSION], lineSize, "Core Version: %s", coreVersion);
+        }
+        else {
+            menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CORE_VERSION][0] = '\0';
+        }
+        const char* extensions = SDL_Libretro_GetValidExtensions(lr);
+        SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_EXTENSIONS], lineSize, "Extensions: %s",
+            extensions[0] != '\0' ? extensions : "(any)");
+        SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_PIXEL_FORMAT], lineSize, "Pixel Format: %s",
+            SDL_Libretro_MenuPixelFormatName(lr->core.pixelFormat));
+        if (lr->core.sampleRate > 0.0) {
+            SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SAMPLE_RATE], lineSize, "Sample Rate: %g Hz",
+                lr->core.sampleRate);
+        }
+        else {
+            menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SAMPLE_RATE][0] = '\0';
+        }
+    }
+    else {
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CORE][0] = '\0';
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CORE_VERSION][0] = '\0';
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_EXTENSIONS][0] = '\0';
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_PIXEL_FORMAT][0] = '\0';
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SAMPLE_RATE][0] = '\0';
+    }
+
+    // Content
+    if (SDL_Libretro_IsGameReady(lr)) {
+        char contentName[128] = "";
+        SDL_Libretro_GetFileName(contentName, sizeof(contentName), lr->core.contentPath, true);
+        SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CONTENT], lineSize, "Content: %s",
+            contentName[0] != '\0' ? contentName : "(none)");
+        int width = 0;
+        int height = 0;
+        SDL_Libretro_GetSize(lr, &width, &height);
+        SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SIZE], lineSize, "Size: %dx%d @ %.2f FPS",
+            width, height, SDL_Libretro_GetFPS(lr));
+        int rotation = SDL_Libretro_GetRotation(lr);
+        if (rotation != 0) {
+            SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_ASPECT], lineSize, "Aspect Ratio: %.3f (rotated %d)",
+                SDL_Libretro_GetAspectRatio(lr), rotation * 90);
+        }
+        else {
+            SDL_snprintf(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_ASPECT], lineSize, "Aspect Ratio: %.3f",
+                SDL_Libretro_GetAspectRatio(lr));
+        }
+    }
+    else {
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CONTENT][0] = '\0';
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SIZE][0] = '\0';
+        menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_ASPECT][0] = '\0';
+    }
+
+    // Sync label visibility with the buffers.
+    for (int i = 0; i < (int)SDL_LIBRETRO_MENU_ABOUT_COUNT; i++) {
+        if (menu->aboutLabels[i] != NULL) {
+            menu->aboutLabels[i]->visible = (nk_bool)(menu->aboutLines[i][0] != '\0');
+        }
+    }
+}
+
+/**
+ * Refreshes the About page and enters it. A CLICKED handler suppresses the
+ * button's default submenu navigation, so the handler navigates itself.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuAboutOpened(nk_console* widget, void* user_data) {
+    SDL_Libretro_MenuUpdateAbout((SDL_LibretroMenu*)user_data);
+    nk_console_set_active_parent(widget);
 }
 
 /**
@@ -1445,6 +1587,21 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
             nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuStyleChanged, menu, NULL);
         }
     }
+
+    // About, refreshed by the CLICKED handler whenever the page opens.
+    nk_console* about = nk_console_button(menu->console, "About");
+    nk_console_button_set_symbol(about, NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_add_event_handler(about, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuAboutOpened, menu, NULL);
+    {
+        nk_console_button_set_symbol(
+            nk_console_button_onclick(about, "About", &nk_console_button_back),
+            NK_SYMBOL_TRIANGLE_UP);
+        for (int i = 0; i < (int)SDL_LIBRETRO_MENU_ABOUT_COUNT; i++) {
+            menu->aboutLabels[i] = nk_console_label(about, menu->aboutLines[i]);
+        }
+        nk_console_label(about, "https://github.com/RobLoach/SDL_libretro");
+    }
+    SDL_Libretro_MenuUpdateAbout(menu);
 
     // Quit
     nk_console* quit = nk_console_button_onclick_handler(menu->console, "Quit", &SDL_Libretro_MenuQuitClicked, menu, NULL);
