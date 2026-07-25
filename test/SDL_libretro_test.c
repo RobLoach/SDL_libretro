@@ -2007,23 +2007,22 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(2560) == 3.0f, "Auto scale 3x at 2560");
         SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(3840) == 4.0f, "Auto scale 4x at 3840");
         SDLTest_AssertCheck(menu->uiScaleIndex == 2, "UI scale defaults to 2x");
-        SDLTest_AssertCheck(menu->bakedFontHeight > 0.0f, "A font is baked at creation");
+        SDLTest_AssertCheck(menu->renderScale > 0.0f, "Render scale is set at creation");
 
         // With nothing to run, the menu opens itself.
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
 
-        // A scale override rebakes the font at the multiplied size.
-        float defaultFontHeight = menu->bakedFontHeight;
+        float defaultScale = menu->renderScale;
         menu->uiScaleIndex = 4;
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
-        SDLTest_AssertCheck(menu->bakedFontHeight == defaultFontHeight * 2.0f, "UI scale 4x doubles the default 2x font height");
+        SDLTest_AssertCheck(menu->renderScale == defaultScale * 2.0f, "UI scale 4x doubles the default 2x render scale");
         menu->uiScaleIndex = 2;
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
-        SDLTest_AssertCheck(menu->bakedFontHeight == defaultFontHeight, "Returning to 2x restores the default font height");
+        SDLTest_AssertCheck(menu->renderScale == defaultScale, "Returning to 2x restores the default render scale");
 
         // Gameplay input is swallowed while the menu is open, but lifecycle
         // events always pass through.

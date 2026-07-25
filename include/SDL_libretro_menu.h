@@ -164,8 +164,8 @@ struct SDL_LibretroMenu {
     struct nk_context* ctx;
     nk_console* console;
     struct nk_gamepads gamepads;
-    struct nk_font_atlas* atlas; /** The backend's font atlas, cleared before each rebake. */
-    float bakedFontHeight; /** The font pixel height of the current bake, to detect scale changes. */
+    struct nk_font_atlas* atlas; /** The backend's font atlas. */
+    float renderScale; /** The current UI render scale applied via SDL_SetRenderScale. */
     void* userData; /** Generic data available to the application. */
 
     bool open; /** Whether the menu is currently shown. */
@@ -938,17 +938,12 @@ static float SDL_Libretro_MenuAutoScale(int width) {
 }
 
 /**
- * The font pixel height for the current window: the base height times the UI
- * scale (the manual override, or the resolution-based step) times the
- * window's display scale.
+ * The UI render scale for the current window: the UI scale (manual override
+ * or resolution-based step) times the window's display scale.
  *
  * @internal
  */
-static float SDL_Libretro_MenuFontHeight(SDL_LibretroMenu* menu) {
-    // Round the display scale to a whole number (>= 1): the default pixel
-    // font only renders cleanly at integer multiples of its base height. The
-    // inverted comparison also rejects 0/negative/NaN (e.g. on the web),
-    // which "displayScale <= 0.0f" would let through for NaN.
+static float SDL_Libretro_MenuRenderScale(SDL_LibretroMenu* menu) {
     float displayScale = SDL_GetWindowDisplayScale(menu->lr->window);
     int scale = (displayScale > 0.0f) ? (int)(displayScale + 0.5f) : 1;
     if (scale < 1) {
@@ -964,35 +959,29 @@ static float SDL_Libretro_MenuFontHeight(SDL_LibretroMenu* menu) {
         SDL_GetWindowSize(menu->lr->window, &width, &height);
         step = (int)SDL_Libretro_MenuAutoScale(width);
     }
-    return (float)SDL_LIBRETRO_MENU_FONT_HEIGHT * (float)(step * scale);
+    return (float)(step * scale);
 }
 
 /**
- * (Re)bakes the default font at the given pixel height and makes it the
- * active style font. The previous atlas is cleared first so rebakes on
- * resolution or scale changes don't accumulate.
+ * Bakes the default font at the base pixel height and makes it the active
+ * style font. The font is baked once at SDL_LIBRETRO_MENU_FONT_HEIGHT;
+ * scaling is handled by SDL_SetRenderScale in the render path.
  *
  * @internal
  */
-static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu, float fontHeight) {
+static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu) {
     if (menu->atlas != NULL) {
         nk_font_atlas_clear(menu->atlas);
         menu->atlas = NULL;
     }
     struct nk_sdl* sdl = (struct nk_sdl*)menu->ctx->userdata.ptr;
     struct nk_font_config fontConfig = nk_font_config(0);
-    // Keep the font pixely rather than anti-aliased: no sub-pixel oversampling
-    // and snap glyphs to integer pixel positions.
     fontConfig.oversample_h = 1;
     fontConfig.oversample_v = 1;
     fontConfig.pixel_snap = nk_true;
     menu->atlas = nk_sdl_font_stash_begin(menu->ctx);
-    struct nk_font* font = nk_font_atlas_add_default(menu->atlas, fontHeight, &fontConfig);
+    struct nk_font* font = nk_font_atlas_add_default(menu->atlas, (float)SDL_LIBRETRO_MENU_FONT_HEIGHT, &fontConfig);
 
-    // Bake the atlas here (instead of nk_sdl_font_stash_end) so the glyph
-    // coverage can be thresholded to hard edges. stb_truetype always produces
-    // anti-aliased (grey) edges; forcing every texel fully on or off yields a
-    // crisp, pixely font. RGBA32 stores coverage in each pixel's alpha byte.
     int atlasWidth = 0, atlasHeight = 0;
     const void* fontImage = nk_font_atlas_bake(menu->atlas, &atlasWidth, &atlasHeight, NK_FONT_ATLAS_RGBA32);
     if (fontImage != NULL) {
@@ -1003,15 +992,12 @@ static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu, float fontHeight) 
     }
     nk_sdl_device_upload_atlas(menu->ctx, fontImage, atlasWidth, atlasHeight);
     nk_font_atlas_end(menu->atlas, nk_handle_ptr(sdl->ogl.font_tex), &sdl->ogl.tex_null);
-    // Draw the baked atlas with nearest-neighbour sampling so the hard glyph
-    // edges are not smoothed by the renderer's default linear filter.
     if (sdl->ogl.font_tex != NULL) {
         SDL_SetTextureScaleMode(sdl->ogl.font_tex, SDL_SCALEMODE_NEAREST);
     }
     if (font != NULL) {
         nk_style_set_font(menu->ctx, &font->handle);
     }
-    menu->bakedFontHeight = fontHeight;
 }
 
 /**
@@ -1020,7 +1006,6 @@ static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu, float fontHeight) 
 static void SDL_Libretro_MenuUIScaleChanged(nk_console* widget, void* user_data) {
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
-    // The font rebakes on the next update; only the choice persists here.
     if (menu->lr != NULL && menu->lr->ini != NULL) {
         INI_SetInt(menu->lr->ini, NULL, "menuuiscale", (Sint64)menu->uiScaleIndex);
     }
@@ -1395,7 +1380,8 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
             menu->uiScaleIndex = (int)savedScale;
         }
     }
-    SDL_Libretro_MenuBakeFont(menu, SDL_Libretro_MenuFontHeight(menu));
+    SDL_Libretro_MenuBakeFont(menu);
+    menu->renderScale = SDL_Libretro_MenuRenderScale(menu);
 
     menu->console = nk_console_init(menu->ctx);
     if (menu->console == NULL) {
@@ -1614,10 +1600,11 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
         return false;
     }
 
-    // Feed a copy so coordinate conversion doesn't mutate the caller's event.
+    SDL_SetRenderScale(menu->lr->renderer, menu->renderScale, menu->renderScale);
     SDL_Event converted = *event;
     SDL_ConvertEventToRenderCoordinates(menu->lr->renderer, &converted);
     nk_sdl_handle_event(menu->ctx, &converted);
+    SDL_SetRenderScale(menu->lr->renderer, 1.0f, 1.0f);
 
     // Lifecycle events stay visible to the application and the frontend even
     // while the menu swallows gameplay input.
@@ -1692,19 +1679,16 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
     }
 
-    // Track resolution, display-scale and UI-scale changes while open, so a
-    // resize or a move between monitors rebakes the font at the right size.
-    float fontHeight = SDL_Libretro_MenuFontHeight(menu);
-    if (fontHeight != menu->bakedFontHeight) {
-        SDL_Libretro_MenuBakeFont(menu, fontHeight);
-    }
+    menu->renderScale = SDL_Libretro_MenuRenderScale(menu);
 
     int width = 0;
     int height = 0;
     SDL_GetRenderOutputSize(lr->renderer, &width, &height);
+    float logicalW = (float)width / menu->renderScale;
+    float logicalH = (float)height / menu->renderScale;
 
     menu->uiBuilt = true;
-    nk_console_render_window(menu->console, "SDL_libretro", nk_rect(0.0f, 0.0f, (float)width, (float)height), NK_WINDOW_SCROLL_AUTO_HIDE |
+    nk_console_render_window(menu->console, "SDL_libretro", nk_rect(0.0f, 0.0f, logicalW, logicalH), NK_WINDOW_SCROLL_AUTO_HIDE |
                                                                                                                   // Show the window title only on the top level.
                                                                                                                   ((nk_console_active_parent(menu->console) == menu->console) ? NK_WINDOW_TITLE : 0));
 }
@@ -1716,7 +1700,9 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
     // Flush whenever nk_begin ran this frame, even if a callback closed the
     // menu mid-frame, so nk_clear always pairs with it.
     if (menu->uiBuilt) {
+        SDL_SetRenderScale(menu->lr->renderer, menu->renderScale, menu->renderScale);
         nk_sdl_render(menu->ctx, NK_ANTI_ALIASING_ON);
+        SDL_SetRenderScale(menu->lr->renderer, 1.0f, 1.0f);
         nk_console_sdl_update_text_input(menu->console, menu->lr->window);
         menu->uiBuilt = false;
     }
