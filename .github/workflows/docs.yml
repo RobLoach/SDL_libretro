@@ -68,6 +68,7 @@ jobs:
         run: |
           mkdir -p docs/demo
           cp build-em/SDL_libretro_demo.* docs/demo/
+          cp build-em/SDL_libretro.js build-em/SDL_libretro_embed.html docs/demo/
           mv docs/demo/SDL_libretro_demo.html docs/demo/index.html
           touch docs/.nojekyll
 

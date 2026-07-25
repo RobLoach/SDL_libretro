@@ -354,7 +354,8 @@ SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr) {
 /**
  * Sets the texture scale mode used when the libretro frame is scaled.
  *
- * Applied immediately when a texture exists, and remembered for the next one otherwise. The setting persists across core loads. By default, SDL_SCALEMODE_NEAREST is upgraded to SDL_SCALEMODE_PIXELART on SDL >= 3.4; explicitly setting SDL_SCALEMODE_NEAREST opts out of that upgrade.
+ * Applied immediately when a texture exists, and remembered for the next one
+ * otherwise. The setting persists across core loads.
  *
  * @param lr the libretro context.
  * @param mode SDL_SCALEMODE_NEAREST, SDL_SCALEMODE_LINEAR, or SDL_SCALEMODE_PIXELART (SDL >= 3.4).

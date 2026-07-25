@@ -729,6 +729,11 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == true, "SaveState succeeds");
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
 
+    // Texture scale mode applies to the live texture and reads back.
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL) fails");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetScaleMode(LINEAR) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetScaleMode returns LINEAR");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -1922,6 +1927,173 @@ static int SDLCALL test_OSD(void *arg) {
 
     // GetMessageByIndex with -1 returns top message.
     SDLTest_AssertCheck(SDL_Libretro_GetMessageByIndex(lr, -1, &byIdx, NULL, NULL) == true, "GetMessageByIndex(-1) succeeds");
+
+    // Duplicate message reuses the existing slot.
+    SDL_Libretro_SetMessage(lr, "Hello", 60.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 2, "Duplicate 'Hello' doesn't add a third");
+
+    // Clear messages by setting NULL/empty.
+    SDL_Libretro_SetMessage(lr, NULL, 0.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessage(lr) == NULL, "Messages cleared after SetMessage(NULL)");
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 0, "Message count 0 after clear");
+
+    // Empty string also clears.
+    SDL_Libretro_SetMessage(lr, "Temp", 60.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 1, "One message added");
+    SDL_Libretro_SetMessage(lr, "", 0.0);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 0, "Empty string clears messages");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
+#ifdef SDL_LIBRETRO_ENABLE_MENU
+static int SDLCALL test_Menu(void *arg) {
+    // NULL safety
+    SDLTest_AssertCheck(SDL_Libretro_CreateMenu(NULL) == NULL, "CreateMenu(NULL) returns NULL");
+    SDL_Libretro_DestroyMenu(NULL);
+    SDL_Libretro_UpdateMenu(NULL);
+    SDL_Libretro_RenderMenu(NULL);
+    SDL_Libretro_ToggleMenu(NULL);
+    SDL_Libretro_SetMenuOpen(NULL, true);
+    SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(NULL) == false, "IsMenuOpen(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(NULL, NULL) == false, "HandleMenuEvent(NULL, NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
+    SDL_Libretro_SetMenuUserData(NULL, (void*)1);
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(NULL) == NULL, "GetMenuUserData(NULL) NULL");
+
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_CreateMenu(lr) == NULL, "CreateMenu without a renderer returns NULL");
+
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+    SDL_Libretro_SetRenderer(lr, renderer);
+
+    SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
+    SDLTest_AssertCheck(menu != NULL, "CreateMenu succeeds with a renderer");
+    if (menu != NULL) {
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu starts closed");
+
+        // Context getter and user data
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(menu) == lr, "GetMenuLibretro returns the creating context");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == NULL, "Menu user data starts NULL");
+        int userValue = 42;
+        SDL_Libretro_SetMenuUserData(menu, &userValue);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == &userValue, "Menu user data round-trips");
+        SDL_Libretro_SetMenuUserData(menu, NULL);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == NULL, "Menu user data clears");
+
+        // Styles
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuStyle(menu) == SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+            "Menu starts with the default style");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuStyle(NULL, SDL_LIBRETRO_MENU_STYLE_DARK) == false,
+            "SetMenuStyle(NULL) fails");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuStyle(menu, SDL_LIBRETRO_MENU_STYLE_COUNT) == false,
+            "SetMenuStyle rejects an out-of-range style");
+        bool stylesApplied = true;
+        for (int style = 0; style < (int)SDL_LIBRETRO_MENU_STYLE_COUNT; style++) {
+            stylesApplied = stylesApplied &&
+                SDL_Libretro_SetMenuStyle(menu, (SDL_LibretroMenuStyle)style) &&
+                SDL_Libretro_GetMenuStyle(menu) == (SDL_LibretroMenuStyle)style;
+        }
+        SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
+
+        // With nothing to run, the menu opens itself.
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
+
+        // Gameplay input is swallowed while the menu is open, but lifecycle
+        // events always pass through.
+        SDL_Event event;
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_A;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Open menu swallows gameplay input");
+        SDL_zero(event);
+        event.type = SDL_EVENT_QUIT;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Quit passes through an open menu");
+
+        // The toggle key closes it and the event is consumed.
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_UP;
+        event.key.key = SDLK_F1;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Toggle key event is consumed");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Toggle key closes the menu");
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_A;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
+
+#if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
+        // With a game running the menu stays closed; opening it builds the
+        // Core Options submenu from the test core's options.
+        SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+        SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
+        SDL_Libretro_Update(lr);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu stays closed while a game runs");
+
+        SDL_Libretro_SetMenuOpen(menu, true);
+        for (int i = 0; i < 3; i++) {
+            SDL_Libretro_UpdateMenu(menu);
+            SDL_Libretro_RenderMenu(menu);
+        }
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
+#endif
+
+        SDL_Libretro_DestroyMenu(menu);
+    }
+
+    // Theme persistence round-trip through the config file.
+    SDL_RemovePath("menu_test.cfg");
+    SDL_Libretro* lrSave = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lrSave, "menu_test.cfg");
+    SDL_Libretro_SetRenderer(lrSave, renderer);
+    SDL_LibretroMenu* menuSave = SDL_Libretro_CreateMenu(lrSave);
+    if (menuSave != NULL) {
+        SDL_Libretro_SetMenuStyle(menuSave, SDL_LIBRETRO_MENU_STYLE_DRACULA);
+
+        // Mute captures the pre-mute volume and silences the output.
+        SDL_Libretro_SetVolume(lrSave, 0.5f);
+        menuSave->muteChecked = nk_true;
+        SDL_Libretro_MenuMuteChanged(NULL, menuSave);
+        SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrSave) == 0.0f, "Mute drops the volume to zero");
+
+        SDL_Libretro_DestroyMenu(menuSave);
+    }
+    SDL_Libretro_Destroy(lrSave); // Writes the config file.
+
+    SDL_Libretro* lrLoad = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lrLoad, "menu_test.cfg");
+    SDL_Libretro_SetRenderer(lrLoad, renderer);
+    SDL_LibretroMenu* menuLoad = SDL_Libretro_CreateMenu(lrLoad);
+    SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuStyle(menuLoad) == SDL_LIBRETRO_MENU_STYLE_DRACULA,
+        "Menu theme persists through the config file");
+    SDLTest_AssertCheck(menuLoad != NULL && menuLoad->muteChecked == nk_true, "Mute state persists through the config file");
+    SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
+    if (menuLoad != NULL) {
+        menuLoad->muteChecked = nk_false;
+        SDL_Libretro_MenuMuteChanged(NULL, menuLoad);
+        SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lrLoad) - 0.5f) < 0.001f,
+            "Unmute restores the pre-mute volume");
+    }
+    SDL_Libretro_DestroyMenu(menuLoad);
+    SDL_Libretro_Destroy(lrLoad);
+    SDL_RemovePath("menu_test.cfg");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+}
+#endif /* SDL_LIBRETRO_ENABLE_MENU */
+
 /* Test case references. The function name doubles as the test name via #fn,
    and file-scope compound literals let us list the cases inline. */
 #define LIBRETRO_TEST_CASE(fn, desc) \
@@ -1973,6 +2145,9 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
+#ifdef SDL_LIBRETRO_ENABLE_MENU
+    LIBRETRO_TEST_CASE(test_Menu,             "Menu create/toggle/update/render lifecycle"),
+#endif
     NULL
 };
 
