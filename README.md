@@ -76,7 +76,7 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 ### Menu
 
-To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`. It brings Load Game, save states, core options, controller selection, and an Audio & Video settings page (volume, mute, fullscreen, vsync, filter, fit mode and themes), navigable with keyboard, mouse or gamepad. Toggle it with `F1` or the gamepad Guide button. The theme persists through the config file when one is initialized, and on the web the Load Game button opens the browser's file picker.
+To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
 
 The menu reports what it does through SDL events: `SDL_Libretro_GetMenuEventType()` with `SDL_LIBRETRO_MENU_EVENT_OPENED`, `_CLOSED`, or `_GAME_LOADED` in `event.user.code`. Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`.
 
@@ -123,6 +123,28 @@ With the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.
 emcmake cmake -B build-web
 cmake --build build-web
 ```
+
+## Embedding on the Web
+
+The Emscripten build embeds into any webpage with [`SDL_libretro.js`](example/SDL_libretro.js). Serve the build output (`SDL_libretro_demo.js`, `SDL_libretro_demo.wasm` and `SDL_libretro_demo.data`) together with `SDL_libretro.js`, include the script, and point it at an element on the page:
+
+```html
+<div id="player" style="width: 640px; height: 480px"></div>
+<script src="SDL_libretro.js"></script>
+<script>
+    SDL_libretro.embed('#player');
+</script>
+```
+
+`SDL_libretro.embed(target, options)` accepts a CSS selector or an element, creates the canvas inside it, and starts the emulator. Options:
+
+- `script`: URL of the Emscripten-generated script (default `SDL_libretro_demo.js`)
+- `arguments`: Argument list for the demo, e.g. `['/cores/core.wasm', '/game.rom']`
+- `pixelated`: Keep upscaled pixels crisp instead of smoothed (default `true`)
+- `onReady`: Called with the embed handle once the runtime is initialized
+- `onError`: Called with an `Error` when the script fails to load
+
+See [`example/SDL_libretro_embed.html`](example/SDL_libretro_embed.html) for a complete page. The Emscripten build copies both files next to its output, so the build directory is directly servable. One embed can run per page.
 
 ## Configuration
 
