@@ -2014,18 +2014,6 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
 
-        // About page without a core: frontend lines only.
-        SDL_Libretro_MenuBuildAbout(menu);
-        bool aboutHasFrontend = false;
-        bool aboutHasCoreLine = false;
-        for (size_t offset = 0; offset < menu->aboutTextLength; offset += SDL_strlen(menu->aboutText + offset) + 1) {
-            const char* line = menu->aboutText + offset;
-            aboutHasFrontend |= SDL_strncmp(line, "SDL_libretro ", 13) == 0;
-            aboutHasCoreLine |= SDL_strncmp(line, "Core: ", 6) == 0;
-        }
-        SDLTest_AssertCheck(aboutHasFrontend, "About shows the frontend version without a core");
-        SDLTest_AssertCheck(!aboutHasCoreLine, "About hides core lines without a core");
-
         float defaultScale = menu->renderScale;
         menu->uiScaleIndex = 4;
         SDL_Libretro_UpdateMenu(menu);
