@@ -1,8 +1,8 @@
 /**
  * SDL_libretro - menu system built on nuklear_console
  *
- * Provides an in-app menu (Load Game, save states, core options, settings)
- * rendered with Nuklear through the SDL3 renderer backend, driven by
+ * Provides an in-app menu (Load Game, save states, core options, settings,
+ * About) rendered with Nuklear through the SDL3 renderer backend, driven by
  * nuklear_console for keyboard/gamepad-friendly navigation.
  *
  * Enabled by defining SDL_LIBRETRO_ENABLE_MENU alongside
@@ -204,6 +204,12 @@ struct SDL_LibretroMenu {
 
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
+
+    // About page, rebuilt each time it opens. The labels read the arena
+    // lazily, so it must stay allocated for as long as the menu.
+    nk_console* aboutButton;
+    char aboutText[2048]; /** Packed NUL-separated label lines. */
+    size_t aboutTextLength;
 };
 
 /**
@@ -355,6 +361,123 @@ static void SDL_Libretro_MenuResetClicked(nk_console* widget, void* user_data) {
     if (SDL_Libretro_Reset(menu->lr)) {
         SDL_Libretro_SetMenuOpen(menu, false);
     }
+}
+
+/**
+ * Human-readable name for the core's pixel format.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_MenuPixelFormatName(enum retro_pixel_format format) {
+    switch (format) {
+        case RETRO_PIXEL_FORMAT_0RGB1555:
+            return "0RGB1555";
+        case RETRO_PIXEL_FORMAT_XRGB8888:
+            return "XRGB8888";
+        case RETRO_PIXEL_FORMAT_RGB565:
+            return "RGB565";
+        default:
+            return "Unknown";
+    }
+}
+
+/**
+ * Append a formatted line to the About text arena and add a label for it.
+ * Lines that no longer fit are dropped.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuAboutLine(SDL_LibretroMenu* menu, const char* format, ...) {
+    char* line = menu->aboutText + menu->aboutTextLength;
+    size_t available = sizeof(menu->aboutText) - menu->aboutTextLength;
+    if (available < 2) {
+        return;
+    }
+    va_list args;
+    va_start(args, format);
+    int written = SDL_vsnprintf(line, available, format, args);
+    va_end(args);
+    if (written < 0) {
+        return;
+    }
+    if ((size_t)written >= available) {
+        written = (int)available - 1;
+    }
+    menu->aboutTextLength += (size_t)written + 1;
+    nk_console_label(menu->aboutButton, line);
+}
+
+/**
+ * Rebuild the About page from the current frontend, core and content state,
+ * adding only the lines that apply.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+
+    nk_console_free_children(menu->aboutButton);
+    menu->aboutTextLength = 0;
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(menu->aboutButton, "About", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+
+    // Frontend
+    SDL_Libretro_MenuAboutLine(menu, "SDL_libretro %d.%d.%d",
+        SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
+    int sdlVersion = SDL_GetVersion();
+    SDL_Libretro_MenuAboutLine(menu, "SDL %d.%d.%d %s",
+        SDL_VERSIONNUM_MAJOR(sdlVersion), SDL_VERSIONNUM_MINOR(sdlVersion), SDL_VERSIONNUM_MICRO(sdlVersion),
+        SDL_GetRevision());
+    const char* rendererName = SDL_GetRendererName(lr->renderer);
+    SDL_Libretro_MenuAboutLine(menu, "Renderer: %s", rendererName != NULL ? rendererName : "Unknown");
+
+    // Core
+    if (SDL_Libretro_IsCoreReady(lr)) {
+        SDL_Libretro_MenuAboutLine(menu, "Core: %s", SDL_Libretro_GetCoreName(lr));
+        const char* coreVersion = SDL_Libretro_GetCoreVersion(lr);
+        if (coreVersion[0] != '\0') {
+            SDL_Libretro_MenuAboutLine(menu, "Core Version: %s", coreVersion);
+        }
+        const char* extensions = SDL_Libretro_GetValidExtensions(lr);
+        SDL_Libretro_MenuAboutLine(menu, "Extensions: %s", extensions[0] != '\0' ? extensions : "(any)");
+        SDL_Libretro_MenuAboutLine(menu, "Pixel Format: %s", SDL_Libretro_MenuPixelFormatName(lr->core.pixelFormat));
+        if (lr->core.sampleRate > 0.0) {
+            SDL_Libretro_MenuAboutLine(menu, "Sample Rate: %g Hz", lr->core.sampleRate);
+        }
+    }
+
+    // Content
+    if (SDL_Libretro_IsGameReady(lr)) {
+        char contentName[128] = "";
+        SDL_Libretro_GetFileName(contentName, sizeof(contentName), lr->core.contentPath, true);
+        SDL_Libretro_MenuAboutLine(menu, "Content: %s", contentName[0] != '\0' ? contentName : "(none)");
+        int width = 0;
+        int height = 0;
+        SDL_Libretro_GetSize(lr, &width, &height);
+        SDL_Libretro_MenuAboutLine(menu, "Size: %dx%d @ %.2f FPS", width, height, SDL_Libretro_GetFPS(lr));
+        int rotation = SDL_Libretro_GetRotation(lr);
+        if (rotation != 0) {
+            SDL_Libretro_MenuAboutLine(menu, "Aspect Ratio: %.3f (rotated %d)",
+                SDL_Libretro_GetAspectRatio(lr), rotation * 90);
+        }
+        else {
+            SDL_Libretro_MenuAboutLine(menu, "Aspect Ratio: %.3f", SDL_Libretro_GetAspectRatio(lr));
+        }
+    }
+
+    nk_console_label(menu->aboutButton, "https://github.com/RobLoach/SDL_libretro");
+}
+
+/**
+ * Rebuilds the About page and enters it. A CLICKED handler suppresses the
+ * button's default submenu navigation, so the handler navigates itself.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuAboutOpened(nk_console* widget, void* user_data) {
+    SDL_Libretro_MenuBuildAbout((SDL_LibretroMenu*)user_data);
+    nk_console_set_active_parent(widget);
 }
 
 /**
@@ -1515,6 +1638,11 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
             nk_console_add_event_handler(uiScale, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuUIScaleChanged, menu, NULL);
         }
     }
+
+    // About, rebuilt by the CLICKED handler whenever the page opens.
+    menu->aboutButton = nk_console_button(menu->console, "About");
+    nk_console_button_set_symbol(menu->aboutButton, NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_add_event_handler(menu->aboutButton, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuAboutOpened, menu, NULL);
 
     // Quit
     nk_console* quit = nk_console_button_onclick_handler(menu->console, "Quit", &SDL_Libretro_MenuQuitClicked, menu, NULL);

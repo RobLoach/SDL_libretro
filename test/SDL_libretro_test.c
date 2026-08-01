@@ -2062,6 +2062,21 @@ static int SDLCALL test_Menu(void *arg) {
             SDL_Libretro_RenderMenu(menu);
         }
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
+
+        // About page with a loaded core: core and content lines appear.
+        SDL_Libretro_MenuBuildAbout(menu);
+        bool aboutHasCore = false;
+        bool aboutHasContent = false;
+        bool aboutHasSize = false;
+        for (size_t offset = 0; offset < menu->aboutTextLength; offset += SDL_strlen(menu->aboutText + offset) + 1) {
+            const char* line = menu->aboutText + offset;
+            aboutHasCore |= SDL_strncmp(line, "Core: ", 6) == 0;
+            aboutHasContent |= SDL_strncmp(line, "Content: ", 9) == 0;
+            aboutHasSize |= SDL_strncmp(line, "Size: ", 6) == 0;
+        }
+        SDLTest_AssertCheck(aboutHasCore, "About shows the loaded core");
+        SDLTest_AssertCheck(aboutHasContent, "About shows the loaded content");
+        SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
 #endif
 
         SDL_Libretro_DestroyMenu(menu);
