@@ -2014,6 +2014,18 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
 
+        // About page without a core: frontend lines only.
+        SDL_Libretro_MenuBuildAbout(menu);
+        bool aboutHasFrontend = false;
+        bool aboutHasCoreLine = false;
+        for (size_t offset = 0; offset < menu->aboutTextLength; offset += SDL_strlen(menu->aboutText + offset) + 1) {
+            const char* line = menu->aboutText + offset;
+            aboutHasFrontend |= SDL_strncmp(line, "SDL_libretro ", 13) == 0;
+            aboutHasCoreLine |= SDL_strncmp(line, "Core: ", 6) == 0;
+        }
+        SDLTest_AssertCheck(aboutHasFrontend, "About shows the frontend version without a core");
+        SDLTest_AssertCheck(!aboutHasCoreLine, "About hides core lines without a core");
+
         float defaultScale = menu->renderScale;
         menu->uiScaleIndex = 4;
         SDL_Libretro_UpdateMenu(menu);
@@ -2063,16 +2075,20 @@ static int SDLCALL test_Menu(void *arg) {
         }
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
 
-        // About page with a loaded core: core and content lines fill in.
-        SDL_Libretro_MenuUpdateAbout(menu);
-        SDLTest_AssertCheck(SDL_strncmp(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_CORE], "Core: ", 6) == 0,
-            "About shows the loaded core");
-        SDLTest_AssertCheck(menu->aboutLabels[SDL_LIBRETRO_MENU_ABOUT_CORE]->visible == nk_true,
-            "About core line shows with a core");
-        SDLTest_AssertCheck(menu->aboutLabels[SDL_LIBRETRO_MENU_ABOUT_CONTENT]->visible == nk_true,
-            "About content line shows with a game");
-        SDLTest_AssertCheck(SDL_strncmp(menu->aboutLines[SDL_LIBRETRO_MENU_ABOUT_SIZE], "Size: ", 6) == 0,
-            "About shows the video size");
+        // About page with a loaded core: core and content lines appear.
+        SDL_Libretro_MenuBuildAbout(menu);
+        bool aboutHasCore = false;
+        bool aboutHasContent = false;
+        bool aboutHasSize = false;
+        for (size_t offset = 0; offset < menu->aboutTextLength; offset += SDL_strlen(menu->aboutText + offset) + 1) {
+            const char* line = menu->aboutText + offset;
+            aboutHasCore |= SDL_strncmp(line, "Core: ", 6) == 0;
+            aboutHasContent |= SDL_strncmp(line, "Content: ", 9) == 0;
+            aboutHasSize |= SDL_strncmp(line, "Size: ", 6) == 0;
+        }
+        SDLTest_AssertCheck(aboutHasCore, "About shows the loaded core");
+        SDLTest_AssertCheck(aboutHasContent, "About shows the loaded content");
+        SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
 #endif
 
         SDL_Libretro_DestroyMenu(menu);
