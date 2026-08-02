@@ -205,6 +205,13 @@ struct SDL_LibretroMenu {
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
 
+    // Settings textedit buffers (directories + username).
+    char coreDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char saveDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char systemDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char browseDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char usernameBuffer[64];
+
     // About page, rebuilt each time it opens. The labels read the arena
     // lazily, so it must stay allocated for as long as the menu.
     nk_console* aboutButton;
@@ -946,6 +953,62 @@ static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * Refresh the Settings textedit buffers from the current context values.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSyncSettingsBuffers(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    const char* value = SDL_Libretro_GetCoreDirectory(lr);
+    SDL_strlcpy(menu->coreDirBuffer, value != NULL ? value : "", sizeof(menu->coreDirBuffer));
+    value = SDL_Libretro_GetSaveDirectory(lr);
+    SDL_strlcpy(menu->saveDirBuffer, value != NULL ? value : "", sizeof(menu->saveDirBuffer));
+    value = SDL_Libretro_GetSystemDirectory(lr);
+    SDL_strlcpy(menu->systemDirBuffer, value != NULL ? value : "", sizeof(menu->systemDirBuffer));
+    SDL_strlcpy(menu->browseDirBuffer, lr->fileBrowserStartDirectory, sizeof(menu->browseDirBuffer));
+    value = SDL_Libretro_GetUsername(lr);
+    SDL_strlcpy(menu->usernameBuffer, value != NULL ? value : "", sizeof(menu->usernameBuffer));
+}
+
+/**
+ * Consolidated callback for all Settings textedits (directories + username).
+ *
+ * Applies every settings buffer at once, so a single handler serves all the
+ * textedits without per-field state.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSettingChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetCoreDirectory(menu->lr, menu->coreDirBuffer);
+    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+    SDL_Libretro_SetSaveDirectory(menu->lr, menu->saveDirBuffer);
+    SDL_Libretro_SetSystemDirectory(menu->lr, menu->systemDirBuffer);
+    SDL_strlcpy(menu->lr->fileBrowserStartDirectory, menu->browseDirBuffer, sizeof(menu->lr->fileBrowserStartDirectory));
+#ifndef __EMSCRIPTEN__
+    if (menu->loadGameButton != NULL && menu->browseDirBuffer[0] != '\0') {
+        nk_console_file_set_directory(menu->loadGameButton, menu->browseDirBuffer);
+    }
+#endif
+    SDL_Libretro_SetUsername(menu->lr, menu->usernameBuffer);
+}
+
+/**
+ * Create a textedit widget under @p parent and wire it to the consolidated
+ * Settings callback.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const char* label,
+                                                       SDL_LibretroMenu* menu,
+                                                       char* buffer, size_t bufferSize) {
+    nk_console* widget = nk_console_textedit(parent, label, buffer, bufferSize);
+    nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuSettingChanged, menu, NULL);
+    return widget;
+}
+
+/**
  * @internal
  */
 static void SDL_Libretro_MenuFreePortStates(SDL_LibretroMenu* menu) {
@@ -1637,6 +1700,29 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
             nk_console* uiScale = nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex);
             nk_console_add_event_handler(uiScale, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuUIScaleChanged, menu, NULL);
         }
+
+        // Username
+        SDL_Libretro_MenuSyncSettingsBuffers(menu);
+        SDL_Libretro_MenuAddSettingTextedit(settings, "Username", menu,
+                                            menu->usernameBuffer, sizeof(menu->usernameBuffer));
+
+        // Directories
+        nk_console* directories = nk_console_button(settings, "Directories");
+        nk_console_button_set_symbol(directories, NK_SYMBOL_TRIANGLE_RIGHT);
+        {
+            nk_console_button_set_symbol(
+                nk_console_button_onclick(directories, "Directories", &nk_console_button_back),
+                NK_SYMBOL_TRIANGLE_UP);
+
+            SDL_Libretro_MenuAddSettingTextedit(directories, "Cores", menu,
+                                                menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
+            SDL_Libretro_MenuAddSettingTextedit(directories, "Saves", menu,
+                                                menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
+            SDL_Libretro_MenuAddSettingTextedit(directories, "System", menu,
+                                                menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
+            SDL_Libretro_MenuAddSettingTextedit(directories, "Content", menu,
+                                                menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
+        }
     }
 
     // About, rebuilt by the CLICKED handler whenever the page opens.
@@ -1805,6 +1891,7 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
         menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
         menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
+        SDL_Libretro_MenuSyncSettingsBuffers(menu);
     }
 
     menu->renderScale = SDL_Libretro_MenuRenderScale(menu);
