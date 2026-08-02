@@ -64,13 +64,7 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
     lr->core.videoReinitPending = false;
 
-    // Scale Mode: nearest upgrades to pixelart when available.
-    SDL_ScaleMode scaleMode = lr->scaleMode;
-#if SDL_VERSION_ATLEAST(3, 4, 0)
-    if (scaleMode == SDL_SCALEMODE_NEAREST)
-        scaleMode = SDL_SCALEMODE_PIXELART; // SDL >= 3.4
-#endif
-    SDL_SetTextureScaleMode(lr->core.texture, scaleMode);
+    SDL_SetTextureScaleMode(lr->core.texture, lr->scaleMode);
     return true;
 }
 
