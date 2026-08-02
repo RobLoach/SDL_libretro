@@ -159,31 +159,6 @@ typedef struct SDL_LibretroMenuPortState {
     char label[16]; /** The "Port N" combobox label; must outlive the widget. */
 } SDL_LibretroMenuPortState;
 
-/**
- * Tags for the consolidated Settings textedit callback.
- *
- * @see SDL_Libretro_MenuSettingChanged()
- * @internal
- */
-typedef enum {
-    SDL_LIBRETRO_MENU_SETTING_CORE_DIR,
-    SDL_LIBRETRO_MENU_SETTING_SAVE_DIR,
-    SDL_LIBRETRO_MENU_SETTING_SYSTEM_DIR,
-    SDL_LIBRETRO_MENU_SETTING_BROWSE_DIR,
-    SDL_LIBRETRO_MENU_SETTING_USERNAME,
-    SDL_LIBRETRO_MENU_SETTING_COUNT
-} SDL_LibretroMenuSettingKind;
-
-/**
- * Per-field UI state for the Settings textedits (directories and username).
- *
- * @internal
- */
-typedef struct SDL_LibretroMenuSettingState {
-    SDL_LibretroMenu* menu;
-    SDL_LibretroMenuSettingKind kind;
-} SDL_LibretroMenuSettingState;
-
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
     struct nk_context* ctx;
@@ -230,8 +205,7 @@ struct SDL_LibretroMenu {
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
 
-    // Settings textedit state and buffers (directories + username).
-    SDL_LibretroMenuSettingState settingStates[SDL_LIBRETRO_MENU_SETTING_COUNT];
+    // Settings textedit buffers (directories + username).
     char coreDirBuffer[SDL_LIBRETRO_MAX_PATH];
     char saveDirBuffer[SDL_LIBRETRO_MAX_PATH];
     char systemDirBuffer[SDL_LIBRETRO_MAX_PATH];
@@ -876,56 +850,38 @@ static void SDL_Libretro_MenuSyncSettingsBuffers(SDL_LibretroMenu* menu) {
 /**
  * Consolidated callback for all Settings textedits (directories + username).
  *
- * Each textedit's event handler points at the matching SDL_LibretroMenuSettingState,
- * whose `kind` tag selects the right setter.
+ * Applies every settings buffer at once, so a single handler serves all the
+ * textedits without per-field state.
  *
  * @internal
  */
 static void SDL_Libretro_MenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;
-    SDL_LibretroMenuSettingState* state = (SDL_LibretroMenuSettingState*)user_data;
-    SDL_LibretroMenu* menu = state->menu;
-    switch (state->kind) {
-        case SDL_LIBRETRO_MENU_SETTING_CORE_DIR:
-            SDL_Libretro_SetCoreDirectory(menu->lr, menu->coreDirBuffer);
-            SDL_Libretro_MenuUpdateLoadGameFilter(menu);
-            break;
-        case SDL_LIBRETRO_MENU_SETTING_SAVE_DIR:
-            SDL_Libretro_SetSaveDirectory(menu->lr, menu->saveDirBuffer);
-            break;
-        case SDL_LIBRETRO_MENU_SETTING_SYSTEM_DIR:
-            SDL_Libretro_SetSystemDirectory(menu->lr, menu->systemDirBuffer);
-            break;
-        case SDL_LIBRETRO_MENU_SETTING_BROWSE_DIR:
-            SDL_strlcpy(menu->lr->fileBrowserStartDirectory, menu->browseDirBuffer, sizeof(menu->lr->fileBrowserStartDirectory));
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetCoreDirectory(menu->lr, menu->coreDirBuffer);
+    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+    SDL_Libretro_SetSaveDirectory(menu->lr, menu->saveDirBuffer);
+    SDL_Libretro_SetSystemDirectory(menu->lr, menu->systemDirBuffer);
+    SDL_strlcpy(menu->lr->fileBrowserStartDirectory, menu->browseDirBuffer, sizeof(menu->lr->fileBrowserStartDirectory));
 #ifndef __EMSCRIPTEN__
-            if (menu->loadGameButton != NULL && menu->browseDirBuffer[0] != '\0') {
-                nk_console_file_set_directory(menu->loadGameButton, menu->browseDirBuffer);
-            }
-#endif
-            break;
-        case SDL_LIBRETRO_MENU_SETTING_USERNAME:
-            SDL_Libretro_SetUsername(menu->lr, menu->usernameBuffer);
-            break;
-        default:
-            break;
+    if (menu->loadGameButton != NULL && menu->browseDirBuffer[0] != '\0') {
+        nk_console_file_set_directory(menu->loadGameButton, menu->browseDirBuffer);
     }
+#endif
+    SDL_Libretro_SetUsername(menu->lr, menu->usernameBuffer);
 }
 
 /**
  * Create a textedit widget under @p parent and wire it to the consolidated
- * Settings callback for the given @p kind.
+ * Settings callback.
  *
  * @internal
  */
 static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const char* label,
-                                                       SDL_LibretroMenu* menu, SDL_LibretroMenuSettingKind kind,
+                                                       SDL_LibretroMenu* menu,
                                                        char* buffer, size_t bufferSize) {
-    SDL_LibretroMenuSettingState* state = &menu->settingStates[kind];
-    state->menu = menu;
-    state->kind = kind;
     nk_console* widget = nk_console_textedit(parent, label, buffer, bufferSize);
-    nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuSettingChanged, state, NULL);
+    nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuSettingChanged, menu, NULL);
     return widget;
 }
 
@@ -1625,7 +1581,6 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         // Username
         SDL_Libretro_MenuSyncSettingsBuffers(menu);
         SDL_Libretro_MenuAddSettingTextedit(settings, "Username", menu,
-                                            SDL_LIBRETRO_MENU_SETTING_USERNAME,
                                             menu->usernameBuffer, sizeof(menu->usernameBuffer));
 
         // Directories
@@ -1637,16 +1592,12 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
                 NK_SYMBOL_TRIANGLE_UP);
 
             SDL_Libretro_MenuAddSettingTextedit(directories, "Cores", menu,
-                                                SDL_LIBRETRO_MENU_SETTING_CORE_DIR,
                                                 menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
             SDL_Libretro_MenuAddSettingTextedit(directories, "Saves", menu,
-                                                SDL_LIBRETRO_MENU_SETTING_SAVE_DIR,
                                                 menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
             SDL_Libretro_MenuAddSettingTextedit(directories, "System", menu,
-                                                SDL_LIBRETRO_MENU_SETTING_SYSTEM_DIR,
                                                 menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
             SDL_Libretro_MenuAddSettingTextedit(directories, "Content", menu,
-                                                SDL_LIBRETRO_MENU_SETTING_BROWSE_DIR,
                                                 menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
         }
     }
