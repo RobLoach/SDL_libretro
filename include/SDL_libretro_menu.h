@@ -524,7 +524,7 @@ static void SDL_Libretro_MenuFitModeChanged(nk_console* widget, void* user_data)
 static void SDL_Libretro_MenuFilterChanged(nk_console* widget, void* user_data) {
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
-    SDL_Libretro_SetTextureScaleMode(menu->lr, menu->filterIndex == 1 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+    SDL_Libretro_SetScaleMode(menu->lr, menu->filterIndex == 1 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
 }
 
 /**
@@ -1686,7 +1686,7 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
             nk_console* vsyncBox = nk_console_checkbox(audioVideo, "VSync", &menu->vsyncChecked);
             nk_console_add_event_handler(vsyncBox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVSyncChanged, menu, NULL);
 
-            menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
+            menu->filterIndex = SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
             nk_console* filter = nk_console_combobox(audioVideo, "Filter", "Nearest|Linear", '|', &menu->filterIndex);
             nk_console_add_event_handler(filter, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFilterChanged, menu, NULL);
 
@@ -1889,7 +1889,7 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     if (justOpened) {
         menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
         menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
-        menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
+        menu->filterIndex = SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
         menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
         SDL_Libretro_MenuSyncSettingsBuffers(menu);
     }
