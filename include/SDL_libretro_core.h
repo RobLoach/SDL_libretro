@@ -1275,6 +1275,13 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
     SDL_snprintf(corePath, sizeof(corePath), "%s%s%s", dirname, base, SDL_LIBRETRO_CORE_EXTENSION);
     entry->path = SDL_strdup(corePath);
 
+    if (corename[0] != '\0') {
+        SDL_strlcpy(entry->corename_display, corename, sizeof(entry->corename_display));
+    }
+    else {
+        SDL_Libretro_GetFileName(entry->corename_display, sizeof(entry->corename_display), corePath, false);
+    }
+
     lr->coreLibraryCount++;
 
     INI_Destroy(ini);

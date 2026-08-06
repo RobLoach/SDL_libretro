@@ -449,6 +449,7 @@ typedef struct SDL_Libretro_CoreInfo {
     bool needs_fullpath;
     bool supports_no_game;
     bool block_extract;
+    char corename_display[128]; /** Display name for UIs: corename, or the file name when absent. */
 } SDL_Libretro_CoreInfo;
 
 typedef struct SDL_LibretroOsdEntry {
