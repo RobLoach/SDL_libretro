@@ -98,10 +98,10 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     add_executable(SDL_libretro_basic example/SDL_libretro_basic.c)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
 
-    add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
-    target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs)
+    # The demo always includes the menu.
     if(SDL_LIBRETRO_MENU)
-        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro_menu)
+        add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
+        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs SDL_libretro_menu)
     endif()
 endif()
 

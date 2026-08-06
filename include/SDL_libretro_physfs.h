@@ -253,8 +253,8 @@ static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysF
  *
  * @param mountPoint the PhysFS mount point the archive is mounted at.
  * @param archivePath the OS path of the archive (used for the base name).
- * @param validExts the loaded core's valid extensions to gate passes 1 and 3,
- *                  or "" for no-core semantics (pick what any core recognizes).
+ * @param validExts the core's valid extensions, or "" to accept any
+ *                  recognized content.
  * @param dst receives the virtual path of the pick.
  * @return true if a candidate was found and copied into `dst`.
  *
@@ -330,20 +330,14 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* mountP
 }
 
 /**
- * Resolve the content path a load would choose from `path`, without disturbing
- * an archive already mounted for a running game.
+ * Resolve the content path a load would choose from `path`, without loading it.
  *
- * A non-archive path is copied through unchanged. A .zip is inspected with the
- * same content selection as loading and the chosen entry's virtual path is
- * returned. No-core semantics are used (any recognized entry is eligible), so
- * the result never depends on which core happens to be running.
- *
- * Intended for pre-load inspection, such as the menu's core picker resolving
- * the real content extension inside an archive.
+ * A non-archive path passes through unchanged; for a .zip the chosen entry's
+ * virtual path is returned.
  *
  * @param lr the libretro context.
  * @param path the OS path of the content or archive.
- * @param dst receives the resolved content path (a virtual path for archives).
+ * @param dst receives the resolved content path.
  * @param dstSize the size of `dst`.
  * @return true if a content path was resolved into `dst`.
  */

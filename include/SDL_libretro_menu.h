@@ -242,9 +242,7 @@ static void SDL_Libretro_MenuResumeClicked(nk_console* widget, void* user_data) 
 }
 
 /**
- * Load the given game with whatever core is (or gets) loaded for it.
- *
- * Closes the menu on success.
+ * Load the given game, closing the menu on success.
  *
  * @internal
  */
@@ -266,9 +264,6 @@ static bool SDL_Libretro_MenuLoadGameNow(SDL_LibretroMenu* menu, const char* pat
 
 /**
  * Fill coreChoices with the scanned cores that list the path's extension.
- *
- * The .info extension data is a pre-load hint for the picker only, never a
- * hard gate; the chosen core's own runtime info stays authoritative.
  *
  * @return The number of candidates collected.
  *
@@ -315,10 +310,8 @@ static int SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, const 
 }
 
 /**
- * Load the game waiting in loadGamePath, closing the menu on success.
- *
- * When the file's extension matches more than one scanned core, defers to
- * the "Select Core" picker instead of loading immediately.
+ * Load the game waiting in loadGamePath, deferring to the "Select Core"
+ * picker when more than one scanned core matches.
  *
  * @internal
  */
@@ -346,15 +339,8 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
 }
 
 /**
- * Load a game through the menu, honoring the "Select Core" picker.
- *
- * When the content's extension is claimed by more than one scanned core, the
- * "Select Core" picker is shown (opening the menu if needed) instead of
- * silently loading the first match. Otherwise the game loads immediately and
- * the menu closes, matching the menu's own Load Game flow.
- *
- * Use this for external load triggers such as drag & drop so they get the same
- * core-picker behavior as the in-menu file browser.
+ * Load a game through the menu, showing the "Select Core" picker when more
+ * than one scanned core matches. Use for external triggers like drag & drop.
  *
  * @param menu the menu, from SDL_Libretro_CreateMenu().
  * @param path the content path to load.
@@ -368,12 +354,8 @@ void SDL_Libretro_MenuLoadGame(SDL_LibretroMenu* menu, const char* path) {
 }
 
 /**
- * Switch the visible menu level, safely from inside or outside the window.
- *
- * nk_console_set_active_parent() resets the window scroll through the
- * current window, which asserts outside nk_begin(); when called between
- * frames (the deferred picker build), switch directly and reset the scroll
- * through the window handle instead.
+ * Switch the visible menu level, safe to call between frames where
+ * nk_console_set_active_parent() would assert.
  *
  * @internal
  */
@@ -420,9 +402,6 @@ static void SDL_Libretro_MenuCoreChoiceClicked(nk_console* widget, void* user_da
 /**
  * Populate the "Select Core" picker with the collected candidates and make
  * it the active menu level.
- *
- * Deferred to the update step so the widget tree never changes from inside
- * the file browser's own event.
  *
  * @internal
  */
