@@ -168,7 +168,6 @@ struct SDL_LibretroMenu {
     float renderScale; /** The current UI render scale applied via SDL_SetRenderScale. */
     void* userData; /** Generic data available to the application. */
 
-    Uint32 eventType; /** The registered SDL event type for menu notifications; 0 when unavailable. */
     bool open; /** Whether the menu is currently shown. */
     bool wasOpen; /** The open state of the previous update, to detect fresh opens. */
     bool uiBuilt; /** nk_begin ran this frame, so RenderMenu must flush and clear. */
@@ -224,37 +223,6 @@ struct SDL_LibretroMenu {
 };
 
 /**
- * The SDL event type the menu pushes its notifications with.
- *
- * Registered when the menu is created. Returns 0 when the menu is NULL or SDL
- * had no event numbers available.
- */
-Uint32 SDL_Libretro_GetMenuEventType(const SDL_LibretroMenu* menu) {
-    return menu != NULL ? menu->eventType : 0;
-}
-
-/**
- * Push a menu notification as an SDL event.
- *
- * @internal
- * @see SDL_LibretroMenuEventCode
- */
-static void SDL_Libretro_MenuPushEvent(SDL_LibretroMenu* menu, SDL_LibretroMenuEventCode code) {
-    Uint32 type = menu->eventType;
-    if (type == 0) {
-        return;
-    }
-    SDL_Event event;
-    SDL_zero(event);
-    event.user.type = type;
-    event.user.timestamp = SDL_GetTicksNS();
-    event.user.code = (Sint32)code;
-    event.user.data1 = menu;
-    event.user.data2 = menu->lr;
-    SDL_PushEvent(&event);
-}
-
-/**
  * Closes the menu when a game is available to resume.
  *
  * Also used as the BACK handler of the top level menu.
@@ -288,7 +256,7 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     bool loaded = SDL_Libretro_LoadGame(menu->lr, menu->loadGamePath);
 #endif
     if (loaded) {
-        SDL_Libretro_MenuPushEvent(menu, SDL_LIBRETRO_MENU_EVENT_GAME_LOADED);
+        SDL_Libretro_PushEvent(menu->lr, SDL_LIBRETRO_EVENT_GAME_LOADED);
         SDL_Libretro_SetMenuOpen(menu, false);
     }
     else {
@@ -1770,7 +1738,6 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         return NULL;
     }
     menu->lr = lr;
-    menu->eventType = SDL_RegisterEvents(1);
 
     menu->ctx = nk_sdl_init(lr->window, lr->renderer, nk_sdl_allocator());
     if (menu->ctx == NULL) {
@@ -1852,7 +1819,7 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
     }
-    SDL_Libretro_MenuPushEvent(menu, open ? SDL_LIBRETRO_MENU_EVENT_OPENED : SDL_LIBRETRO_MENU_EVENT_CLOSED);
+    SDL_Libretro_PushEvent(menu->lr, open ? SDL_LIBRETRO_EVENT_MENU_OPENED : SDL_LIBRETRO_EVENT_MENU_CLOSED);
 }
 
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {

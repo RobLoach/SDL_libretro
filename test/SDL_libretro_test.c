@@ -2083,30 +2083,28 @@ static int SDLCALL test_Menu(void *arg) {
         event.key.key = SDLK_A;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
 
-        // Menu notifications arrive as SDL events.
-        SDLTest_AssertCheck(SDL_Libretro_GetMenuEventType(NULL) == 0, "GetMenuEventType(NULL) is 0");
-        Uint32 menuEventType = SDL_Libretro_GetMenuEventType(menu);
-        SDLTest_AssertCheck(menuEventType != 0, "GetMenuEventType registers an event type");
-        SDLTest_AssertCheck(menuEventType == SDL_Libretro_GetMenuEventType(menu), "GetMenuEventType is stable");
-        SDL_FlushEvent(menuEventType);
+        // Menu notifications arrive as SDL events of the SDL_LibretroEventType values.
+        SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_MENU_OPENED == 7867, "SDL_libretro event types start at 7867");
+        SDLTest_AssertCheck(SDL_Libretro_PushEvent(NULL, SDL_LIBRETRO_EVENT_MENU_OPENED) == false, "PushEvent(NULL) fails");
+        SDL_FlushEvents(SDL_LIBRETRO_EVENT_MENU_OPENED, SDL_LIBRETRO_EVENT_GAME_LOADED);
         SDL_Libretro_SetMenuOpen(menu, true);
         SDL_Libretro_SetMenuOpen(menu, false);
         int openedEvents = 0;
         int closedEvents = 0;
         bool eventDataMatches = true;
         SDL_Event menuEvent;
-        while (SDL_PeepEvents(&menuEvent, 1, SDL_GETEVENT, menuEventType, menuEventType) == 1) {
-            if (menuEvent.user.code == SDL_LIBRETRO_MENU_EVENT_OPENED) {
+        while (SDL_PeepEvents(&menuEvent, 1, SDL_GETEVENT, SDL_LIBRETRO_EVENT_MENU_OPENED, SDL_LIBRETRO_EVENT_GAME_LOADED) == 1) {
+            if (menuEvent.type == SDL_LIBRETRO_EVENT_MENU_OPENED) {
                 openedEvents++;
             }
-            else if (menuEvent.user.code == SDL_LIBRETRO_MENU_EVENT_CLOSED) {
+            else if (menuEvent.type == SDL_LIBRETRO_EVENT_MENU_CLOSED) {
                 closedEvents++;
             }
-            eventDataMatches = eventDataMatches && menuEvent.user.data1 == menu && menuEvent.user.data2 == lr;
+            eventDataMatches = eventDataMatches && menuEvent.user.data1 == lr;
         }
         SDLTest_AssertCheck(openedEvents == 1 && closedEvents == 1,
             "Open/close each push one menu event, got %d/%d", openedEvents, closedEvents);
-        SDLTest_AssertCheck(eventDataMatches, "Menu events carry the menu and context");
+        SDLTest_AssertCheck(eventDataMatches, "SDL_libretro events carry the context in data1");
 
         // Application-added entries fire their callbacks and keep Quit last.
         int customClicks = 0;

@@ -165,8 +165,10 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     }
 
     // Name the window after the core when a game loads through the menu.
-    if (event->type == SDL_Libretro_GetMenuEventType(app->menu) && event->user.code == SDL_LIBRETRO_MENU_EVENT_GAME_LOADED) {
-        SDL_SetWindowTitle(app->window, SDL_Libretro_GetCoreName(lr));
+    // SDL_libretro events carry the SDL_Libretro* instance in data1.
+    if (event->type == SDL_LIBRETRO_EVENT_GAME_LOADED) {
+        SDL_Libretro* eventLr = (SDL_Libretro*)event->user.data1;
+        SDL_SetWindowTitle(app->window, SDL_Libretro_GetCoreName(eventLr));
         return SDL_APP_CONTINUE;
     }
 #endif
