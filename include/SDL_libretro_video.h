@@ -74,11 +74,15 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
  * @internal
  */
 static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
-    if (!lr || !lr->core.texture) return;
+    if (!lr) return;
 
+    // Release the software framebuffer even when the texture is already gone,
+    // so a stale pointer is never left behind.
     SDL_Libretro_ReleaseSoftwareFramebuffer(lr);
-    SDL_DestroyTexture(lr->core.texture);
-    lr->core.texture = NULL;
+    if (lr->core.texture) {
+        SDL_DestroyTexture(lr->core.texture);
+        lr->core.texture = NULL;
+    }
 }
 
 static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch) {
