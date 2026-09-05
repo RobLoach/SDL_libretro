@@ -1854,6 +1854,13 @@ static int SDLCALL test_PixelFormats(void *arg) {
     tex = SDL_Libretro_GetTexture(lr);
     SDLTest_AssertCheck(tex != NULL, "Texture recreated for 0RGB1555");
 
+    // CloseVideo clears the software framebuffer pointer even when the texture is already gone.
+    SDL_Libretro_CloseVideo(lr);
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "Texture destroyed by CloseVideo");
+    lr->core.softwareFramebufferPixels = (void*)lr;
+    SDL_Libretro_CloseVideo(lr);
+    SDLTest_AssertCheck(lr->core.softwareFramebufferPixels == NULL, "CloseVideo clears stale framebuffer pointer without texture");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
