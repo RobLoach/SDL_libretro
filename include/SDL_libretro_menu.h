@@ -168,6 +168,7 @@ struct SDL_LibretroMenu {
     float renderScale; /** The current UI render scale applied via SDL_SetRenderScale. */
     void* userData; /** Generic data available to the application. */
 
+    Uint32 eventType; /** The registered SDL event type for menu notifications; 0 when unavailable. */
     bool open; /** Whether the menu is currently shown. */
     bool wasOpen; /** The open state of the previous update, to detect fresh opens. */
     bool uiBuilt; /** nk_begin ran this frame, so RenderMenu must flush and clear. */
@@ -223,23 +224,13 @@ struct SDL_LibretroMenu {
 };
 
 /**
- * The registered SDL event type for menu notifications; 0 until first use.
- *
- * @see SDL_Libretro_GetMenuEventType()
- * @internal
- */
-static Uint32 SDL_Libretro_menuEventType = 0;
-
-/**
  * The SDL event type the menu pushes its notifications with.
  *
- * Registered on first use. Returns 0 if SDL has no event numbers available.
+ * Registered when the menu is created. Returns 0 when the menu is NULL or SDL
+ * had no event numbers available.
  */
-Uint32 SDL_Libretro_GetMenuEventType(void) {
-    if (SDL_Libretro_menuEventType == 0) {
-        SDL_Libretro_menuEventType = SDL_RegisterEvents(1);
-    }
-    return SDL_Libretro_menuEventType;
+Uint32 SDL_Libretro_GetMenuEventType(const SDL_LibretroMenu* menu) {
+    return menu != NULL ? menu->eventType : 0;
 }
 
 /**
@@ -249,7 +240,7 @@ Uint32 SDL_Libretro_GetMenuEventType(void) {
  * @see SDL_LibretroMenuEventCode
  */
 static void SDL_Libretro_MenuPushEvent(SDL_LibretroMenu* menu, SDL_LibretroMenuEventCode code) {
-    Uint32 type = SDL_Libretro_GetMenuEventType();
+    Uint32 type = menu->eventType;
     if (type == 0) {
         return;
     }
@@ -402,6 +393,27 @@ static void SDL_Libretro_MenuLoadStateClicked(nk_console* widget, void* user_dat
     else {
         nk_console_show_message(nk_console_get_top(widget), "Load State failed");
     }
+}
+
+/**
+ * Save a PNG screenshot of the current frame, reporting the result in the
+ * menu. Suitable for SDL_Libretro_AddMenuButton(); userdata is the
+ * destination path, or NULL for "screenshot.png".
+ */
+void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata) {
+    if (menu == NULL) {
+        return;
+    }
+    const char* path = userdata != NULL ? (const char*)userdata : "screenshot.png";
+    SDL_Surface* screenshot = SDL_Libretro_CreateSurface(menu->lr);
+    if (screenshot != NULL && SDL_SavePNG(screenshot, path)) {
+        nk_console_show_message(menu->console, "Screenshot saved");
+    }
+    else {
+        SDL_Log("Failed to save screenshot: %s", SDL_GetError());
+        nk_console_show_message(menu->console, "Screenshot failed");
+    }
+    SDL_DestroySurface(screenshot);
 }
 
 /**
@@ -1758,6 +1770,7 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         return NULL;
     }
     menu->lr = lr;
+    menu->eventType = SDL_RegisterEvents(1);
 
     menu->ctx = nk_sdl_init(lr->window, lr->renderer, nk_sdl_allocator());
     if (menu->ctx == NULL) {

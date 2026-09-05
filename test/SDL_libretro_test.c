@@ -1980,6 +1980,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
     SDL_Libretro_SetMenuUserData(NULL, (void*)1);
     SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(NULL) == NULL, "GetMenuUserData(NULL) NULL");
+    SDL_Libretro_MenuScreenshotClicked(NULL, NULL);
 
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
     SDL_Init(SDL_INIT_VIDEO);
@@ -2083,9 +2084,10 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
 
         // Menu notifications arrive as SDL events.
-        Uint32 menuEventType = SDL_Libretro_GetMenuEventType();
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuEventType(NULL) == 0, "GetMenuEventType(NULL) is 0");
+        Uint32 menuEventType = SDL_Libretro_GetMenuEventType(menu);
         SDLTest_AssertCheck(menuEventType != 0, "GetMenuEventType registers an event type");
-        SDLTest_AssertCheck(menuEventType == SDL_Libretro_GetMenuEventType(), "GetMenuEventType is stable");
+        SDLTest_AssertCheck(menuEventType == SDL_Libretro_GetMenuEventType(menu), "GetMenuEventType is stable");
         SDL_FlushEvent(menuEventType);
         SDL_Libretro_SetMenuOpen(menu, true);
         SDL_Libretro_SetMenuOpen(menu, false);

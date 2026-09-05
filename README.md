@@ -78,7 +78,7 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
 
-The menu reports what it does through SDL events: `SDL_Libretro_GetMenuEventType()` with `SDL_LIBRETRO_MENU_EVENT_OPENED`, `_CLOSED`, or `_GAME_LOADED` in `event.user.code`. Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`.
+The menu reports what it does through SDL events: `SDL_Libretro_GetMenuEventType(menu)` with `SDL_LIBRETRO_MENU_EVENT_OPENED`, `_CLOSED`, or `_GAME_LOADED` in `event.user.code`. Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION

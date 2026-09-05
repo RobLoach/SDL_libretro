@@ -395,9 +395,19 @@ typedef enum SDL_LibretroMenuEventCode {
  */
 typedef void (*SDL_LibretroMenuCallback)(SDL_LibretroMenu* menu, void* userdata);
 
-Uint32 SDL_Libretro_GetMenuEventType(void);
+Uint32 SDL_Libretro_GetMenuEventType(const SDL_LibretroMenu* menu);
 bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata);
 bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
+
+/**
+ * A ready-made menu callback that saves a PNG screenshot of the current frame.
+ *
+ * Pass it to SDL_Libretro_AddMenuButton(); userdata is the destination path
+ * as a const char*, or NULL for "screenshot.png".
+ *
+ * \see SDL_Libretro_AddMenuButton()
+ */
+void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata);
 
 /**
  * The SDL_Libretro context the menu was created for, or NULL.
