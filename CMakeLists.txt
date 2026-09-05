@@ -30,6 +30,7 @@ add_library(SDL_libretro INTERFACE)
 target_include_directories(SDL_libretro INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/SDL_ini>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -126,7 +127,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "SDL_*.h"
     )
-    install(FILES vendor/libretro-common/include/libretro.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(FILES
+        vendor/libretro-common/include/libretro.h
+        vendor/SDL_ini/SDL_ini.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
     install(EXPORT SDL_libretroTargets
         NAMESPACE SDL_libretro::
