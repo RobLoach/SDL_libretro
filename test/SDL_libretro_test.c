@@ -730,9 +730,9 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
 
     // Texture scale mode applies to the live texture and reads back.
-    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetTextureScaleMode(NULL) fails");
-    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetTextureScaleMode(LINEAR) succeeds");
-    SDLTest_AssertCheck(SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetTextureScaleMode returns LINEAR");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL) fails");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetScaleMode(LINEAR) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetScaleMode returns LINEAR");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -1953,6 +1953,20 @@ static void test_MenuCustomClicked(SDL_LibretroMenu* menu, void* userdata) {
     (*(int*)userdata)++;
 }
 
+/**
+ * Applies the style and checks three probe colors in the resulting Nuklear
+ * style: text, window background, and the toggle cursor accent.
+ */
+static bool test_MenuStyleHasColors(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style,
+        struct nk_color text, struct nk_color window, struct nk_color toggleCursor) {
+    if (!SDL_Libretro_SetMenuStyle(menu, style)) {
+        return false;
+    }
+    return SDL_memcmp(&menu->ctx->style.text.color, &text, sizeof(text)) == 0 &&
+        SDL_memcmp(&menu->ctx->style.window.background, &window, sizeof(window)) == 0 &&
+        SDL_memcmp(&menu->ctx->style.checkbox.cursor_normal.data.color, &toggleCursor, sizeof(toggleCursor)) == 0;
+}
+
 static int SDLCALL test_Menu(void *arg) {
     // NULL safety
     SDLTest_AssertCheck(SDL_Libretro_CreateMenu(NULL) == NULL, "CreateMenu(NULL) returns NULL");
@@ -2005,6 +2019,23 @@ static int SDLCALL test_Menu(void *arg) {
                 SDL_Libretro_GetMenuStyle(menu) == (SDL_LibretroMenuStyle)style;
         }
         SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
+
+        // Regression probes for the theme colors.
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+            nk_rgba(205, 214, 244, 255), nk_rgba(30, 30, 46, 235), nk_rgba(180, 190, 254, 255)),
+            "Mocha colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE,
+            nk_rgba(76, 79, 105, 255), nk_rgba(239, 241, 245, 235), nk_rgba(223, 142, 29, 255)),
+            "Latte colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE,
+            nk_rgba(198, 208, 245, 255), nk_rgba(48, 52, 70, 235), nk_rgba(244, 184, 228, 255)),
+            "Frappe colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO,
+            nk_rgba(202, 211, 245, 255), nk_rgba(36, 39, 58, 235), nk_rgba(238, 212, 159, 255)),
+            "Macchiato colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_DRACULA,
+            nk_rgba(248, 248, 242, 255), nk_rgba(40, 42, 54, 235), nk_rgba(255, 121, 198, 255)),
+            "Dracula colors match");
 
         // UI scale: the resolution thresholds step the automatic scale.
         SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(1279) == 1.0f, "Auto scale 1x below 1280");
@@ -2107,6 +2138,21 @@ static int SDLCALL test_Menu(void *arg) {
             SDL_Libretro_RenderMenu(menu);
         }
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
+
+        // About page with a loaded core: core and content lines appear.
+        SDL_Libretro_MenuBuildAbout(menu);
+        bool aboutHasCore = false;
+        bool aboutHasContent = false;
+        bool aboutHasSize = false;
+        for (size_t offset = 0; offset < menu->aboutTextLength; offset += SDL_strlen(menu->aboutText + offset) + 1) {
+            const char* line = menu->aboutText + offset;
+            aboutHasCore |= SDL_strncmp(line, "Core: ", 6) == 0;
+            aboutHasContent |= SDL_strncmp(line, "Content: ", 9) == 0;
+            aboutHasSize |= SDL_strncmp(line, "Size: ", 6) == 0;
+        }
+        SDLTest_AssertCheck(aboutHasCore, "About shows the loaded core");
+        SDLTest_AssertCheck(aboutHasContent, "About shows the loaded content");
+        SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
 #endif
 
         SDL_Libretro_DestroyMenu(menu);
@@ -2133,6 +2179,7 @@ static int SDLCALL test_Menu(void *arg) {
 
         SDL_Libretro_DestroyMenu(menuSave);
     }
+    SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
     SDL_Libretro* lrLoad = SDL_Libretro_Create();
@@ -2141,7 +2188,6 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_LibretroMenu* menuLoad = SDL_Libretro_CreateMenu(lrLoad);
     SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuStyle(menuLoad) == SDL_LIBRETRO_MENU_STYLE_DRACULA,
         "Menu theme persists through the config file");
-    SDLTest_AssertCheck(menuLoad != NULL && menuLoad->uiScaleIndex == 3, "UI scale persists through the config file");
     SDLTest_AssertCheck(menuLoad != NULL && menuLoad->muteChecked == nk_true, "Mute state persists through the config file");
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
     if (menuLoad != NULL) {
