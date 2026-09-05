@@ -204,7 +204,7 @@ struct SDL_LibretroMenu {
     char builtCoreName[128]; /** Core library name when the submenu was last built. */
 
     // Controllers
-    SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
+    SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_USERS];
 
     // Settings textedit buffers (directories + username).
     char coreDirBuffer[SDL_LIBRETRO_MAX_PATH];
@@ -1119,7 +1119,7 @@ static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const
  * @internal
  */
 static void SDL_Libretro_MenuFreePortStates(SDL_LibretroMenu* menu) {
-    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
         SDL_free(menu->portStates[i].deviceList);
         menu->portStates[i].deviceList = NULL;
     }
@@ -1170,8 +1170,8 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
     SDL_Libretro_MenuAddBackButton(menu->controllersButton, "Controllers");
 
     unsigned count = lr->core.controllerInfoCount;
-    if (count > SDL_LIBRETRO_MAX_GAMEPADS) {
-        count = SDL_LIBRETRO_MAX_GAMEPADS;
+    if (count > SDL_LIBRETRO_MAX_USERS) {
+        count = SDL_LIBRETRO_MAX_USERS;
     }
 
     bool anyWidget = false;

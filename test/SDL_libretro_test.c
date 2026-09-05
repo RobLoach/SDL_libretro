@@ -169,7 +169,7 @@ static int SDLCALL test_Input(void *arg) {
     SDL_Libretro_SetVirtualButton(NULL, 0, 0, true);
 
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_JOYPAD, "Port 0 device defaults to JOYPAD");
-    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, SDL_LIBRETRO_MAX_GAMEPADS - 1) == RETRO_DEVICE_JOYPAD, "Last port device defaults to JOYPAD");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, SDL_LIBRETRO_MAX_USERS - 1) == RETRO_DEVICE_JOYPAD, "Last port device defaults to JOYPAD");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_MOUSE) == true, "SetPortDevice port 0 true");
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_MOUSE, "GetPortDevice returns stored device");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_NONE) == true, "SetPortDevice port 0 NONE true");
@@ -768,9 +768,9 @@ static int SDLCALL test_GameInfoExt(void *arg) {
         SDLTest_AssertCheck(probe[16] == 1, "content-info override set persistent_data");
         SDLTest_AssertCheck(probe[17] == 1, "content data buffer present (need_fullpath false)");
         SDLTest_AssertCheck(probe[18] == 1, "GET_INPUT_MAX_USERS supported");
-        SDLTest_AssertCheck(probe[19] == SDL_LIBRETRO_MAX_GAMEPADS,
-            "GET_INPUT_MAX_USERS reports SDL_LIBRETRO_MAX_GAMEPADS (%d), got %d",
-            SDL_LIBRETRO_MAX_GAMEPADS, (int)probe[19]);
+        SDLTest_AssertCheck(probe[19] == SDL_LIBRETRO_MAX_USERS,
+            "GET_INPUT_MAX_USERS reports SDL_LIBRETRO_MAX_USERS (%d), got %d",
+            SDL_LIBRETRO_MAX_USERS, (int)probe[19]);
     }
 
     SDL_Libretro_Destroy(lr);

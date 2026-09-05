@@ -106,7 +106,7 @@ static void SDL_Libretro_PerfLog(void) {
 
 static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return false;
 
     float normalized = (float)strength / 65535.0f;
     if (effect == RETRO_RUMBLE_STRONG) {
@@ -129,11 +129,11 @@ static void SDL_Libretro_SetLEDState(int led, int state) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
     Uint8 v = state ? 255 : 0;
-    if (led >= 0 && led < SDL_LIBRETRO_MAX_GAMEPADS) {
+    if (led >= 0 && led < SDL_LIBRETRO_MAX_USERS) {
         if (lr->gamepads[led]) SDL_SetGamepadLED(lr->gamepads[led], v, v, v);
     }
     else {
-        for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+        for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
             if (lr->gamepads[i]) SDL_SetGamepadLED(lr->gamepads[i], v, v, v);
         }
     }
@@ -590,7 +590,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: {
             if (!data) return false;
-            *(unsigned*)data = SDL_LIBRETRO_MAX_GAMEPADS;
+            *(unsigned*)data = SDL_LIBRETRO_MAX_USERS;
             return true;
         }
 
