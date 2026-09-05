@@ -13,7 +13,7 @@
  * Libretro assumes ports are \c RETRO_DEVICE_JOYPAD, so we start with that.
  */
 static void SDL_Libretro_ResetPortDevices(SDL_Libretro* lr) {
-    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
         lr->core.portDeviceMap[i] = RETRO_DEVICE_JOYPAD;
     }
 }
@@ -92,7 +92,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     // Tear down PhysFS if it was initialized.
     SDL_Libretro_PhysFS_Quit(lr);
 
-    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
         if (lr->gamepads[i]) {
             SDL_CloseGamepad(lr->gamepads[i]);
             lr->gamepads[i] = NULL;

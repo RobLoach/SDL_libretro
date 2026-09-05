@@ -421,15 +421,17 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
 #define SDL_LIBRETRO_MAX_PATH 4096
 #endif
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
-#define SDL_LIBRETRO_MAX_RUMBLE_PORTS 4
-#define SDL_LIBRETRO_MAX_SENSOR_PORTS 4
 #define SDL_LIBRETRO_OSD_INITIAL_CAPACITY 4
 
-#ifndef SDL_LIBRETRO_MAX_GAMEPADS
+#ifndef SDL_LIBRETRO_MAX_USERS
 /**
  * The number of controller ports (gamepads) the frontend tracks.
+ *
+ * This is the single source of truth for every per-port cap: gamepad, rumble
+ * and sensor arrays, port bound checks, and the value reported through
+ * RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS.
  */
-#define SDL_LIBRETRO_MAX_GAMEPADS 8
+#define SDL_LIBRETRO_MAX_USERS 4
 #endif
 
 /**
@@ -552,8 +554,8 @@ typedef struct SDL_LibretroCoreData {
     float inputMouseX, inputMouseY;
     float inputWheelAccumX, inputWheelAccumY; /** Wheel delta accumulated between frames via SDL_Libretro_HandleEvent(). */
     float inputWheelX, inputWheelY; /** Wheel deltas for the current frame, snapshotted in SDL_Libretro_InputPoll(). */
-    unsigned portDeviceMap[SDL_LIBRETRO_MAX_GAMEPADS];
-    bool virtualJoypadState[SDL_LIBRETRO_MAX_GAMEPADS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+    unsigned portDeviceMap[SDL_LIBRETRO_MAX_USERS];
+    bool virtualJoypadState[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     retro_keyboard_event_t keyboard_event;
 
     // Timing
@@ -602,14 +604,14 @@ typedef struct SDL_LibretroCoreData {
     unsigned subsystemCount;
 
     // Rumble
-    float rumbleStrong[SDL_LIBRETRO_MAX_RUMBLE_PORTS];
-    float rumbleWeak[SDL_LIBRETRO_MAX_RUMBLE_PORTS];
+    float rumbleStrong[SDL_LIBRETRO_MAX_USERS];
+    float rumbleWeak[SDL_LIBRETRO_MAX_USERS];
 
     // Sensors
-    SDL_Sensor* sensorAccel[SDL_LIBRETRO_MAX_SENSOR_PORTS];
-    SDL_Sensor* sensorGyro[SDL_LIBRETRO_MAX_SENSOR_PORTS];
-    float sensorAccelData[SDL_LIBRETRO_MAX_SENSOR_PORTS][3];
-    float sensorGyroData[SDL_LIBRETRO_MAX_SENSOR_PORTS][3];
+    SDL_Sensor* sensorAccel[SDL_LIBRETRO_MAX_USERS];
+    SDL_Sensor* sensorGyro[SDL_LIBRETRO_MAX_USERS];
+    float sensorAccelData[SDL_LIBRETRO_MAX_USERS][3];
+    float sensorGyroData[SDL_LIBRETRO_MAX_USERS][3];
 
     // Microphone
     SDL_LibretroMicrophone* microphone;
@@ -685,7 +687,7 @@ struct SDL_Libretro {
     bool rewindActive; /** true only during a backward step's re-run (mutes audio, neutralizes input) */
 
     // Input
-    SDL_Gamepad* gamepads[SDL_LIBRETRO_MAX_GAMEPADS];
+    SDL_Gamepad* gamepads[SDL_LIBRETRO_MAX_USERS];
     unsigned gamepadCount;
 
     SDL_LibretroCoreData core; /** The loaded core state. */
