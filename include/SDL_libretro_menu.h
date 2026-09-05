@@ -206,6 +206,8 @@ struct SDL_LibretroMenu {
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
 
+    nk_console* quitButton; /** Kept as the last top-level entry when the app adds its own. */
+
     // Settings textedit buffers (directories + username).
     char coreDirBuffer[SDL_LIBRETRO_MAX_PATH];
     char saveDirBuffer[SDL_LIBRETRO_MAX_PATH];
@@ -254,6 +256,7 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     bool loaded = SDL_Libretro_LoadGame(menu->lr, menu->loadGamePath);
 #endif
     if (loaded) {
+        SDL_Libretro_PushEvent(menu->lr, SDL_LIBRETRO_EVENT_GAME_LOADED);
         SDL_Libretro_SetMenuOpen(menu, false);
     }
     else {
@@ -358,6 +361,27 @@ static void SDL_Libretro_MenuLoadStateClicked(nk_console* widget, void* user_dat
     else {
         nk_console_show_message(nk_console_get_top(widget), "Load State failed");
     }
+}
+
+/**
+ * Save a PNG screenshot of the current frame, reporting the result in the
+ * menu. Suitable for SDL_Libretro_AddMenuButton(); userdata is the
+ * destination path, or NULL for "screenshot.png".
+ */
+void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata) {
+    if (menu == NULL) {
+        return;
+    }
+    const char* path = userdata != NULL ? (const char*)userdata : "screenshot.png";
+    SDL_Surface* screenshot = SDL_Libretro_CreateSurface(menu->lr);
+    if (screenshot != NULL && SDL_SavePNG(screenshot, path)) {
+        nk_console_show_message(menu->console, "Screenshot saved");
+    }
+    else {
+        SDL_Log("Failed to save screenshot: %s", SDL_GetError());
+        nk_console_show_message(menu->console, "Screenshot failed");
+    }
+    SDL_DestroySurface(screenshot);
 }
 
 /**
@@ -1694,9 +1718,9 @@ static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
     menu->aboutButton = nk_console_button_onclick_handler(menu->console, "About", &SDL_Libretro_MenuAboutOpened, menu, NULL);
     nk_console_button_set_symbol(menu->aboutButton, NK_SYMBOL_TRIANGLE_RIGHT);
 
-    // Quit
-    nk_console* quit = nk_console_button_onclick_handler(menu->console, "Quit", &SDL_Libretro_MenuQuitClicked, menu, NULL);
-    nk_console_button_set_symbol(quit, NK_SYMBOL_X);
+    // Quit, kept as the last top-level entry when the app adds its own.
+    menu->quitButton = nk_console_button_onclick_handler(menu->console, "Quit", &SDL_Libretro_MenuQuitClicked, menu, NULL);
+    nk_console_button_set_symbol(menu->quitButton, NK_SYMBOL_X);
 }
 
 SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
@@ -1795,6 +1819,7 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
     }
+    SDL_Libretro_PushEvent(menu->lr, open ? SDL_LIBRETRO_EVENT_MENU_OPENED : SDL_LIBRETRO_EVENT_MENU_CLOSED);
 }
 
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
@@ -1825,6 +1850,13 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
         return false;
     }
 
+    // Application events, including the menu's own notifications, are never
+    // swallowed and mean nothing to the UI.
+    if (event->type >= SDL_EVENT_USER) {
+        return false;
+    }
+
+    // Feed a copy so coordinate conversion doesn't mutate the caller's event.
     SDL_SetRenderScale(menu->lr->renderer, menu->renderScale, menu->renderScale);
     SDL_Event converted = *event;
     SDL_ConvertEventToRenderCoordinates(menu->lr->renderer, &converted);
@@ -1950,6 +1982,119 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
         menu->uiBuilt = false;
     }
     nk_input_begin(menu->ctx);
+}
+
+/**
+ * One application-added menu entry.
+ *
+ * Owns the label copy; freed through the widget's event destructor.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuCustomItem {
+    SDL_LibretroMenu* menu;
+    SDL_LibretroMenuCallback callback;
+    void* userdata;
+    char* label;
+    nk_bool checked; /** Backing checkbox state, mirrored into the app's bool. */
+    bool* value; /** The app's checkbox value; NULL for buttons. */
+} SDL_LibretroMenuCustomItem;
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuCustomItemChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuCustomItem* item = (SDL_LibretroMenuCustomItem*)user_data;
+    if (item->value != NULL) {
+        *item->value = item->checked == nk_true;
+    }
+    if (item->callback != NULL) {
+        item->callback(item->menu, item->userdata);
+    }
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuCustomItemDestroy(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuCustomItem* item = (SDL_LibretroMenuCustomItem*)user_data;
+    SDL_free(item->label);
+    SDL_free(item);
+}
+
+/**
+ * Allocate the shared state for an application-added entry.
+ *
+ * @internal
+ */
+static SDL_LibretroMenuCustomItem* SDL_Libretro_MenuCreateCustomItem(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata) {
+    if (menu == NULL || menu->console == NULL || label == NULL) {
+        SDL_InvalidParamError("menu");
+        return NULL;
+    }
+    SDL_LibretroMenuCustomItem* item = (SDL_LibretroMenuCustomItem*)SDL_calloc(1, sizeof(SDL_LibretroMenuCustomItem));
+    if (item == NULL) {
+        return NULL;
+    }
+    item->menu = menu;
+    item->callback = callback;
+    item->userdata = userdata;
+    item->label = SDL_strdup(label);
+    if (item->label == NULL) {
+        SDL_free(item);
+        return NULL;
+    }
+    return item;
+}
+
+/**
+ * New entries append after Quit; swap them so Quit stays the last entry.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuKeepQuitLast(SDL_LibretroMenu* menu) {
+    nk_console** children = menu->console->children;
+    size_t count = cvector_size(children);
+    if (menu->quitButton == NULL || count < 2 || children[count - 2] != menu->quitButton) {
+        return;
+    }
+    children[count - 2] = children[count - 1];
+    children[count - 1] = menu->quitButton;
+}
+
+bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata) {
+    SDL_LibretroMenuCustomItem* item = SDL_Libretro_MenuCreateCustomItem(menu, label, callback, userdata);
+    if (item == NULL) {
+        return false;
+    }
+    nk_console* button = nk_console_button_onclick_handler(menu->console, item->label, &SDL_Libretro_MenuCustomItemChanged, item, &SDL_Libretro_MenuCustomItemDestroy);
+    if (button == NULL) {
+        SDL_free(item->label);
+        SDL_free(item);
+        return false;
+    }
+    SDL_Libretro_MenuKeepQuitLast(menu);
+    return true;
+}
+
+bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata) {
+    SDL_LibretroMenuCustomItem* item = SDL_Libretro_MenuCreateCustomItem(menu, label, callback, userdata);
+    if (item == NULL) {
+        return false;
+    }
+    item->value = value;
+    item->checked = (nk_bool)(value != NULL && *value);
+    nk_console* checkbox = nk_console_checkbox(menu->console, item->label, &item->checked);
+    if (checkbox == NULL) {
+        SDL_free(item->label);
+        SDL_free(item);
+        return false;
+    }
+    nk_console_add_event_handler(checkbox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuCustomItemChanged, item, &SDL_Libretro_MenuCustomItemDestroy);
+    SDL_Libretro_MenuKeepQuitLast(menu);
+    return true;
 }
 
 #endif /* SDL_LIBRETRO_MENU_IMPL_ONCE */

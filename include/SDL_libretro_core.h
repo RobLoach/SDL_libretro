@@ -1195,6 +1195,24 @@ int SDL_Libretro_GetVersion(void) {
     return SDL_LIBRETRO_VERSION;
 }
 
+/**
+ * Pushes an SDL_libretro notification onto the SDL event queue.
+ *
+ * The event is an SDL_UserEvent of the given SDL_LibretroEventType with
+ * data1 set to the SDL_Libretro* instance.
+ */
+bool SDL_Libretro_PushEvent(SDL_Libretro* lr, SDL_LibretroEventType type) {
+    if (lr == NULL) {
+        return SDL_InvalidParamError("lr");
+    }
+    SDL_Event event;
+    SDL_zero(event);
+    event.user.type = (Uint32)type;
+    event.user.timestamp = SDL_GetTicksNS();
+    event.user.data1 = lr;
+    return SDL_PushEvent(&event);
+}
+
 // Directory
 
 static void SDL_Libretro_FreeCoreLibrary(SDL_Libretro* lr) {

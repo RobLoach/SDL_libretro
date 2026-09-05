@@ -1955,6 +1955,11 @@ static int SDLCALL test_OSD(void *arg) {
 }
 
 #ifdef SDL_LIBRETRO_ENABLE_MENU
+static void test_MenuCustomClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)menu;
+    (*(int*)userdata)++;
+}
+
 /**
  * Applies the style and checks three probe colors in the resulting Nuklear
  * style: text, window background, and the toggle cursor accent.
@@ -1982,6 +1987,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
     SDL_Libretro_SetMenuUserData(NULL, (void*)1);
     SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(NULL) == NULL, "GetMenuUserData(NULL) NULL");
+    SDL_Libretro_MenuScreenshotClicked(NULL, NULL);
 
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
     SDL_Init(SDL_INIT_VIDEO);
@@ -2083,6 +2089,45 @@ static int SDLCALL test_Menu(void *arg) {
         event.type = SDL_EVENT_KEY_DOWN;
         event.key.key = SDLK_A;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
+
+        // Menu notifications arrive as SDL events of the SDL_LibretroEventType values.
+        SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_MENU_OPENED == 7867, "SDL_libretro event types start at 7867");
+        SDLTest_AssertCheck(SDL_Libretro_PushEvent(NULL, SDL_LIBRETRO_EVENT_MENU_OPENED) == false, "PushEvent(NULL) fails");
+        SDL_FlushEvents(SDL_LIBRETRO_EVENT_MENU_OPENED, SDL_LIBRETRO_EVENT_GAME_LOADED);
+        SDL_Libretro_SetMenuOpen(menu, true);
+        SDL_Libretro_SetMenuOpen(menu, false);
+        int openedEvents = 0;
+        int closedEvents = 0;
+        bool eventDataMatches = true;
+        SDL_Event menuEvent;
+        while (SDL_PeepEvents(&menuEvent, 1, SDL_GETEVENT, SDL_LIBRETRO_EVENT_MENU_OPENED, SDL_LIBRETRO_EVENT_GAME_LOADED) == 1) {
+            if (menuEvent.type == SDL_LIBRETRO_EVENT_MENU_OPENED) {
+                openedEvents++;
+            }
+            else if (menuEvent.type == SDL_LIBRETRO_EVENT_MENU_CLOSED) {
+                closedEvents++;
+            }
+            eventDataMatches = eventDataMatches && menuEvent.user.data1 == lr;
+        }
+        SDLTest_AssertCheck(openedEvents == 1 && closedEvents == 1,
+            "Open/close each push one menu event, got %d/%d", openedEvents, closedEvents);
+        SDLTest_AssertCheck(eventDataMatches, "SDL_libretro events carry the context in data1");
+
+        // Application-added entries fire their callbacks and keep Quit last.
+        int customClicks = 0;
+        bool checkValue = true;
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuButton(NULL, "x", NULL, NULL) == false, "AddMenuButton(NULL) fails");
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuButton(menu, NULL, NULL, NULL) == false, "AddMenuButton without a label fails");
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuButton(menu, "Custom", &test_MenuCustomClicked, &customClicks) == true,
+            "AddMenuButton succeeds");
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuCheckbox(menu, "Custom Check", &checkValue, &test_MenuCustomClicked, &customClicks) == true,
+            "AddMenuCheckbox succeeds");
+        size_t childCount = cvector_size(menu->console->children);
+        SDLTest_AssertCheck(menu->console->children[childCount - 1] == menu->quitButton, "Quit stays the last entry");
+        nk_console_trigger_event(menu->console->children[childCount - 3], NK_CONSOLE_EVENT_CLICKED);
+        nk_console_trigger_event(menu->console->children[childCount - 2], NK_CONSOLE_EVENT_CHANGED);
+        SDLTest_AssertCheck(customClicks == 2, "Custom entry callbacks fired, got %d", customClicks);
+        SDLTest_AssertCheck(checkValue == true, "Checkbox value mirrors the widget state");
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
         // With a game running the menu stays closed; opening it builds the
