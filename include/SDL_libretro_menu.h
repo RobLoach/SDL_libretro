@@ -7,7 +7,7 @@
  *
  * Enabled by defining SDL_LIBRETRO_ENABLE_MENU alongside
  * SDL_LIBRETRO_IMPLEMENTATION. Requires the vendored Nuklear,
- * nuklear_console, nuklear_gamepad, c-vector and tinydir submodules on the
+ * nuklear_console, nuklear_gamepad and c-vector submodules on the
  * include path (handled by the SDL_libretro_menu CMake target).
  *
  * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:

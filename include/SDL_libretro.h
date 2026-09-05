@@ -10,6 +10,10 @@
  *
  * Every other translation unit includes "SDL_libretro.h" normally.
  *
+ * The library keeps a single global active context, so only one core and
+ * game may be loaded at a time. The API is not thread-safe; call it from
+ * the main SDL thread.
+ *
  * Copyright (c) 2026 Rob Loach
  *
  * This software is provided "as-is", without any express or implied warranty.

@@ -6,6 +6,7 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 
 - Header-only C99 library
 - Audio via `SDL_AudioStream` with dynamic rate control
+- Video fit modes (aspect, integer, stretch) and scale filtering via `SDL_Libretro_SetFitMode()` and `SDL_Libretro_SetScaleMode()`
 - Input with gamepad, keyboard, mouse, lightgun, or pointer
 - Save states and SRAM
 - Core options
@@ -29,6 +30,8 @@ Define `SDL_LIBRETRO_IMPLEMENTATION` in exactly one `.c` file before including t
 ```
 
 All other files include `SDL_libretro.h` normally without the define.
+
+The library keeps a single global active context, so only one core and game may be loaded at a time. The API is not thread-safe; call it from the main SDL thread.
 
 ### Quickstart
 
@@ -160,7 +163,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 
 - [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
-- [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
+- [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (bundled at `include/SDL_ini.h`)
 - [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (optional)
 - [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear), [nuklear_console](https://github.com/RobLoach/nuklear_console), [nuklear_gamepad](https://github.com/RobLoach/nuklear_gamepad) and [c-vector](https://github.com/eteran/c-vector) (git submodules, optional, for the menu)
 
