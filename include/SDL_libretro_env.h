@@ -106,7 +106,7 @@ static void SDL_Libretro_PerfLog(void) {
 
 static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_MAX_RUMBLE_PORTS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return false;
 
     float normalized = (float)strength / 65535.0f;
     if (effect == RETRO_RUMBLE_STRONG) {

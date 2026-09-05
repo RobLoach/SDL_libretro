@@ -766,7 +766,7 @@ static SDL_Sensor* SDL_Libretro_OpenSensorByType(SDL_SensorType type) {
 
 static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action action, unsigned rate) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_MAX_SENSOR_PORTS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return false;
     (void)rate;
 
     switch (action) {
@@ -804,7 +804,7 @@ static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action 
 
 static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_MAX_SENSOR_PORTS) return 0.0f;
+    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return 0.0f;
 
     // Accelerometer
     if (id >= RETRO_SENSOR_ACCELEROMETER_X && id <= RETRO_SENSOR_ACCELEROMETER_Z && lr->core.sensorAccel[port]) {
@@ -836,7 +836,7 @@ static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
 static void SDL_Libretro_CloseSensors(SDL_Libretro* lr) {
     if (!lr) return;
 
-    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_SENSOR_PORTS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
         // Accelerometer
         if (lr->core.sensorAccel[i]) {
             SDL_CloseSensor(lr->core.sensorAccel[i]);

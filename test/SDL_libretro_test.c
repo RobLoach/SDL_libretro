@@ -767,6 +767,10 @@ static int SDLCALL test_GameInfoExt(void *arg) {
             "GET_GAME_INFO_EXT reports lower-case ext 'txt', got '%s'", (const char*)probe);
         SDLTest_AssertCheck(probe[16] == 1, "content-info override set persistent_data");
         SDLTest_AssertCheck(probe[17] == 1, "content data buffer present (need_fullpath false)");
+        SDLTest_AssertCheck(probe[18] == 1, "GET_INPUT_MAX_USERS supported");
+        SDLTest_AssertCheck(probe[19] == SDL_LIBRETRO_MAX_GAMEPADS,
+            "GET_INPUT_MAX_USERS reports SDL_LIBRETRO_MAX_GAMEPADS (%d), got %d",
+            SDL_LIBRETRO_MAX_GAMEPADS, (int)probe[19]);
     }
 
     SDL_Libretro_Destroy(lr);
