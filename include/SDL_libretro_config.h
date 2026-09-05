@@ -62,7 +62,7 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     if (INI_HasValue(ini, NULL, "fitmode"))
         SDL_Libretro_SetFitMode(lr, (SDL_LibretroFitMode)INI_GetInt(ini, NULL, "fitmode", SDL_Libretro_GetFitMode(lr)));
     if (INI_HasValue(ini, NULL, "scalemode"))
-        SDL_Libretro_SetTextureScaleMode(lr, (SDL_ScaleMode)INI_GetInt(ini, NULL, "scalemode", SDL_Libretro_GetTextureScaleMode(lr)));
+        SDL_Libretro_SetScaleMode(lr, (SDL_ScaleMode)INI_GetInt(ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetScaleMode(lr)));
     if (INI_HasValue(ini, NULL, "savedirectory"))
         SDL_Libretro_SetSaveDirectory(lr, INI_GetString(ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr)));
     if (INI_HasValue(ini, NULL, "systemdirectory"))
@@ -73,6 +73,8 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         SDL_Libretro_SetCoreAssetsDirectory(lr, INI_GetString(ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr)));
     if (INI_HasValue(ini, NULL, "rewindenabled"))
         SDL_Libretro_SetRewindEnabled(lr, INI_GetBoolean(ini, NULL, "rewindenabled", false), 0, 0);
+    if (INI_HasValue(ini, NULL, "filebrowserdirectory"))
+        SDL_strlcpy(lr->fileBrowserStartDirectory, INI_GetString(ini, NULL, "filebrowserdirectory", ""), sizeof(lr->fileBrowserStartDirectory));
 
     return true;
 }
@@ -159,12 +161,13 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetString(lr->ini, NULL, "username", SDL_Libretro_GetUsername(lr));
     INI_SetInt(lr->ini, NULL, "audiolatency", (Sint64)SDL_Libretro_GetAudioLatency(lr));
     INI_SetInt(lr->ini, NULL, "fitmode", (Sint64)SDL_Libretro_GetFitMode(lr));
-    INI_SetInt(lr->ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetTextureScaleMode(lr));
+    INI_SetInt(lr->ini, NULL, "scalemode", (Sint64)SDL_Libretro_GetScaleMode(lr));
     INI_SetString(lr->ini, NULL, "savedirectory", SDL_Libretro_GetSaveDirectory(lr));
     INI_SetString(lr->ini, NULL, "systemdirectory", SDL_Libretro_GetSystemDirectory(lr));
     INI_SetString(lr->ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr));
     INI_SetString(lr->ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr));
     INI_SetBoolean(lr->ini, NULL, "rewindenabled", SDL_Libretro_GetRewindEnabled(lr));
+    INI_SetString(lr->ini, NULL, "filebrowserdirectory", lr->fileBrowserStartDirectory);
 
     return INI_Save(lr->ini, lr->iniFile);
 }

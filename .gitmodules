@@ -28,8 +28,3 @@
 	url = https://github.com/eteran/c-vector.git
     ignore = dirty
     branch = master
-[submodule "vendor/tinydir"]
-	path = vendor/tinydir
-	url = https://github.com/cxong/tinydir.git
-    ignore = dirty
-    branch = master

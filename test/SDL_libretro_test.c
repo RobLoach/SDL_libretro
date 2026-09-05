@@ -730,9 +730,9 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
 
     // Texture scale mode applies to the live texture and reads back.
-    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetTextureScaleMode(NULL) fails");
-    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetTextureScaleMode(LINEAR) succeeds");
-    SDLTest_AssertCheck(SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetTextureScaleMode returns LINEAR");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL) fails");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetScaleMode(LINEAR) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetScaleMode returns LINEAR");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -1971,7 +1971,10 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Libretro_ToggleMenu(NULL);
     SDL_Libretro_SetMenuOpen(NULL, true);
     SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(NULL) == false, "IsMenuOpen(NULL) false");
-    SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(NULL, NULL) == false, "MenuHandleEvent(NULL, NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(NULL, NULL) == false, "HandleMenuEvent(NULL, NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
+    SDL_Libretro_SetMenuUserData(NULL, (void*)1);
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(NULL) == NULL, "GetMenuUserData(NULL) NULL");
 
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
     SDL_Init(SDL_INIT_VIDEO);
@@ -1987,6 +1990,15 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(menu != NULL, "CreateMenu succeeds with a renderer");
     if (menu != NULL) {
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu starts closed");
+
+        // Context getter and user data
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(menu) == lr, "GetMenuLibretro returns the creating context");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == NULL, "Menu user data starts NULL");
+        int userValue = 42;
+        SDL_Libretro_SetMenuUserData(menu, &userValue);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == &userValue, "Menu user data round-trips");
+        SDL_Libretro_SetMenuUserData(menu, NULL);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(menu) == NULL, "Menu user data clears");
 
         // Styles
         SDLTest_AssertCheck(SDL_Libretro_GetMenuStyle(menu) == SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
@@ -2020,18 +2032,50 @@ static int SDLCALL test_Menu(void *arg) {
             nk_rgba(248, 248, 242, 255), nk_rgba(40, 42, 54, 235), nk_rgba(255, 121, 198, 255)),
             "Dracula colors match");
 
+        // UI scale: the resolution thresholds step the automatic scale.
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(1279) == 1.0f, "Auto scale 1x below 1280");
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(1280) == 2.0f, "Auto scale 2x at 1280");
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(2560) == 3.0f, "Auto scale 3x at 2560");
+        SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(3840) == 4.0f, "Auto scale 4x at 3840");
+        SDLTest_AssertCheck(menu->uiScaleIndex == 2, "UI scale defaults to 2x");
+        SDLTest_AssertCheck(menu->renderScale > 0.0f, "Render scale is set at creation");
+
         // With nothing to run, the menu opens itself.
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
 
-        // The toggle key closes it and the event is consumed.
+        float defaultScale = menu->renderScale;
+        menu->uiScaleIndex = 4;
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->renderScale == defaultScale * 2.0f, "UI scale 4x doubles the default 2x render scale");
+        menu->uiScaleIndex = 2;
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->renderScale == defaultScale, "Returning to 2x restores the default render scale");
+
+        // Gameplay input is swallowed while the menu is open, but lifecycle
+        // events always pass through.
         SDL_Event event;
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_A;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Open menu swallows gameplay input");
+        SDL_zero(event);
+        event.type = SDL_EVENT_QUIT;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Quit passes through an open menu");
+
+        // The toggle key closes it and the event is consumed.
         SDL_zero(event);
         event.type = SDL_EVENT_KEY_UP;
         event.key.key = SDLK_F1;
-        SDLTest_AssertCheck(SDL_Libretro_MenuHandleEvent(menu, &event) == true, "Toggle key event is consumed");
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Toggle key event is consumed");
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Toggle key closes the menu");
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_A;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
         // With a game running the menu stays closed; opening it builds the
@@ -2049,6 +2093,21 @@ static int SDLCALL test_Menu(void *arg) {
             SDL_Libretro_RenderMenu(menu);
         }
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
+
+        // About page with a loaded core: core and content lines appear.
+        SDL_Libretro_MenuBuildAbout(menu);
+        bool aboutHasCore = false;
+        bool aboutHasContent = false;
+        bool aboutHasSize = false;
+        for (size_t offset = 0; offset < menu->aboutTextLength; offset += SDL_strlen(menu->aboutText + offset) + 1) {
+            const char* line = menu->aboutText + offset;
+            aboutHasCore |= SDL_strncmp(line, "Core: ", 6) == 0;
+            aboutHasContent |= SDL_strncmp(line, "Content: ", 9) == 0;
+            aboutHasSize |= SDL_strncmp(line, "Size: ", 6) == 0;
+        }
+        SDLTest_AssertCheck(aboutHasCore, "About shows the loaded core");
+        SDLTest_AssertCheck(aboutHasContent, "About shows the loaded content");
+        SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
 #endif
 
         SDL_Libretro_DestroyMenu(menu);
@@ -2063,6 +2122,10 @@ static int SDLCALL test_Menu(void *arg) {
     if (menuSave != NULL) {
         SDL_Libretro_SetMenuStyle(menuSave, SDL_LIBRETRO_MENU_STYLE_DRACULA);
 
+        // UI scale persists like the theme.
+        menuSave->uiScaleIndex = 3;
+        SDL_Libretro_MenuUIScaleChanged(NULL, menuSave);
+
         // Mute captures the pre-mute volume and silences the output.
         SDL_Libretro_SetVolume(lrSave, 0.5f);
         menuSave->muteChecked = nk_true;
@@ -2071,6 +2134,7 @@ static int SDLCALL test_Menu(void *arg) {
 
         SDL_Libretro_DestroyMenu(menuSave);
     }
+    SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
     SDL_Libretro* lrLoad = SDL_Libretro_Create();

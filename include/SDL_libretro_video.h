@@ -64,12 +64,7 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     }
     lr->core.videoReinitPending = false;
 
-// Scale Mode
-#if SDL_VERSION_ATLEAST(3, 4, 0)
-    if (lr->core.textureScaleMode == SDL_SCALEMODE_NEAREST)
-        lr->core.textureScaleMode = SDL_SCALEMODE_PIXELART; // SDL >= 3.4
-#endif
-    SDL_SetTextureScaleMode(lr->core.texture, lr->core.textureScaleMode);
+    SDL_SetTextureScaleMode(lr->core.texture, lr->scaleMode);
     return true;
 }
 
@@ -351,27 +346,33 @@ SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr) {
 }
 
 /**
- * Sets the scale mode used when rendering the core's video.
+ * Sets the texture scale mode used when the libretro frame is scaled.
  *
- * Applies to the current texture and any texture built later. As with the
- * default, SDL_SCALEMODE_NEAREST upgrades to SDL_SCALEMODE_PIXELART when
- * available.
+ * Applied immediately when a texture exists, and remembered for the next one
+ * otherwise. The setting persists across core loads.
+ *
+ * @param lr the libretro context.
+ * @param mode SDL_SCALEMODE_NEAREST, SDL_SCALEMODE_LINEAR, or SDL_SCALEMODE_PIXELART (SDL >= 3.4).
+ * @returns true on success, false on an invalid context or scale mode.
  */
-bool SDL_Libretro_SetTextureScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode) {
+bool SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode) {
     if (!lr) return false;
+    bool valid = (mode == SDL_SCALEMODE_NEAREST || mode == SDL_SCALEMODE_LINEAR);
 #if SDL_VERSION_ATLEAST(3, 4, 0)
-    if (mode == SDL_SCALEMODE_NEAREST)
-        mode = SDL_SCALEMODE_PIXELART;
+    if (mode == SDL_SCALEMODE_PIXELART) valid = true;
 #endif
-    lr->core.textureScaleMode = mode;
+    if (!valid) {
+        return SDL_InvalidParamError("mode");
+    }
+    lr->scaleMode = mode;
     if (lr->core.texture) {
-        return SDL_SetTextureScaleMode(lr->core.texture, mode);
+        SDL_SetTextureScaleMode(lr->core.texture, mode);
     }
     return true;
 }
 
-SDL_ScaleMode SDL_Libretro_GetTextureScaleMode(const SDL_Libretro* lr) {
-    return lr ? lr->core.textureScaleMode : SDL_SCALEMODE_NEAREST;
+SDL_ScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr) {
+    return lr ? lr->scaleMode : SDL_SCALEMODE_NEAREST;
 }
 
 #endif /* SDL_LIBRETRO_VIDEO_IMPL_ONCE */
