@@ -160,7 +160,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 
 - [SDL3](https://github.com/libsdl-org/SDL) (fetched automatically if not installed)
 - [libretro.h](https://github.com/libretro/libretro-common) (git submodule)
-- [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (included)
+- [SDL_ini.h](https://github.com/RobLoach/SDL_ini) (git submodule)
 - [PhysicsFS](https://github.com/icculus/physfs) and [SDL_PhysFS](https://github.com/RobLoach/SDL_PhysFS) (optional)
 - [Nuklear](https://github.com/Immediate-Mode-UI/Nuklear), [nuklear_console](https://github.com/RobLoach/nuklear_console), [nuklear_gamepad](https://github.com/RobLoach/nuklear_gamepad) and [c-vector](https://github.com/eteran/c-vector) (git submodules, optional, for the menu)
 

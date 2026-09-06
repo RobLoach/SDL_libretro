@@ -128,6 +128,10 @@ static const char* SDL_Libretro_GetCorePathFromName(const SDL_Libretro* lr, cons
 /**
  * Loads a libretro core.
  *
+ * Only one core may be loaded at a time, as the library keeps a single global
+ * active context, and the API is not thread-safe; call it from the main SDL
+ * thread.
+ *
  * @param lr the libretro context.
  * @param core Either the path to the core to load, or a name of the core within the core directory.
  *
