@@ -182,27 +182,32 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  * against these values.
  *
  * The events arrive as SDL_UserEvents with data1 set to the SDL_Libretro*
- * instance that pushed them.
+ * instance that pushed them. Event types that carry an extra value place it
+ * in the SDL_UserEvent's code field; it is 0 for the others.
  *
  * \see SDL_Libretro_PushEvent()
  */
 typedef enum SDL_LibretroEventType {
     SDL_LIBRETRO_EVENT_MENU_OPENED = 7867, /** The menu became visible; the game pauses. */
     SDL_LIBRETRO_EVENT_MENU_CLOSED, /** The menu was dismissed; the game resumes. */
-    SDL_LIBRETRO_EVENT_GAME_LOADED /** A game was loaded through the menu. */
+    SDL_LIBRETRO_EVENT_GAME_LOADED, /** A game was loaded through the menu. */
+    SDL_LIBRETRO_EVENT_ENVIRONMENT /** The core called an environment command SDL_libretro doesn't handle; the SDL_UserEvent's code holds the RETRO_ENVIRONMENT_* command number. */
 } SDL_LibretroEventType;
 
 /**
  * Pushes an SDL_libretro notification onto the SDL event queue.
  *
  * The event is an SDL_UserEvent of the given type with data1 set to the
- * SDL_Libretro* instance.
+ * SDL_Libretro* instance, and code set to the given event-specific value.
+ * Pass 0 for code when the event type doesn't use it;
+ * SDL_LIBRETRO_EVENT_ENVIRONMENT carries the RETRO_ENVIRONMENT_* command
+ * number there.
  *
  * \return true on success, false on failure (call SDL_GetError() for details).
  *
  * \see SDL_LibretroEventType
  */
-bool SDL_Libretro_PushEvent(SDL_Libretro* lr, SDL_LibretroEventType type);
+bool SDL_Libretro_PushEvent(SDL_Libretro* lr, SDL_LibretroEventType type, Sint32 code);
 
 // Save States
 
@@ -303,6 +308,7 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr);
 // Meta Data
 
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
+const char* SDL_Libretro_GetGameName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr);

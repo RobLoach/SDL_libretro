@@ -2085,8 +2085,8 @@ static int SDLCALL test_Menu(void *arg) {
 
         // Menu notifications arrive as SDL events of the SDL_LibretroEventType values.
         SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_MENU_OPENED == 7867, "SDL_libretro event types start at 7867");
-        SDLTest_AssertCheck(SDL_Libretro_PushEvent(NULL, SDL_LIBRETRO_EVENT_MENU_OPENED) == false, "PushEvent(NULL) fails");
-        SDL_FlushEvents(SDL_LIBRETRO_EVENT_MENU_OPENED, SDL_LIBRETRO_EVENT_GAME_LOADED);
+        SDLTest_AssertCheck(SDL_Libretro_PushEvent(NULL, SDL_LIBRETRO_EVENT_MENU_OPENED, 0) == false, "PushEvent(NULL) fails");
+        SDL_FlushEvents(SDL_LIBRETRO_EVENT_MENU_OPENED, SDL_LIBRETRO_EVENT_ENVIRONMENT);
         SDL_Libretro_SetMenuOpen(menu, true);
         SDL_Libretro_SetMenuOpen(menu, false);
         int openedEvents = 0;
@@ -2105,6 +2105,15 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(openedEvents == 1 && closedEvents == 1,
             "Open/close each push one menu event, got %d/%d", openedEvents, closedEvents);
         SDLTest_AssertCheck(eventDataMatches, "SDL_libretro events carry the context in data1");
+
+        // Environment events carry the RETRO_ENVIRONMENT_* command in code.
+        SDLTest_AssertCheck(SDL_Libretro_PushEvent(lr, SDL_LIBRETRO_EVENT_ENVIRONMENT, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE) == true,
+            "PushEvent(ENVIRONMENT) succeeds");
+        SDL_Event envEvent;
+        SDLTest_AssertCheck(SDL_PeepEvents(&envEvent, 1, SDL_GETEVENT, SDL_LIBRETRO_EVENT_ENVIRONMENT, SDL_LIBRETRO_EVENT_ENVIRONMENT) == 1
+                && envEvent.user.code == (Sint32)RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE
+                && envEvent.user.data1 == lr,
+            "Environment events carry the command number in code");
 
         // Application-added entries fire their callbacks and keep Quit last.
         int customClicks = 0;

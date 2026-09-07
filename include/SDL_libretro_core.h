@@ -1199,9 +1199,10 @@ int SDL_Libretro_GetVersion(void) {
  * Pushes an SDL_libretro notification onto the SDL event queue.
  *
  * The event is an SDL_UserEvent of the given SDL_LibretroEventType with
- * data1 set to the SDL_Libretro* instance.
+ * data1 set to the SDL_Libretro* instance, and code set to the given
+ * event-specific value (0 when unused).
  */
-bool SDL_Libretro_PushEvent(SDL_Libretro* lr, SDL_LibretroEventType type) {
+bool SDL_Libretro_PushEvent(SDL_Libretro* lr, SDL_LibretroEventType type, Sint32 code) {
     if (lr == NULL) {
         return SDL_InvalidParamError("lr");
     }
@@ -1209,6 +1210,7 @@ bool SDL_Libretro_PushEvent(SDL_Libretro* lr, SDL_LibretroEventType type) {
     SDL_zero(event);
     event.user.type = (Uint32)type;
     event.user.timestamp = SDL_GetTicksNS();
+    event.user.code = code;
     event.user.data1 = lr;
     return SDL_PushEvent(&event);
 }
@@ -1518,6 +1520,17 @@ SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
  */
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
     return SDL_Libretro_IsCoreReady(lr) ? lr->core.libraryName : "";
+}
+
+/**
+ * Retrieve the human-readable name of the loaded game.
+ *
+ * This is the content file's base name without its extension. When the core
+ * runs without content, it falls back to the core's name. Returns an empty
+ * string when no game is loaded.
+ */
+const char* SDL_Libretro_GetGameName(const SDL_Libretro* lr) {
+    return SDL_Libretro_IsGameReady(lr) ? lr->core.contentName : "";
 }
 
 /**

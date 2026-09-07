@@ -1057,11 +1057,13 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case 87:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unimplemented environment callback: %u", cmd);
+            SDL_Libretro_PushEvent(lr, SDL_LIBRETRO_EVENT_ENVIRONMENT, (Sint32)cmd);
             return false;
         }
 
         default: {
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unhandled environment callback: %u", cmd);
+            SDL_Libretro_PushEvent(lr, SDL_LIBRETRO_EVENT_ENVIRONMENT, (Sint32)cmd);
             return false;
         }
     }

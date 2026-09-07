@@ -27,6 +27,24 @@ typedef struct {
 } AppContext;
 
 /**
+ * Names the window "Game Name — SDL_libretro" after the loaded game, or
+ * "Core Name — SDL_libretro" when a core runs without content.
+ */
+static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
+    const char* name = SDL_Libretro_GetGameName(app->lr);
+    if (name[0] == '\0') {
+        name = SDL_Libretro_GetCoreName(app->lr);
+    }
+    if (name[0] == '\0') {
+        SDL_SetWindowTitle(app->window, "SDL_libretro_demo");
+        return;
+    }
+    char title[1024];
+    SDL_snprintf(title, sizeof(title), "%s — SDL_libretro", name);
+    SDL_SetWindowTitle(app->window, title);
+}
+
+/**
  * Called when dragging and dropping a game onto the window.
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
@@ -37,6 +55,7 @@ static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) 
         // menu's own Load Game flow.
         SDL_Libretro_SetMenuOpen(app->menu, false);
 #endif
+        SDL_Libretro_DemoUpdateWindowTitle(app);
     }
 }
 
@@ -129,6 +148,10 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     app->lr = lr;
     *appstate = app;
 
+    // Name the window after whatever was loaded from the command line: the
+    // game, or the core when it runs without content.
+    SDL_Libretro_DemoUpdateWindowTitle(app);
+
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     // The in-app menu; toggled with F1 or the gamepad Guide button.
     SDL_Libretro_SetRenderer(lr, renderer);
@@ -163,18 +186,24 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
-
-    // Name the window after the core when a game loads through the menu.
-    // SDL_libretro events carry the SDL_Libretro* instance in data1.
-    if (event->type == SDL_LIBRETRO_EVENT_GAME_LOADED) {
-        SDL_Libretro* eventLr = (SDL_Libretro*)event->user.data1;
-        SDL_SetWindowTitle(app->window, SDL_Libretro_GetCoreName(eventLr));
-        return SDL_APP_CONTINUE;
-    }
 #endif
 
+    // Name the window after the game when one loads through the menu.
+    // SDL_libretro events carry the SDL_Libretro* instance in data1.
+    if (event->type == SDL_LIBRETRO_EVENT_GAME_LOADED) {
+        SDL_Libretro_DemoUpdateWindowTitle(app);
+        return SDL_APP_CONTINUE;
+    }
+
+    // The core asked for an environment feature that SDL_libretro doesn't
+    // handle; the command number arrives in the event's code field.
+    if (event->type == SDL_LIBRETRO_EVENT_ENVIRONMENT) {
+        SDL_Log("Core requested unhandled environment command: %d", (int)event->user.code);
+        return SDL_APP_CONTINUE;
+    }
+
     // Fast Forward
-    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
         SDL_Libretro_SetSpeed(lr, 2.0f);
     }
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F) {

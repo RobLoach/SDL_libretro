@@ -78,7 +78,7 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
 
-The menu reports what it does through SDL events: check `event.type` against `SDL_LIBRETRO_EVENT_MENU_OPENED`, `SDL_LIBRETRO_EVENT_MENU_CLOSED`, or `SDL_LIBRETRO_EVENT_GAME_LOADED`, with the `SDL_Libretro*` instance in `event.user.data1`. Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`.
+The menu reports what it does through SDL events (see [Events](#events)). Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION
@@ -102,6 +102,37 @@ SDL_Libretro_UpdateMenu(menu);
 SDL_Libretro_RenderMenu(menu);
 SDL_RenderPresent(renderer);
 ```
+
+### Events
+
+SDL_libretro reports what happens by pushing `SDL_UserEvent`s onto the SDL event queue. The `SDL_LibretroEventType` values start at `7867` and increase by one from there, so they stay clear of the standard `SDL_EventType` values; compare `event.type` against them directly. Every event carries the `SDL_Libretro*` instance that pushed it in `event.user.data1`.
+
+- `SDL_LIBRETRO_EVENT_MENU_OPENED` (7867): The menu became visible; the game pauses.
+- `SDL_LIBRETRO_EVENT_MENU_CLOSED`: The menu was dismissed; the game resumes.
+- `SDL_LIBRETRO_EVENT_GAME_LOADED`: A game was loaded through the menu.
+- `SDL_LIBRETRO_EVENT_ENVIRONMENT`: The core called a libretro environment command that SDL_libretro doesn't handle; `event.user.code` holds the `RETRO_ENVIRONMENT_*` command number.
+
+```c
+// For each event...
+switch (event.type) {
+    case SDL_LIBRETRO_EVENT_MENU_OPENED:
+        SDL_Log("Menu opened");
+        break;
+    case SDL_LIBRETRO_EVENT_MENU_CLOSED:
+        SDL_Log("Menu closed");
+        break;
+    case SDL_LIBRETRO_EVENT_GAME_LOADED: {
+        SDL_Libretro* lr = (SDL_Libretro*)event.user.data1;
+        SDL_Log("Loaded: %s", SDL_Libretro_GetGameName(lr));
+        break;
+    }
+    case SDL_LIBRETRO_EVENT_ENVIRONMENT:
+        SDL_Log("Unhandled environment command: %d", (int)event.user.code);
+        break;
+}
+```
+
+Applications can push these notifications themselves with `SDL_Libretro_PushEvent()`.
 
 ## Build
 

@@ -256,7 +256,7 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     bool loaded = SDL_Libretro_LoadGame(menu->lr, menu->loadGamePath);
 #endif
     if (loaded) {
-        SDL_Libretro_PushEvent(menu->lr, SDL_LIBRETRO_EVENT_GAME_LOADED);
+        SDL_Libretro_PushEvent(menu->lr, SDL_LIBRETRO_EVENT_GAME_LOADED, 0);
         SDL_Libretro_SetMenuOpen(menu, false);
     }
     else {
@@ -1819,7 +1819,7 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
     }
-    SDL_Libretro_PushEvent(menu->lr, open ? SDL_LIBRETRO_EVENT_MENU_OPENED : SDL_LIBRETRO_EVENT_MENU_CLOSED);
+    SDL_Libretro_PushEvent(menu->lr, open ? SDL_LIBRETRO_EVENT_MENU_OPENED : SDL_LIBRETRO_EVENT_MENU_CLOSED, 0);
 }
 
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
