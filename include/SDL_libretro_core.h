@@ -236,6 +236,8 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
+    SDL_Libretro_SendEvent(lr, SDL_LIBRETRO_EVENT_CORE_LOADED, 0, NULL);
+
     return true;
 }
 
@@ -651,6 +653,8 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
     if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
         SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
     }
+
+    SDL_Libretro_SendEvent(lr, SDL_LIBRETRO_EVENT_GAME_LOADED, 0, NULL);
 
     return true;
 }
@@ -1196,23 +1200,166 @@ int SDL_Libretro_GetVersion(void) {
 }
 
 /**
- * Pushes an SDL_libretro notification onto the SDL event queue.
+ * Sets the callback that receives SDL_libretro events.
  *
- * The event is an SDL_UserEvent of the given SDL_LibretroEventType with
- * data1 set to the SDL_Libretro* instance, and code set to the given
- * event-specific value (0 when unused).
+ * @see SDL_LibretroEventCallback
  */
-bool SDL_Libretro_PushEvent(SDL_Libretro* lr, SDL_LibretroEventType type, Sint32 code) {
+void SDL_Libretro_SetEventCallback(SDL_Libretro* lr, SDL_LibretroEventCallback callback, void* userdata) {
     if (lr == NULL) {
-        return SDL_InvalidParamError("lr");
+        return;
     }
-    SDL_Event event;
+    lr->eventCallback = callback;
+    lr->eventCallbackUserData = userdata;
+}
+
+/**
+ * Invokes the application's event callback synchronously.
+ *
+ * envCmd/envData fill SDL_LibretroEvent::env and should be 0/NULL for
+ * anything that isn't an SDL_LIBRETRO_EVENT_ENV_* event.
+ *
+ * @return The callback's result, or false when no callback is set. Callers
+ *         only use it for environment events; it's ignored elsewhere.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_SendEvent(SDL_Libretro* lr, SDL_LibretroEventType type, unsigned envCmd, void* envData) {
+    if (lr == NULL || lr->eventCallback == NULL) {
+        return false;
+    }
+    SDL_LibretroEvent event;
     SDL_zero(event);
-    event.user.type = (Uint32)type;
-    event.user.timestamp = SDL_GetTicksNS();
-    event.user.code = code;
-    event.user.data1 = lr;
-    return SDL_PushEvent(&event);
+    event.type = type;
+    event.lr = lr;
+    event.env.cmd = envCmd;
+    event.env.data = envData;
+    return lr->eventCallback(lr->eventCallbackUserData, &event);
+}
+
+/**
+ * Maps a raw RETRO_ENVIRONMENT_* command to its SDL_LIBRETRO_EVENT_ENV_*
+ * event type, ignoring the RETRO_ENVIRONMENT_EXPERIMENTAL flag.
+ *
+ * @return The event type, or SDL_LIBRETRO_EVENT_COUNT when the command is
+ *         unknown (private, or newer than the bundled libretro.h).
+ *
+ * @internal
+ */
+static SDL_LibretroEventType SDL_Libretro_EnvEventType(unsigned cmd) {
+    #define SDL_LIBRETRO_ENV_EVENT_CASE(name) \
+        case (RETRO_ENVIRONMENT_##name & ~(unsigned)RETRO_ENVIRONMENT_EXPERIMENTAL): \
+            return SDL_LIBRETRO_EVENT_ENV_##name;
+    switch (cmd & ~(unsigned)RETRO_ENVIRONMENT_EXPERIMENTAL) {
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_ROTATION)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_OVERSCAN)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_CAN_DUPE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_MESSAGE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SHUTDOWN)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_PERFORMANCE_LEVEL)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_SYSTEM_DIRECTORY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_PIXEL_FORMAT)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_INPUT_DESCRIPTORS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_KEYBOARD_CALLBACK)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_DISK_CONTROL_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_HW_RENDER)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_VARIABLE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_VARIABLES)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_VARIABLE_UPDATE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_SUPPORT_NO_GAME)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_LIBRETRO_PATH)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_FRAME_TIME_CALLBACK)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_AUDIO_CALLBACK)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_RUMBLE_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_INPUT_DEVICE_CAPABILITIES)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_SENSOR_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_CAMERA_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_LOG_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_PERF_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_LOCATION_INTERFACE)
+        // RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY is a deprecated alias of
+        // GET_CORE_ASSETS_DIRECTORY (both command 30); report the latter.
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_CORE_ASSETS_DIRECTORY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_SAVE_DIRECTORY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_SYSTEM_AV_INFO)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_PROC_ADDRESS_CALLBACK)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_SUBSYSTEM_INFO)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CONTROLLER_INFO)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_MEMORY_MAPS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_GEOMETRY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_USERNAME)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_LANGUAGE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_CURRENT_SOFTWARE_FRAMEBUFFER)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_HW_RENDER_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_SUPPORT_ACHIEVEMENTS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_SERIALIZATION_QUIRKS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_VFS_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_LED_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_AUDIO_VIDEO_ENABLE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_MIDI_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_FASTFORWARDING)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_TARGET_REFRESH_RATE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_INPUT_BITMASKS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_CORE_OPTIONS_VERSION)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CORE_OPTIONS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CORE_OPTIONS_INTL)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CORE_OPTIONS_DISPLAY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_PREFERRED_HW_RENDER)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_DISK_CONTROL_INTERFACE_VERSION)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_DISK_CONTROL_EXT_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_MESSAGE_INTERFACE_VERSION)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_MESSAGE_EXT)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_INPUT_MAX_USERS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_AUDIO_BUFFER_STATUS_CALLBACK)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_MINIMUM_AUDIO_LATENCY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_FASTFORWARDING_OVERRIDE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CONTENT_INFO_OVERRIDE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_GAME_INFO_EXT)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CORE_OPTIONS_V2)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CORE_OPTIONS_V2_INTL)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_VARIABLE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_THROTTLE_STATE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_SAVESTATE_CONTEXT)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_JIT_CAPABLE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_MICROPHONE_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_DEVICE_POWER)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_NETPACKET_INTERFACE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_PLAYLIST_DIRECTORY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_FILE_BROWSER_START_DIRECTORY)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_TARGET_SAMPLE_RATE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_NETPLAY_CLIENT_INDEX)
+        SDL_LIBRETRO_ENV_EVENT_CASE(EXEC_MEM_ALLOC)
+        SDL_LIBRETRO_ENV_EVENT_CASE(EXEC_MEM_FREE)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_AUDIO_SAMPLE_BATCH_FLOAT)
+        SDL_LIBRETRO_ENV_EVENT_CASE(GET_MEMORY_STATUS)
+        SDL_LIBRETRO_ENV_EVENT_CASE(SET_HW_SHARED_CONTEXT)
+        default:
+            break;
+    }
+    #undef SDL_LIBRETRO_ENV_EVENT_CASE
+    return SDL_LIBRETRO_EVENT_COUNT;
+}
+
+/**
+ * Forwards an environment command SDL_libretro doesn't handle to the
+ * application's event callback.
+ *
+ * Commands with no SDL_LIBRETRO_EVENT_ENV_* entry (private, or newer than
+ * the bundled libretro.h) don't produce an event.
+ *
+ * @return The callback's result, forwarded to the core as the environment
+ *         callback's return value; false when no event was sent.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_SendEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data) {
+    SDL_LibretroEventType type = SDL_Libretro_EnvEventType(cmd);
+    if (type == SDL_LIBRETRO_EVENT_COUNT) {
+        return false;
+    }
+    return SDL_Libretro_SendEvent(lr, type, cmd, data);
 }
 
 // Directory

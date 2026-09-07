@@ -45,6 +45,66 @@ static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
 }
 
 /**
+ * Receives every SDL_libretro event synchronously.
+ *
+ * The lifecycle events keep the window title current, the menu events are
+ * logged, and the SDL_LIBRETRO_EVENT_ENV_* events report environment
+ * commands that SDL_libretro doesn't handle itself. Returning true for an
+ * environment event would tell the core the command succeeded; this demo
+ * implements none of them, so it returns false there. The return value is
+ * ignored for the other event types.
+ */
+static bool SDL_Libretro_DemoEventCallback(void* userdata, SDL_LibretroEvent* event) {
+    AppContext* app = userdata;
+    switch (event->type) {
+        // A core loaded; when it runs without content the core name titles the window.
+        case SDL_LIBRETRO_EVENT_CORE_LOADED:
+            SDL_Log("Core loaded: %s", SDL_Libretro_GetCoreName(event->lr));
+            SDL_Libretro_DemoUpdateWindowTitle(app);
+            return true;
+
+        // A game loaded, from the command line, the menu, or drag & drop.
+        case SDL_LIBRETRO_EVENT_GAME_LOADED:
+            SDL_Log("Game loaded: %s", SDL_Libretro_GetGameName(event->lr));
+            SDL_Libretro_DemoUpdateWindowTitle(app);
+            return true;
+
+        case SDL_LIBRETRO_EVENT_MENU_OPENED:
+            SDL_Log("Menu opened");
+            return true;
+        case SDL_LIBRETRO_EVENT_MENU_CLOSED:
+            SDL_Log("Menu closed");
+            return true;
+
+        // Environment commands the library leaves to the application. The raw
+        // RETRO_ENVIRONMENT_* command number rides along in event->env.cmd,
+        // and event->env.data is the pointer the core passed.
+        case SDL_LIBRETRO_EVENT_ENV_GET_CAMERA_INTERFACE:
+            SDL_Log("Core asked for a camera interface; not available in this demo");
+            return false;
+        case SDL_LIBRETRO_EVENT_ENV_GET_LOCATION_INTERFACE:
+            SDL_Log("Core asked for location services; not available in this demo");
+            return false;
+        case SDL_LIBRETRO_EVENT_ENV_SET_PROC_ADDRESS_CALLBACK:
+            SDL_Log("Core offered a proc-address callback; this demo doesn't use it");
+            return false;
+        case SDL_LIBRETRO_EVENT_ENV_SET_SUPPORT_ACHIEVEMENTS:
+            SDL_Log("Core supports achievements; this demo doesn't track them");
+            return false;
+        case SDL_LIBRETRO_EVENT_ENV_GET_HW_RENDER_INTERFACE:
+        case SDL_LIBRETRO_EVENT_ENV_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
+        case SDL_LIBRETRO_EVENT_ENV_SET_HW_SHARED_CONTEXT:
+            SDL_Log("Core wants hardware rendering (command %u); not supported here", event->env.cmd);
+            return false;
+
+        // Everything else: log the raw command number for diagnostics.
+        default:
+            SDL_Log("Core called unhandled environment command %u", event->env.cmd);
+            return false;
+    }
+}
+
+/**
  * Called when dragging and dropping a game onto the window.
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
@@ -52,10 +112,10 @@ static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) 
     if (SDL_Libretro_LoadGame(app->lr, path)) {
 #ifdef SDL_LIBRETRO_ENABLE_MENU
         // Close the menu so the freshly loaded game is visible, matching the
-        // menu's own Load Game flow.
+        // menu's own Load Game flow. The GAME_LOADED event already renamed
+        // the window.
         SDL_Libretro_SetMenuOpen(app->menu, false);
 #endif
-        SDL_Libretro_DemoUpdateWindowTitle(app);
     }
 }
 
@@ -114,8 +174,23 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         return SDL_APP_FAILURE;
     }
 
+    AppContext* app = SDL_calloc(1, sizeof(AppContext));
+    if (!app) {
+        return SDL_APP_FAILURE;
+    }
+    app->window = window;
+    app->renderer = renderer;
+    *appstate = app;
+
     // Create the libretro environment.
     SDL_Libretro* lr = SDL_Libretro_Create();
+    app->lr = lr;
+
+    // Watch everything SDL_libretro reports: core/game loads, the menu, and
+    // environment commands the library doesn't handle. Registered before
+    // anything loads so the startup loads are reported too.
+    SDL_Libretro_SetEventCallback(lr, SDL_Libretro_DemoEventCallback, app);
+
     SDL_Libretro_SetCoreDirectory(lr, "cores");
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");
@@ -138,19 +213,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
-
-    AppContext* app = SDL_calloc(1, sizeof(AppContext));
-    if (!app) {
-        return SDL_APP_FAILURE;
-    }
-    app->window = window;
-    app->renderer = renderer;
-    app->lr = lr;
-    *appstate = app;
-
-    // Name the window after whatever was loaded from the command line: the
-    // game, or the core when it runs without content.
-    SDL_Libretro_DemoUpdateWindowTitle(app);
 
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     // The in-app menu; toggled with F1 or the gamepad Guide button.
@@ -187,20 +249,6 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_CONTINUE;
     }
 #endif
-
-    // Name the window after the game when one loads through the menu.
-    // SDL_libretro events carry the SDL_Libretro* instance in data1.
-    if (event->type == SDL_LIBRETRO_EVENT_GAME_LOADED) {
-        SDL_Libretro_DemoUpdateWindowTitle(app);
-        return SDL_APP_CONTINUE;
-    }
-
-    // The core asked for an environment feature that SDL_libretro doesn't
-    // handle; the command number arrives in the event's code field.
-    if (event->type == SDL_LIBRETRO_EVENT_ENVIRONMENT) {
-        SDL_Log("Core requested unhandled environment command: %d", (int)event->user.code);
-        return SDL_APP_CONTINUE;
-    }
 
     // Fast Forward
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {

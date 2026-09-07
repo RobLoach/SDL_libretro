@@ -105,34 +105,32 @@ SDL_RenderPresent(renderer);
 
 ### Events
 
-SDL_libretro reports what happens by pushing `SDL_UserEvent`s onto the SDL event queue. The `SDL_LibretroEventType` values start at `7867` and increase by one from there, so they stay clear of the standard `SDL_EventType` values; compare `event.type` against them directly. Every event carries the `SDL_Libretro*` instance that pushed it in `event.user.data1`.
+SDL_libretro reports what happens through a synchronous callback registered with `SDL_Libretro_SetEventCallback()`. The `SDL_LibretroEventType` values are sequential, starting at 0:
 
-- `SDL_LIBRETRO_EVENT_MENU_OPENED` (7867): The menu became visible; the game pauses.
-- `SDL_LIBRETRO_EVENT_MENU_CLOSED`: The menu was dismissed; the game resumes.
-- `SDL_LIBRETRO_EVENT_GAME_LOADED`: A game was loaded through the menu.
-- `SDL_LIBRETRO_EVENT_ENVIRONMENT`: The core called a libretro environment command that SDL_libretro doesn't handle; `event.user.code` holds the `RETRO_ENVIRONMENT_*` command number.
+- `SDL_LIBRETRO_EVENT_ENV_*` come first, one entry per `RETRO_ENVIRONMENT_*` command in the order libretro.h defines them (e.g. `SDL_LIBRETRO_EVENT_ENV_SET_ROTATION`). They fire when the core calls an environment command SDL_libretro doesn't handle itself. The enum values are *not* the raw command numbers; those arrive in `event->env.cmd` (including the `RETRO_ENVIRONMENT_EXPERIMENTAL` flag when the core passed it), with the core's data pointer in `event->env.data`. Returning `true` from the callback tells the core the command succeeded, so an application can implement environment commands the library doesn't. Commands SDL_libretro doesn't recognize at all (private, or newer than the bundled libretro.h) don't produce an event.
+- `SDL_LIBRETRO_EVENT_CORE_LOADED`: A core finished loading.
+- `SDL_LIBRETRO_EVENT_GAME_LOADED`: A game finished loading, whether directly or through the menu.
+- `SDL_LIBRETRO_EVENT_MENU_OPENED` / `SDL_LIBRETRO_EVENT_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). The menu events are the last enum values.
+
+The callback's return value only matters for the `SDL_LIBRETRO_EVENT_ENV_*` events; it is ignored for the others. `event->env` is zeroed for non-environment events.
 
 ```c
-// For each event...
-switch (event.type) {
-    case SDL_LIBRETRO_EVENT_MENU_OPENED:
-        SDL_Log("Menu opened");
-        break;
-    case SDL_LIBRETRO_EVENT_MENU_CLOSED:
-        SDL_Log("Menu closed");
-        break;
-    case SDL_LIBRETRO_EVENT_GAME_LOADED: {
-        SDL_Libretro* lr = (SDL_Libretro*)event.user.data1;
-        SDL_Log("Loaded: %s", SDL_Libretro_GetGameName(lr));
-        break;
+static bool MyEventCallback(void* userdata, SDL_LibretroEvent* event) {
+    switch (event->type) {
+        case SDL_LIBRETRO_EVENT_GAME_LOADED:
+            SDL_Log("Loaded: %s", SDL_Libretro_GetGameName(event->lr));
+            return true;
+        case SDL_LIBRETRO_EVENT_MENU_OPENED:
+            SDL_Log("Menu opened");
+            return true;
+        default:
+            SDL_Log("Unhandled environment command: %u", event->env.cmd);
+            return false; // Report the environment command as unsupported.
     }
-    case SDL_LIBRETRO_EVENT_ENVIRONMENT:
-        SDL_Log("Unhandled environment command: %d", (int)event.user.code);
-        break;
 }
-```
 
-Applications can push these notifications themselves with `SDL_Libretro_PushEvent()`.
+SDL_Libretro_SetEventCallback(lr, MyEventCallback, NULL);
+```
 
 ## Build
 
