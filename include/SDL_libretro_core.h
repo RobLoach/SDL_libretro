@@ -1209,10 +1209,11 @@ int SDL_Libretro_GetVersion(void) {
  * data1 is the context, data2 the event-specific payload: the environment
  * data pointer, a name, or the menu.
  *
- * @return true when an event watch claimed the event by setting a non-zero
- *         user.code; watches run synchronously inside SDL_PushEvent(), which
- *         is how an application implements an environment command while the
- *         core waits.
+ * @return true when the event was pushed successfully, matching
+ *         SDL_PushEvent(), and an event watch claimed it by setting a
+ *         non-zero user.code; watches run synchronously inside
+ *         SDL_PushEvent(), which is how an application implements an
+ *         environment command while the core waits.
  *
  * @internal
  */
@@ -1222,8 +1223,14 @@ static bool SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
     event.user.type = type;
     event.user.data1 = lr;
     event.user.data2 = data;
-    SDL_PushEvent(&event);
-    return event.user.code != 0;
+    bool result = SDL_PushEvent(&event);
+
+    // No event watch claimed the event.
+    if (event.user.code == 0) {
+        return false;
+    }
+
+    return result;
 }
 
 // Directory
