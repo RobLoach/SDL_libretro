@@ -107,7 +107,7 @@ SDL_RenderPresent(renderer);
 
 SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event.
 
-- Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` — for example `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE`. Commands carrying the `RETRO_ENVIRONMENT_EXPERIMENTAL` flag need it stripped, which the `SDL_EVENT_LIBRETRO_ENV(cmd)` macro does for any command. The data pointer the core passed rides along in `event->user.data2`.
+- Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` — for example `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE`. Commands carrying the `RETRO_ENVIRONMENT_EXPERIMENTAL` flag need it masked off, since it doesn't fit the SDL event range: `SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`. The data pointer the core passed rides along in `event->user.data2`.
 - `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu.
 - `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes).
 
@@ -128,7 +128,7 @@ An environment command's `data2` pointer is only valid while the core waits insi
 
 ```c
 static bool SDLCALL MyEventWatch(void* userdata, SDL_Event* event) {
-    if (event->type == SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE)) {
+    if (event->type == (SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL))) {
         struct retro_camera_callback* camera = event->user.data2;
         // ... fill in the camera interface ...
         event->user.code = 1; // Tell the core the command succeeded.

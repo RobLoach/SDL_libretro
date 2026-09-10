@@ -181,25 +181,19 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  * SDL_UserEvent, with event->user.data1 the SDL_Libretro* that sent it.
  *
  * Environment commands the library doesn't handle itself arrive as
- * `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` (SDL_EVENT_LIBRETRO_ENV() for
- * commands carrying the RETRO_ENVIRONMENT_EXPERIMENTAL flag), with the data
- * pointer the core passed in event->user.data2. That pointer is only valid
- * while the core waits inside the environment call, so to implement a
- * command, handle the event from an SDL_AddEventWatch() callback — watches
- * run synchronously during the push — and set event->user.code to a non-zero
- * value there to tell the core the command succeeded.
+ * `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*`, with the data pointer the core
+ * passed in event->user.data2. The RETRO_ENVIRONMENT_EXPERIMENTAL flag
+ * doesn't fit the SDL event range, so commands carrying it need it masked
+ * off: `SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE &
+ * ~RETRO_ENVIRONMENT_EXPERIMENTAL)`.
  *
- * \see SDL_EVENT_LIBRETRO_ENV
+ * The data pointer is only valid while the core waits inside the environment
+ * call, so to implement a command, handle the event from an
+ * SDL_AddEventWatch() callback — watches run synchronously during the push —
+ * and set event->user.code to a non-zero value there to tell the core the
+ * command succeeded.
  */
 #define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
-
-/**
- * The SDL event type for the RETRO_ENVIRONMENT_* command cmd.
- *
- * Strips the RETRO_ENVIRONMENT_EXPERIMENTAL flag, so it works for every
- * command; plain commands can OR onto SDL_EVENT_LIBRETRO directly.
- */
-#define SDL_EVENT_LIBRETRO_ENV(cmd) (SDL_EVENT_LIBRETRO | ((cmd) & 0xFFF))
 
 #define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading. @see SDL_Libretro_GetCoreName() */
 #define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu. @see SDL_Libretro_GetGameName() */

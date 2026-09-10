@@ -1069,8 +1069,9 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case 87:
         case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
             // Let the application implement the command through an event
-            // watch on SDL_EVENT_LIBRETRO_ENV(cmd).
-            if (SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_ENV(cmd), data)) {
+            // watch on SDL_EVENT_LIBRETRO | cmd. The experimental flag can't
+            // ride in an SDL event type, so it's masked off.
+            if (SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE)), data)) {
                 return true;
             }
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unimplemented environment callback: %u", cmd);
@@ -1078,7 +1079,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         default: {
-            if (SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_ENV(cmd), data)) {
+            if (SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE)), data)) {
                 return true;
             }
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unhandled environment callback: %u", cmd);

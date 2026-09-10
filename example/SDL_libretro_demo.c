@@ -48,10 +48,10 @@ static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
  * Handles the SDL events SDL_libretro pushes.
  *
  * The lifecycle events keep the window title current, the menu events are
- * logged, and SDL_EVENT_LIBRETRO_ENV(cmd) events report environment commands
- * that SDL_libretro doesn't handle itself. Implementing one of those would
- * take an SDL_AddEventWatch() callback instead, so the core's data pointer
- * in user.data2 is still valid; this demo only logs them.
+ * logged, and SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_* events report
+ * environment commands that SDL_libretro doesn't handle itself. Implementing
+ * one of those would take an SDL_AddEventWatch() callback instead, so the
+ * core's data pointer in user.data2 is still valid; this demo only logs them.
  *
  * @return true when the event was an SDL_libretro event.
  */
@@ -77,24 +77,16 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
             return true;
 
         // Environment commands the library leaves to the application. Plain
-        // commands OR onto SDL_EVENT_LIBRETRO; experimental ones go through
-        // SDL_EVENT_LIBRETRO_ENV() to strip their flag.
+        // commands OR onto SDL_EVENT_LIBRETRO; experimental ones need their
+        // flag masked off, since it doesn't fit the SDL event range.
         case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
             SDL_Log("Core asked for location services; not available in this demo");
             return true;
         case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
             SDL_Log("Core offered a proc-address callback; this demo doesn't use it");
             return true;
-        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE):
+        case SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL):
             SDL_Log("Core asked for a camera interface; not available in this demo");
-            return true;
-        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS):
-            SDL_Log("Core supports achievements; this demo doesn't track them");
-            return true;
-        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE):
-        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE):
-        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT):
-            SDL_Log("Core wants hardware rendering (command %u); not supported here", (unsigned)(event->type - SDL_EVENT_LIBRETRO));
             return true;
 
         // Any other environment command: log the number for diagnostics.
