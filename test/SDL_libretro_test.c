@@ -2276,7 +2276,7 @@ static int SDLCALL test_Menu(void *arg) {
         // Mute captures the pre-mute volume and silences the output.
         SDL_Libretro_SetVolume(lrSave, 0.5f);
         menuSave->muteChecked = nk_true;
-        SDL_Libretro_MenuMuteChanged(NULL, menuSave);
+        SDL_Libretro_MenuMuteChanged(menuSave, NULL);
         SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrSave) == 0.0f, "Mute drops the volume to zero");
 
         SDL_Libretro_DestroyMenu(menuSave);
@@ -2294,7 +2294,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
     if (menuLoad != NULL) {
         menuLoad->muteChecked = nk_false;
-        SDL_Libretro_MenuMuteChanged(NULL, menuLoad);
+        SDL_Libretro_MenuMuteChanged(menuLoad, NULL);
         SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lrLoad) - 0.5f) < 0.001f,
             "Unmute restores the pre-mute volume");
     }
