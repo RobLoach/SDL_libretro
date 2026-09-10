@@ -343,7 +343,7 @@ static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t*
     if (!lr) return NULL;
 
     if (lr->core.microphone) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_libretro] Microphone already open");
+        SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Microphone already open");
         return (retro_microphone_t*)lr->core.microphone;
     }
 
@@ -356,7 +356,7 @@ static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t*
 
     SDL_AudioStream* stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_RECORDING, &spec, NULL, (void*)lr);
     if (!stream) {
-        SDL_LogError(SDL_LOG_CATEGORY_AUDIO, "SDL_libretro: Failed to open microphone: %s", SDL_GetError());
+        SDL_LogError(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Failed to open microphone: %s", SDL_GetError());
         return NULL;
     }
 
@@ -373,7 +373,7 @@ static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t*
     mic->lr = lr;
     lr->core.microphone = mic;
 
-    SDL_Log("SDL_libretro: Microphone opened (%u Hz)", rate);
+    SDL_Log("[SDL_Libretro] Microphone opened (%u Hz)", rate);
     return (retro_microphone_t*)mic;
 }
 
