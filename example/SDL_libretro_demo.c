@@ -22,7 +22,6 @@ typedef struct {
     SDL_Renderer* renderer;
     SDL_Libretro* lr;
     SDL_LibretroMenu* menu;
-    bool menuOpen; /* Tracked through SDL_EVENT_LIBRETRO_MENU_OPENED/CLOSED. */
 } AppContext;
 
 /**
@@ -47,7 +46,7 @@ static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
  * Handles the SDL events SDL_libretro pushes.
  *
  * The lifecycle events keep the window title current and close the menu when
- * a game arrives, the menu events pause and resume the game, and
+ * a game arrives, the menu events are logged, and
  * SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_* events report environment
  * commands that SDL_libretro doesn't handle itself. Implementing one of
  * those would take an SDL_AddEventWatch() callback instead, so the core's
@@ -71,14 +70,11 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
             SDL_Libretro_SetMenuOpen(app->menu, false);
             return true;
 
-        // The menu pauses the game while it is open; see SDL_AppIterate().
         case SDL_EVENT_LIBRETRO_MENU_OPENED:
             SDL_Log("Menu opened");
-            app->menuOpen = true;
             return true;
         case SDL_EVENT_LIBRETRO_MENU_CLOSED:
             SDL_Log("Menu closed");
-            app->menuOpen = false;
             return true;
 
         // Environment commands the library leaves to the application. Plain
@@ -318,9 +314,8 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         return SDL_APP_SUCCESS;
     }
 
-    // Update the context, pausing the game while the menu is open; the state
-    // is tracked through the menu events in DemoHandleLibretroEvent().
-    if (!app->menuOpen) {
+    // Update the context, pausing the game while the menu is open.
+    if (!SDL_Libretro_GetMenuOpen(app->menu)) {
         SDL_Libretro_Update(lr);
     }
 
