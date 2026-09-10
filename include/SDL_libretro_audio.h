@@ -1,7 +1,8 @@
 /**
  * SDL_libretro - audio subsystem
  *
- * Uses SDL3's push model. The device stream is opened with a NULL callback and samples are pushed directly via SDL_PutAudioStreamData().
+ * Pushes libretro's S16 stereo samples directly to SDL3 via SDL_PutAudioStreamData(). 
+ * SDL handles the format conversion and volume gain.
  *
  * @file SDL_libretro_audio.h
  */
@@ -37,7 +38,7 @@
 #define SDL_LIBRETRO_AUDIO_DRC_MAX_DELTA 0.005
 #endif
 
-static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const float* samples, int bytes) {
+static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const void* samples, int bytes) {
     if (!lr->core.audioStream || bytes <= 0) return;
 
     int queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
@@ -54,58 +55,26 @@ static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const float* samples, int 
 }
 
 /**
- * Scale interleaved int16 samples to normalized floats (-1, 1).
- *
- * @see SDL_Libretro_QueueAudioS16()
- * @internal
- */
-static void SDL_Libretro_ConvertS16ToFloat(const int16_t* src, float* dst, size_t samples) {
-    for (size_t i = 0; i < samples; i++) {
-        dst[i] = (float)src[i] * (1.0f / 32768.0f);
-    }
-}
-
-/**
- * Convert `frames` interleaved stereo int16 frames to float and queue them.
- *
- * Chunked through a fixed float scratch buffer. Shared by the batch and
- * single-sample flush paths.
- *
- * @see SDL_Libretro_ConvertS16ToFloat()
- * @internal
- */
-static void SDL_Libretro_QueueAudioS16(SDL_Libretro* lr, const int16_t* data, size_t frames) {
-    float convBuf[512 * 2];
-    size_t written = 0;
-    while (written < frames) {
-        size_t chunk = frames - written;
-        if (chunk > 512) chunk = 512;
-        SDL_Libretro_ConvertS16ToFloat(data + written * 2, convBuf, chunk * 2);
-        SDL_Libretro_QueueAudio(lr, convBuf, (int)(chunk * sizeof(float) * 2));
-        written += chunk;
-    }
-}
-
-/**
- * Convert and queue int16 stereo frames in reverse frame order.
+ * Queue int16 stereo frames in reverse frame order.
  *
  * Used while rewinding: each captured frame's audio is emitted back-to-front,
  * and since frames are replayed newest-to-oldest the result is clean
  * time-reversed audio (the classic "rewind" sound) rather than forward chirps.
- * Chunked through the same fixed float scratch as the forward path.
+ * Chunked through a fixed scratch buffer.
  *
  * @internal
  */
 static void SDL_Libretro_QueueAudioReversed(SDL_Libretro* lr, const int16_t* data, size_t frames) {
-    float convBuf[512 * 2];
+    int16_t revBuf[512 * 2];
     size_t remaining = frames;
     while (remaining > 0) {
         size_t chunk = remaining > 512 ? 512 : remaining;
         for (size_t i = 0; i < chunk; i++) {
             size_t src = remaining - 1 - i; // Walk backwards from the end.
-            SDL_Libretro_ConvertS16ToFloat(&data[src * 2], &convBuf[i * 2], 2);
+            revBuf[i * 2] = data[src * 2];
+            revBuf[i * 2 + 1] = data[src * 2 + 1];
         }
-        SDL_Libretro_QueueAudio(lr, convBuf, (int)(chunk * sizeof(float) * 2));
+        SDL_Libretro_QueueAudio(lr, revBuf, (int)(chunk * sizeof(int16_t) * 2));
         remaining -= chunk;
     }
 }
@@ -158,10 +127,10 @@ static unsigned SDL_Libretro_UpdateAudioThreshold(SDL_Libretro* lr) {
     unsigned latencyMs = lr->core.minimumAudioLatencyMs;
     if (latencyMs == 0) latencyMs = SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS;
 
-    int threshold = (int)(SDL_Libretro_GetSampleRate(lr) * latencyMs / 1000.0 * (double)(sizeof(float) * 2));
+    int threshold = (int)(SDL_Libretro_GetSampleRate(lr) * latencyMs / 1000.0 * (double)(sizeof(int16_t) * 2));
 
     // Keep at least a few audio batches of headroom so back-pressure + DRC can function; a tiny latency (or a low sample rate, where each batch spans more time) would otherwise size the queue below a single batch and drop almost everything.
-    int minThreshold = 4 * (SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * (int)(sizeof(float) * 2));
+    int minThreshold = 4 * (SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * (int)(sizeof(int16_t) * 2));
     lr->core.audioQueueThresholdBytes = threshold > minThreshold ? threshold : minThreshold;
     return latencyMs;
 }
@@ -204,9 +173,9 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr) {
         double pct = (double)queued * 100.0 / (double)lr->core.audioQueueThresholdBytes;
         occupancy = (unsigned)(pct > 100.0 ? 100.0 : pct);
 
-        // One frame drains sampleRate/fps stereo float samples; if fewer than that are queued, the next frame risks starving the device.
+        // One frame drains sampleRate/fps stereo int16 samples; if fewer than that are queued, the next frame risks starving the device.
         double fps = lr->core.fps > 0.0 ? lr->core.fps : 60.0;
-        int frameBytes = (int)(SDL_Libretro_GetSampleRate(lr) / fps * (double)(sizeof(float) * 2));
+        int frameBytes = (int)(SDL_Libretro_GetSampleRate(lr) / fps * (double)(sizeof(int16_t) * 2));
         underrunLikely = (queued < frameBytes);
     }
 
@@ -229,7 +198,9 @@ static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
 
     SDL_AudioSpec spec;
     spec.freq = (int)sampleRate;
-    spec.format = SDL_AUDIO_F32;
+    // Match the S16 interleaved-stereo format cores deliver; SDL converts to
+    // the device format internally, so samples are pushed straight through.
+    spec.format = SDL_AUDIO_S16;
     spec.channels = 2;
 
     lr->core.audioStream = SDL_OpenAudioDeviceStream(
@@ -338,7 +309,7 @@ static size_t SDL_Libretro_AudioSampleBatch(const int16_t* data, size_t frames) 
         return frames;
     }
 
-    SDL_Libretro_QueueAudioS16(lr, data, frames);
+    SDL_Libretro_QueueAudio(lr, data, (int)(frames * sizeof(int16_t) * 2));
     return frames;
 }
 
@@ -352,7 +323,7 @@ static void SDL_Libretro_FlushSingleSamples(SDL_Libretro* lr) {
         return;
     }
 
-    SDL_Libretro_QueueAudioS16(lr, lr->core.singleSampleBuffer, lr->core.singleSampleCount);
+    SDL_Libretro_QueueAudio(lr, lr->core.singleSampleBuffer, (int)(lr->core.singleSampleCount * sizeof(int16_t) * 2));
     lr->core.singleSampleCount = 0;
 }
 
