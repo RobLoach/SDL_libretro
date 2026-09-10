@@ -146,6 +146,36 @@ static int SDLCALL test_VolumeSpeed(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_DRCDisable(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // Force SDL's dummy audio driver so the stream opens on machines (and CI
+    // runners) without a sound device. An SDL_AUDIO_DRIVER env var still wins.
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after load");
+
+    // Turning DRC off must unwind a leftover nudge rather than freeze it in
+    // the stream's frequency ratio.
+    lr->core.drcAdjustment = 1.004f;
+    SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->core.drcAdjustment);
+    lr->core.drcEnabled = false;
+    SDL_Libretro_UpdateDRC(lr, 1.0f);
+    SDLTest_AssertCheck(lr->core.drcAdjustment == 1.0f, "DRC adjustment reset when disabled");
+    float ratio = SDL_GetAudioStreamFrequencyRatio(lr->core.audioStream);
+    SDLTest_AssertCheck(ratio == 1.0f, "Frequency ratio back to plain speed, got %f", ratio);
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_Input(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -2185,6 +2215,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_NullSafety,       "All getters handle NULL without crashing"),
     LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
+    LIBRETRO_TEST_CASE(test_DRCDisable,       "Disabling DRC unwinds the ratio nudge"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_GamepadEvents,    "Gamepad hotplug events update gamepadCount"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),

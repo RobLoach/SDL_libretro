@@ -91,11 +91,22 @@ static void SDL_Libretro_QueueAudioReversed(SDL_Libretro* lr, const int16_t* dat
  * is smooth audio across potentially laggy frames.
  */
 static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed) {
-    if (!lr || !lr->core.audioStream || !lr->core.drcEnabled) return;
+    if (!lr || !lr->core.audioStream) return;
 
     // There is no need to update DRC when the speed is <= 0, so leave
     // the current ratio untouched while stopped.
     if (speed <= 0.0f) return;
+
+    // When DRC is off, unwind any leftover nudge so the ratio tracks the
+    // plain speed instead of freezing at the last adjustment.
+    if (!lr->core.drcEnabled) {
+        if (lr->core.drcAdjustment != 1.0f) {
+            lr->core.drcAdjustment = 1.0f;
+            lr->core.drcDriftAvg = 0.0;
+            SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, speed);
+        }
+        return;
+    }
 
     // Without a valid fill target, there's nothing to tweak.
     if (lr->core.audioQueueThresholdBytes <= 0) {
