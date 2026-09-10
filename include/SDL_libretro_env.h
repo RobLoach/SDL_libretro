@@ -1055,29 +1055,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        // Unimplemented
-        case 26:
-        case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
-        case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
-        case 41:
-        case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:
-        case 42:
-        case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
-        case 43:
-        case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
-        case 87:
-        case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
-            // Let the application implement the command through an event
-            // watch on SDL_EVENT_LIBRETRO | cmd. The experimental flag can't
-            // ride in an SDL event type, so it's masked off.
-            if (SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE)), data)) {
-                return true;
-            }
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unimplemented environment callback: %u", cmd);
-            return false;
-        }
-
+        // Anything else, including commands the library chooses not to
+        // implement (camera, location, hardware rendering, achievements):
+        // let the application implement the command through an event watch
+        // on SDL_EVENT_LIBRETRO | cmd. The experimental and private flags
+        // can't ride in an SDL event type, so they're masked off.
         default: {
             if (SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE)), data)) {
                 return true;
