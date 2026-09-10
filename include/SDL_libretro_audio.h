@@ -100,7 +100,8 @@ static void SDL_Libretro_QueueAudioReversed(SDL_Libretro* lr, const int16_t* dat
  * is a tiny nudge that holds the queue near 50% fill so it never slowly drifts
  * to empty (underrun) or full (drops).
  *
- * DRC nudging is proportional-only and runs solely at normal speed. The end result
+ * DRC nudging is proportional-only and runs at every forward speed, so slow-mo
+ * and fast-forward get the same drift correction as normal play. The end result
  * is smooth audio across potentially laggy frames.
  */
 static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed) {
@@ -225,6 +226,8 @@ static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     double sampleRate = SDL_Libretro_GetSampleRate(lr);
 
     SDL_AudioSpec spec;
+    // Truncating a fractional core rate (e.g. the SNES's 32040.5 Hz) is fine:
+    // DRC absorbs sub-Hz drift, so don't bother rounding here.
     spec.freq = (int)sampleRate;
     // Match the S16 interleaved-stereo format cores deliver; SDL converts to
     // the device format internally, so samples are pushed straight through.
