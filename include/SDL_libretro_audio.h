@@ -1,11 +1,8 @@
 /**
  * SDL_libretro - audio subsystem
  *
- * Uses SDL3's push model. The device stream is opened with a NULL callback and
- * samples are pushed directly via SDL_PutAudioStreamData(). The stream is
- * opened with the S16 interleaved-stereo format libretro cores deliver, so
- * samples pass straight through and SDL handles any conversion to the device
- * format (gain included) internally.
+ * Pushes libretro's S16 stereo samples directly to SDL3 via SDL_PutAudioStreamData(). 
+ * SDL handles the format conversion and volume gain.
  *
  * @file SDL_libretro_audio.h
  */
