@@ -12,7 +12,7 @@
  *
  * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:
  *
- *     if (!SDL_Libretro_GetMenuOpen(menu)) SDL_Libretro_Update(lr);
+ *     if (!SDL_Libretro_IsMenuOpen(menu)) SDL_Libretro_Update(lr);
  *     SDL_Libretro_Render(renderer, lr, NULL);
  *     SDL_Libretro_UpdateMenu(menu);
  *     SDL_Libretro_RenderMenu(menu);
@@ -1793,7 +1793,7 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
     SDL_free(menu);
 }
 
-bool SDL_Libretro_GetMenuOpen(const SDL_LibretroMenu* menu) {
+bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu) {
     return menu != NULL && menu->open;
 }
 

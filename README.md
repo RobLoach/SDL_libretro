@@ -94,7 +94,7 @@ if (!SDL_Libretro_HandleMenuEvent(menu, &event)) {
 }
 
 // Each frame...
-if (!SDL_Libretro_GetMenuOpen(menu)) {
+if (!SDL_Libretro_IsMenuOpen(menu)) {
     SDL_Libretro_Update(lr);
 }
 SDL_Libretro_Render(renderer, lr, NULL);

@@ -2073,7 +2073,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Libretro_RenderMenu(NULL);
     SDL_Libretro_ToggleMenu(NULL);
     SDL_Libretro_SetMenuOpen(NULL, true);
-    SDLTest_AssertCheck(SDL_Libretro_GetMenuOpen(NULL) == false, "GetMenuOpen(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(NULL) == false, "IsMenuOpen(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(NULL, NULL) == false, "HandleMenuEvent(NULL, NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
     SDL_Libretro_SetMenuUserData(NULL, (void*)1);
@@ -2093,7 +2093,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
     SDLTest_AssertCheck(menu != NULL, "CreateMenu succeeds with a renderer");
     if (menu != NULL) {
-        SDLTest_AssertCheck(SDL_Libretro_GetMenuOpen(menu) == false, "Menu starts closed");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu starts closed");
 
         // Context getter and user data
         SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(menu) == lr, "GetMenuLibretro returns the creating context");
@@ -2147,7 +2147,7 @@ static int SDLCALL test_Menu(void *arg) {
         // With nothing to run, the menu opens itself.
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
-        SDLTest_AssertCheck(SDL_Libretro_GetMenuOpen(menu) == true, "Menu auto-opens without a game");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu auto-opens without a game");
 
         float defaultScale = menu->renderScale;
         menu->uiScaleIndex = 4;
@@ -2175,7 +2175,7 @@ static int SDLCALL test_Menu(void *arg) {
         event.type = SDL_EVENT_KEY_UP;
         event.key.key = SDLK_F1;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Toggle key event is consumed");
-        SDLTest_AssertCheck(SDL_Libretro_GetMenuOpen(menu) == false, "Toggle key closes the menu");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Toggle key closes the menu");
         SDL_zero(event);
         event.type = SDL_EVENT_KEY_DOWN;
         event.key.key = SDLK_A;
@@ -2232,14 +2232,14 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_Update(lr);
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
-        SDLTest_AssertCheck(SDL_Libretro_GetMenuOpen(menu) == false, "Menu stays closed while a game runs");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu stays closed while a game runs");
 
         SDL_Libretro_SetMenuOpen(menu, true);
         for (int i = 0; i < 3; i++) {
             SDL_Libretro_UpdateMenu(menu);
             SDL_Libretro_RenderMenu(menu);
         }
-        SDLTest_AssertCheck(SDL_Libretro_GetMenuOpen(menu) == true, "Menu stays open across frames");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
 
         // About page with a loaded core: core and content lines appear.
         SDL_Libretro_MenuBuildAbout(menu);

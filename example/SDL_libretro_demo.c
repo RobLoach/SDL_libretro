@@ -315,7 +315,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     }
 
     // Update the context, pausing the game while the menu is open.
-    if (!SDL_Libretro_GetMenuOpen(app->menu)) {
+    if (!SDL_Libretro_IsMenuOpen(app->menu)) {
         SDL_Libretro_Update(lr);
     }
 
