@@ -105,31 +105,38 @@ SDL_RenderPresent(renderer);
 
 ### Events
 
-SDL_libretro reports what happens through a synchronous callback registered with `SDL_Libretro_SetEventCallback()`. The `SDL_LibretroEventType` values are sequential, starting at 0:
+SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event.
 
-- `SDL_LIBRETRO_EVENT_ENV_*` come first, one entry per `RETRO_ENVIRONMENT_*` command in the order libretro.h defines them (e.g. `SDL_LIBRETRO_EVENT_ENV_SET_ROTATION`). They fire when the core calls an environment command SDL_libretro doesn't handle itself. The enum values are *not* the raw command numbers; those arrive in `event->env.cmd` (including the `RETRO_ENVIRONMENT_EXPERIMENTAL` flag when the core passed it), with the core's data pointer in `event->env.data`. Returning `true` from the callback tells the core the command succeeded, so an application can implement environment commands the library doesn't. Commands SDL_libretro doesn't recognize at all (private, or newer than the bundled libretro.h) don't produce an event.
-- `SDL_LIBRETRO_EVENT_CORE_LOADED`: A core finished loading.
-- `SDL_LIBRETRO_EVENT_GAME_LOADED`: A game finished loading, whether directly or through the menu.
-- `SDL_LIBRETRO_EVENT_MENU_OPENED` / `SDL_LIBRETRO_EVENT_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). The menu events are the last enum values.
-
-The callback's return value only matters for the `SDL_LIBRETRO_EVENT_ENV_*` events; it is ignored for the others. `event->env` is zeroed for non-environment events.
+- Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` — for example `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE`. Commands carrying the `RETRO_ENVIRONMENT_EXPERIMENTAL` flag need it stripped, which the `SDL_EVENT_LIBRETRO_ENV(cmd)` macro does for any command. The data pointer the core passed rides along in `event->user.data2`.
+- `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu.
+- `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes).
 
 ```c
-static bool MyEventCallback(void* userdata, SDL_LibretroEvent* event) {
-    switch (event->type) {
-        case SDL_LIBRETRO_EVENT_GAME_LOADED:
-            SDL_Log("Loaded: %s", SDL_Libretro_GetGameName(event->lr));
-            return true;
-        case SDL_LIBRETRO_EVENT_MENU_OPENED:
-            SDL_Log("Menu opened");
-            return true;
-        default:
-            SDL_Log("Unhandled environment command: %u", event->env.cmd);
-            return false; // Report the environment command as unsupported.
+while (SDL_PollEvent(&event)) {
+    switch (event.type) {
+        case SDL_EVENT_LIBRETRO_GAME_LOADED:
+            SDL_Log("Loaded: %s", SDL_Libretro_GetGameName(event.user.data1));
+            break;
+        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
+            SDL_Log("Core asked for location services");
+            break;
     }
 }
+```
 
-SDL_Libretro_SetEventCallback(lr, MyEventCallback, NULL);
+An environment command's `data2` pointer is only valid while the core waits inside the environment call, which has already returned by the time the event is polled. To *implement* an environment command, handle the event from an [`SDL_AddEventWatch()`](https://wiki.libsdl.org/SDL3/SDL_AddEventWatch) callback instead — watches run synchronously while the core waits. Set `event->user.code` to a non-zero value there to tell the core the command succeeded.
+
+```c
+static bool SDLCALL MyEventWatch(void* userdata, SDL_Event* event) {
+    if (event->type == SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE)) {
+        struct retro_camera_callback* camera = event->user.data2;
+        // ... fill in the camera interface ...
+        event->user.code = 1; // Tell the core the command succeeded.
+    }
+    return true;
+}
+
+SDL_AddEventWatch(MyEventWatch, NULL);
 ```
 
 ## Build

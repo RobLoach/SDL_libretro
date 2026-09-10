@@ -1948,111 +1948,86 @@ static int SDLCALL test_OSD(void *arg) {
 }
 
 /**
- * Records what the event callback under test receives.
+ * Drains the SDL event queue, counting events of the given type and keeping
+ * the last one seen in *last (when non-NULL).
  */
-typedef struct test_EventRecord {
-    int coreLoaded;
-    int gameLoaded;
-    int menuOpened;
-    int menuClosed;
-    int totalEvents;
-    SDL_LibretroEvent lastEvent;
-    bool result; /* what the callback returns */
-} test_EventRecord;
-
-static bool test_EventCallbackFn(void* userdata, SDL_LibretroEvent* event) {
-    test_EventRecord* record = userdata;
-    record->totalEvents++;
-    record->lastEvent = *event;
-    switch (event->type) {
-        case SDL_LIBRETRO_EVENT_CORE_LOADED: record->coreLoaded++; break;
-        case SDL_LIBRETRO_EVENT_GAME_LOADED: record->gameLoaded++; break;
-        case SDL_LIBRETRO_EVENT_MENU_OPENED: record->menuOpened++; break;
-        case SDL_LIBRETRO_EVENT_MENU_CLOSED: record->menuClosed++; break;
-        default: break;
+static int test_DrainEvents(Uint32 type, SDL_Event* last) {
+    int count = 0;
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == type) {
+            count++;
+            if (last != NULL) {
+                *last = event;
+            }
+        }
     }
-    return record->result;
+    return count;
 }
 
-static int SDLCALL test_EventCallback(void *arg) {
+/**
+ * An event watch that implements the env command in its userdata: marks the
+ * event handled for the core by setting user.code.
+ */
+static bool SDLCALL test_EventsWatch(void* userdata, SDL_Event* event) {
+    if (event->type == (Uint32)(uintptr_t)userdata) {
+        event->user.code = 1;
+    }
+    return true;
+}
+
+static int SDLCALL test_Events(void *arg) {
     (void)arg;
 
-    // Enum layout: env events first (sequential from 0), lifecycle events
-    // after them, and the menu events last.
-    SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_ENV_SET_ROTATION == 0, "Env events start the enum at 0");
-    SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_CORE_LOADED == SDL_LIBRETRO_EVENT_ENV_SET_HW_SHARED_CONTEXT + 1,
-        "CORE_LOADED follows the last env event");
-    SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_GAME_LOADED == SDL_LIBRETRO_EVENT_CORE_LOADED + 1,
-        "GAME_LOADED follows CORE_LOADED");
-    SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_MENU_OPENED == SDL_LIBRETRO_EVENT_COUNT - 2,
-        "MENU_OPENED is the second-to-last event type");
-    SDLTest_AssertCheck(SDL_LIBRETRO_EVENT_MENU_CLOSED == SDL_LIBRETRO_EVENT_COUNT - 1,
-        "MENU_CLOSED is the last event type");
+    // The event space sits in the SDL user event range, and
+    // SDL_EVENT_LIBRETRO_ENV() strips the experimental flag so every command
+    // fits below the lifecycle events.
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO >= SDL_EVENT_USER, "SDL_EVENT_LIBRETRO is a user event");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_MENU_CLOSED <= SDL_EVENT_LAST, "The libretro events fit the SDL event range");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_CAN_DUPE) == (SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE),
+        "Plain commands OR directly onto SDL_EVENT_LIBRETRO");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE) ==
+            (SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)),
+        "SDL_EVENT_LIBRETRO_ENV strips the experimental flag");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT) < (Uint32)SDL_EVENT_LIBRETRO_CORE_LOADED,
+        "Env events stay below the lifecycle events");
 
-    // Command-to-event mapping, with and without the experimental flag.
-    SDLTest_AssertCheck(SDL_Libretro_EnvEventType(RETRO_ENVIRONMENT_SET_ROTATION) == SDL_LIBRETRO_EVENT_ENV_SET_ROTATION,
-        "SET_ROTATION maps to its env event");
-    SDLTest_AssertCheck(SDL_Libretro_EnvEventType(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE) == SDL_LIBRETRO_EVENT_ENV_GET_CAMERA_INTERFACE,
-        "Experimental GET_CAMERA_INTERFACE maps to its env event");
-    SDLTest_AssertCheck(SDL_Libretro_EnvEventType(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL) == SDL_LIBRETRO_EVENT_ENV_GET_CAMERA_INTERFACE,
-        "The experimental flag is ignored when mapping");
-    SDLTest_AssertCheck(SDL_Libretro_EnvEventType(RETRO_ENVIRONMENT_GET_CONTENT_DIRECTORY) == SDL_LIBRETRO_EVENT_ENV_GET_CORE_ASSETS_DIRECTORY,
-        "Deprecated GET_CONTENT_DIRECTORY maps to GET_CORE_ASSETS_DIRECTORY");
-    SDLTest_AssertCheck(SDL_Libretro_EnvEventType(0x4242) == SDL_LIBRETRO_EVENT_COUNT,
-        "Unknown commands map to SDL_LIBRETRO_EVENT_COUNT");
-
+    SDL_Init(SDL_INIT_EVENTS);
     SDL_Libretro* lr = SDL_Libretro_Create();
-    test_EventRecord record;
-    SDL_zero(record);
+    const Uint32 cameraEvent = SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE);
 
-    // NULL safety.
-    SDL_Libretro_SetEventCallback(NULL, test_EventCallbackFn, &record);
-    SDLTest_AssertCheck(SDL_Libretro_SendEvent(NULL, SDL_LIBRETRO_EVENT_CORE_LOADED, 0, NULL) == false,
-        "SendEvent(NULL) returns false");
-
-    // No callback: env dispatch reports failure to the core, as before.
-    SDLTest_AssertCheck(SDL_Libretro_SendEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, NULL) == false,
-        "Env dispatch without a callback returns false");
-
-    SDL_Libretro_SetEventCallback(lr, test_EventCallbackFn, &record);
-
-    // Env events carry the raw command (experimental flag included) and the
-    // core's data pointer, and forward the callback's return to the core.
+    // An unwatched env command lands in the queue with the context in data1
+    // and the core's pointer in data2, and reports unhandled to the core.
+    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
     int payload = 7;
-    record.result = true;
-    SDLTest_AssertCheck(SDL_Libretro_SendEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &payload) == true,
-        "Env dispatch forwards a true callback result");
-    SDLTest_AssertCheck(record.lastEvent.type == SDL_LIBRETRO_EVENT_ENV_GET_CAMERA_INTERFACE,
-        "Env event has the mapped type");
-    SDLTest_AssertCheck(record.lastEvent.lr == lr, "Events carry the context");
-    SDLTest_AssertCheck(record.lastEvent.env.cmd == (unsigned)RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE,
-        "Env events carry the raw command number");
-    SDLTest_AssertCheck(record.lastEvent.env.data == &payload, "Env events carry the core's data pointer");
+    SDLTest_AssertCheck(SDL_Libretro_PushEvent(lr, cameraEvent, &payload) == false,
+        "An unwatched env event reports unhandled");
+    SDL_Event received;
+    SDL_zero(received);
+    SDLTest_AssertCheck(test_DrainEvents(cameraEvent, &received) == 1, "The env event is queued once");
+    SDLTest_AssertCheck(received.user.data1 == lr, "data1 carries the context");
+    SDLTest_AssertCheck(received.user.data2 == &payload, "data2 carries the core's data pointer");
+    SDLTest_AssertCheck(received.user.code == 0, "An unclaimed event has a zero code");
 
-    record.result = false;
-    SDLTest_AssertCheck(SDL_Libretro_SendEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, NULL) == false,
-        "Env dispatch forwards a false callback result");
-
-    // Unknown commands never reach the callback.
-    int eventsBefore = record.totalEvents;
-    SDLTest_AssertCheck(SDL_Libretro_SendEnvEvent(lr, 0x4242, NULL) == false, "Unknown env commands report failure");
-    SDLTest_AssertCheck(record.totalEvents == eventsBefore, "Unknown env commands don't invoke the callback");
-
-    // Non-env events arrive with a zeroed env payload.
-    SDL_Libretro_SendEvent(lr, SDL_LIBRETRO_EVENT_CORE_LOADED, 0, NULL);
-    SDLTest_AssertCheck(record.coreLoaded == 1, "SendEvent delivers CORE_LOADED");
-    SDLTest_AssertCheck(record.lastEvent.env.cmd == 0 && record.lastEvent.env.data == NULL,
-        "Non-env events have a zeroed env payload");
+    // A watch runs synchronously inside the push; setting user.code there
+    // reports the command handled to the core.
+    SDL_AddEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
+    SDLTest_AssertCheck(SDL_Libretro_PushEvent(lr, cameraEvent, &payload) == true,
+        "A watch that sets user.code marks the env command handled");
+    SDL_RemoveEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
+    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
-    // Real loads fire the lifecycle events.
-    SDL_zero(record);
+    // Real loads push the lifecycle events.
     SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
-    SDLTest_AssertCheck(record.coreLoaded == 1, "CORE_LOADED fires after a core loads");
-    SDLTest_AssertCheck(record.gameLoaded == 0, "GAME_LOADED hasn't fired yet");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_CORE_LOADED, &received) == 1,
+        "CORE_LOADED is pushed after a core loads");
+    SDLTest_AssertCheck(received.user.data1 == lr, "CORE_LOADED carries the context");
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
-    SDLTest_AssertCheck(record.gameLoaded == 1, "GAME_LOADED fires after a game loads");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GAME_LOADED, NULL) == 1,
+        "GAME_LOADED is pushed after a game loads");
     SDL_Libretro_UnloadCore(lr);
+    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
 #endif
 
     SDL_Libretro_Destroy(lr);
@@ -2195,24 +2170,31 @@ static int SDLCALL test_Menu(void *arg) {
         event.key.key = SDLK_A;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
 
-        // Menu notifications arrive synchronously through the event callback,
-        // as the last two SDL_LibretroEventType values.
-        test_EventRecord menuRecord;
-        SDL_zero(menuRecord);
-        SDL_Libretro_SetEventCallback(lr, test_EventCallbackFn, &menuRecord);
+        // Menu notifications arrive through the SDL event queue.
+        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
         SDL_Libretro_SetMenuOpen(menu, true);
         SDL_Libretro_SetMenuOpen(menu, true); // No change: no second event.
         SDL_Libretro_SetMenuOpen(menu, false);
-        SDLTest_AssertCheck(menuRecord.menuOpened == 1 && menuRecord.menuClosed == 1,
-            "Open/close each fire one menu event, got %d/%d", menuRecord.menuOpened, menuRecord.menuClosed);
-        SDLTest_AssertCheck(menuRecord.lastEvent.lr == lr, "Menu events carry the context");
-        SDLTest_AssertCheck(menuRecord.lastEvent.env.cmd == 0 && menuRecord.lastEvent.env.data == NULL,
-            "Menu events have a zeroed env payload");
-        SDL_Libretro_SetEventCallback(lr, NULL, NULL);
-        SDL_Libretro_SetMenuOpen(menu, true);
-        SDL_Libretro_SetMenuOpen(menu, false);
-        SDLTest_AssertCheck(menuRecord.menuOpened == 1 && menuRecord.menuClosed == 1,
-            "A cleared callback receives no more menu events");
+        int menuOpened = 0, menuClosed = 0;
+        SDL_Event menuEvent, lastOpened;
+        SDL_zero(lastOpened);
+        while (SDL_PollEvent(&menuEvent)) {
+            if (menuEvent.type == SDL_EVENT_LIBRETRO_MENU_OPENED) {
+                menuOpened++;
+                lastOpened = menuEvent;
+            } else if (menuEvent.type == SDL_EVENT_LIBRETRO_MENU_CLOSED) {
+                menuClosed++;
+            }
+        }
+        SDLTest_AssertCheck(menuOpened == 1 && menuClosed == 1,
+            "Open/close each push one menu event, got %d/%d", menuOpened, menuClosed);
+        SDLTest_AssertCheck(lastOpened.user.data1 == lr, "Menu events carry the context");
+
+        // The menu passes SDL_libretro's own events through untouched.
+        SDL_zero(event);
+        event.type = SDL_EVENT_LIBRETRO_MENU_OPENED;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
+            "Libretro events pass through the menu");
 
         // Application-added entries fire their callbacks and keep Quit last.
         int customClicks = 0;
@@ -2367,7 +2349,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
-    LIBRETRO_TEST_CASE(test_EventCallback,    "Event callback registration, env dispatch, and enum layout"),
+    LIBRETRO_TEST_CASE(test_Events,           "SDL event pushes: env dispatch, watches, and lifecycle"),
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     LIBRETRO_TEST_CASE(test_Menu,             "Menu create/toggle/update/render lifecycle"),
 #endif

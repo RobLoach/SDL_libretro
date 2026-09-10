@@ -45,61 +45,64 @@ static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
 }
 
 /**
- * Receives every SDL_libretro event synchronously.
+ * Handles the SDL events SDL_libretro pushes.
  *
  * The lifecycle events keep the window title current, the menu events are
- * logged, and the SDL_LIBRETRO_EVENT_ENV_* events report environment
- * commands that SDL_libretro doesn't handle itself. Returning true for an
- * environment event would tell the core the command succeeded; this demo
- * implements none of them, so it returns false there. The return value is
- * ignored for the other event types.
+ * logged, and SDL_EVENT_LIBRETRO_ENV(cmd) events report environment commands
+ * that SDL_libretro doesn't handle itself. Implementing one of those would
+ * take an SDL_AddEventWatch() callback instead, so the core's data pointer
+ * in user.data2 is still valid; this demo only logs them.
+ *
+ * @return true when the event was an SDL_libretro event.
  */
-static bool SDL_Libretro_DemoEventCallback(void* userdata, SDL_LibretroEvent* event) {
-    AppContext* app = userdata;
+static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Event* event) {
     switch (event->type) {
         // A core loaded; when it runs without content the core name titles the window.
-        case SDL_LIBRETRO_EVENT_CORE_LOADED:
-            SDL_Log("Core loaded: %s", SDL_Libretro_GetCoreName(event->lr));
+        case SDL_EVENT_LIBRETRO_CORE_LOADED:
+            SDL_Log("Core loaded: %s", SDL_Libretro_GetCoreName(app->lr));
             SDL_Libretro_DemoUpdateWindowTitle(app);
             return true;
 
         // A game loaded, from the command line, the menu, or drag & drop.
-        case SDL_LIBRETRO_EVENT_GAME_LOADED:
-            SDL_Log("Game loaded: %s", SDL_Libretro_GetGameName(event->lr));
+        case SDL_EVENT_LIBRETRO_GAME_LOADED:
+            SDL_Log("Game loaded: %s", SDL_Libretro_GetGameName(app->lr));
             SDL_Libretro_DemoUpdateWindowTitle(app);
             return true;
 
-        case SDL_LIBRETRO_EVENT_MENU_OPENED:
+        case SDL_EVENT_LIBRETRO_MENU_OPENED:
             SDL_Log("Menu opened");
             return true;
-        case SDL_LIBRETRO_EVENT_MENU_CLOSED:
+        case SDL_EVENT_LIBRETRO_MENU_CLOSED:
             SDL_Log("Menu closed");
             return true;
 
-        // Environment commands the library leaves to the application. The raw
-        // RETRO_ENVIRONMENT_* command number rides along in event->env.cmd,
-        // and event->env.data is the pointer the core passed.
-        case SDL_LIBRETRO_EVENT_ENV_GET_CAMERA_INTERFACE:
-            SDL_Log("Core asked for a camera interface; not available in this demo");
-            return false;
-        case SDL_LIBRETRO_EVENT_ENV_GET_LOCATION_INTERFACE:
+        // Environment commands the library leaves to the application. Plain
+        // commands OR onto SDL_EVENT_LIBRETRO; experimental ones go through
+        // SDL_EVENT_LIBRETRO_ENV() to strip their flag.
+        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
             SDL_Log("Core asked for location services; not available in this demo");
-            return false;
-        case SDL_LIBRETRO_EVENT_ENV_SET_PROC_ADDRESS_CALLBACK:
+            return true;
+        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
             SDL_Log("Core offered a proc-address callback; this demo doesn't use it");
-            return false;
-        case SDL_LIBRETRO_EVENT_ENV_SET_SUPPORT_ACHIEVEMENTS:
+            return true;
+        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE):
+            SDL_Log("Core asked for a camera interface; not available in this demo");
+            return true;
+        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS):
             SDL_Log("Core supports achievements; this demo doesn't track them");
-            return false;
-        case SDL_LIBRETRO_EVENT_ENV_GET_HW_RENDER_INTERFACE:
-        case SDL_LIBRETRO_EVENT_ENV_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
-        case SDL_LIBRETRO_EVENT_ENV_SET_HW_SHARED_CONTEXT:
-            SDL_Log("Core wants hardware rendering (command %u); not supported here", event->env.cmd);
-            return false;
+            return true;
+        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE):
+        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE):
+        case SDL_EVENT_LIBRETRO_ENV(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT):
+            SDL_Log("Core wants hardware rendering (command %u); not supported here", (unsigned)(event->type - SDL_EVENT_LIBRETRO));
+            return true;
 
-        // Everything else: log the raw command number for diagnostics.
+        // Any other environment command: log the number for diagnostics.
         default:
-            SDL_Log("Core called unhandled environment command %u", event->env.cmd);
+            if (event->type >= SDL_EVENT_LIBRETRO && event->type < SDL_EVENT_LIBRETRO_CORE_LOADED) {
+                SDL_Log("Core called unhandled environment command %u", (unsigned)(event->type - SDL_EVENT_LIBRETRO));
+                return true;
+            }
             return false;
     }
 }
@@ -112,7 +115,7 @@ static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) 
     if (SDL_Libretro_LoadGame(app->lr, path)) {
 #ifdef SDL_LIBRETRO_ENABLE_MENU
         // Close the menu so the freshly loaded game is visible, matching the
-        // menu's own Load Game flow. The GAME_LOADED event already renamed
+        // menu's own Load Game flow. The queued GAME_LOADED event retitles
         // the window.
         SDL_Libretro_SetMenuOpen(app->menu, false);
 #endif
@@ -182,14 +185,11 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     app->renderer = renderer;
     *appstate = app;
 
-    // Create the libretro environment.
+    // Create the libretro environment. Everything it reports — core/game
+    // loads, the menu, environment commands it doesn't handle — arrives
+    // through the SDL event queue; see DemoHandleLibretroEvent().
     SDL_Libretro* lr = SDL_Libretro_Create();
     app->lr = lr;
-
-    // Watch everything SDL_libretro reports: core/game loads, the menu, and
-    // environment commands the library doesn't handle. Registered before
-    // anything loads so the startup loads are reported too.
-    SDL_Libretro_SetEventCallback(lr, SDL_Libretro_DemoEventCallback, app);
 
     SDL_Libretro_SetCoreDirectory(lr, "cores");
     SDL_Libretro_SetSystemDirectory(lr, "system");
@@ -241,6 +241,11 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
     if (event->type == SDL_EVENT_QUIT) {
         return SDL_APP_SUCCESS;
+    }
+
+    // Events SDL_libretro pushed onto the queue.
+    if (SDL_Libretro_DemoHandleLibretroEvent(app, event)) {
+        return SDL_APP_CONTINUE;
     }
 
 #ifdef SDL_LIBRETRO_ENABLE_MENU

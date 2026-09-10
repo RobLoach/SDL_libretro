@@ -175,159 +175,36 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
 // Events
 
 /**
- * The kinds of events SDL_libretro reports through the event callback.
+ * The base SDL event type for SDL_libretro events.
  *
- * The values are sequential, starting at 0. The SDL_LIBRETRO_EVENT_ENV_*
- * entries come first, one per RETRO_ENVIRONMENT_* command, in the order the
- * commands are defined in libretro.h; they do NOT share the raw command
- * numbers, which arrive in SDL_LibretroEvent::env instead. The lifecycle
- * events follow, with the menu events last.
+ * SDL_libretro reports everything through the SDL event queue as
+ * SDL_UserEvent, with event->user.data1 the SDL_Libretro* that sent it.
  *
- * \see SDL_Libretro_SetEventCallback()
+ * Environment commands the library doesn't handle itself arrive as
+ * `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` (SDL_EVENT_LIBRETRO_ENV() for
+ * commands carrying the RETRO_ENVIRONMENT_EXPERIMENTAL flag), with the data
+ * pointer the core passed in event->user.data2. That pointer is only valid
+ * while the core waits inside the environment call, so to implement a
+ * command, handle the event from an SDL_AddEventWatch() callback — watches
+ * run synchronously during the push — and set event->user.code to a non-zero
+ * value there to tell the core the command succeeded.
+ *
+ * \see SDL_EVENT_LIBRETRO_ENV
  */
-typedef enum SDL_LibretroEventType {
-    // Environment commands the core called that SDL_libretro doesn't handle
-    // itself. One entry per RETRO_ENVIRONMENT_* command; the raw command
-    // number and data pointer arrive in SDL_LibretroEvent::env.
-    SDL_LIBRETRO_EVENT_ENV_SET_ROTATION = 0,
-    SDL_LIBRETRO_EVENT_ENV_GET_OVERSCAN,
-    SDL_LIBRETRO_EVENT_ENV_GET_CAN_DUPE,
-    SDL_LIBRETRO_EVENT_ENV_SET_MESSAGE,
-    SDL_LIBRETRO_EVENT_ENV_SHUTDOWN,
-    SDL_LIBRETRO_EVENT_ENV_SET_PERFORMANCE_LEVEL,
-    SDL_LIBRETRO_EVENT_ENV_GET_SYSTEM_DIRECTORY,
-    SDL_LIBRETRO_EVENT_ENV_SET_PIXEL_FORMAT,
-    SDL_LIBRETRO_EVENT_ENV_SET_INPUT_DESCRIPTORS,
-    SDL_LIBRETRO_EVENT_ENV_SET_KEYBOARD_CALLBACK,
-    SDL_LIBRETRO_EVENT_ENV_SET_DISK_CONTROL_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_SET_HW_RENDER,
-    SDL_LIBRETRO_EVENT_ENV_GET_VARIABLE,
-    SDL_LIBRETRO_EVENT_ENV_SET_VARIABLES,
-    SDL_LIBRETRO_EVENT_ENV_GET_VARIABLE_UPDATE,
-    SDL_LIBRETRO_EVENT_ENV_SET_SUPPORT_NO_GAME,
-    SDL_LIBRETRO_EVENT_ENV_GET_LIBRETRO_PATH,
-    SDL_LIBRETRO_EVENT_ENV_SET_FRAME_TIME_CALLBACK,
-    SDL_LIBRETRO_EVENT_ENV_SET_AUDIO_CALLBACK,
-    SDL_LIBRETRO_EVENT_ENV_GET_RUMBLE_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_INPUT_DEVICE_CAPABILITIES,
-    SDL_LIBRETRO_EVENT_ENV_GET_SENSOR_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_CAMERA_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_LOG_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_PERF_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_LOCATION_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_CONTENT_DIRECTORY, /** Deprecated alias of GET_CORE_ASSETS_DIRECTORY; command 30 reports as SDL_LIBRETRO_EVENT_ENV_GET_CORE_ASSETS_DIRECTORY. */
-    SDL_LIBRETRO_EVENT_ENV_GET_CORE_ASSETS_DIRECTORY,
-    SDL_LIBRETRO_EVENT_ENV_GET_SAVE_DIRECTORY,
-    SDL_LIBRETRO_EVENT_ENV_SET_SYSTEM_AV_INFO,
-    SDL_LIBRETRO_EVENT_ENV_SET_PROC_ADDRESS_CALLBACK,
-    SDL_LIBRETRO_EVENT_ENV_SET_SUBSYSTEM_INFO,
-    SDL_LIBRETRO_EVENT_ENV_SET_CONTROLLER_INFO,
-    SDL_LIBRETRO_EVENT_ENV_SET_MEMORY_MAPS,
-    SDL_LIBRETRO_EVENT_ENV_SET_GEOMETRY,
-    SDL_LIBRETRO_EVENT_ENV_GET_USERNAME,
-    SDL_LIBRETRO_EVENT_ENV_GET_LANGUAGE,
-    SDL_LIBRETRO_EVENT_ENV_GET_CURRENT_SOFTWARE_FRAMEBUFFER,
-    SDL_LIBRETRO_EVENT_ENV_GET_HW_RENDER_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_SET_SUPPORT_ACHIEVEMENTS,
-    SDL_LIBRETRO_EVENT_ENV_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_SET_SERIALIZATION_QUIRKS,
-    SDL_LIBRETRO_EVENT_ENV_GET_VFS_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_LED_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_AUDIO_VIDEO_ENABLE,
-    SDL_LIBRETRO_EVENT_ENV_GET_MIDI_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_FASTFORWARDING,
-    SDL_LIBRETRO_EVENT_ENV_GET_TARGET_REFRESH_RATE,
-    SDL_LIBRETRO_EVENT_ENV_GET_INPUT_BITMASKS,
-    SDL_LIBRETRO_EVENT_ENV_GET_CORE_OPTIONS_VERSION,
-    SDL_LIBRETRO_EVENT_ENV_SET_CORE_OPTIONS,
-    SDL_LIBRETRO_EVENT_ENV_SET_CORE_OPTIONS_INTL,
-    SDL_LIBRETRO_EVENT_ENV_SET_CORE_OPTIONS_DISPLAY,
-    SDL_LIBRETRO_EVENT_ENV_GET_PREFERRED_HW_RENDER,
-    SDL_LIBRETRO_EVENT_ENV_GET_DISK_CONTROL_INTERFACE_VERSION,
-    SDL_LIBRETRO_EVENT_ENV_SET_DISK_CONTROL_EXT_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_MESSAGE_INTERFACE_VERSION,
-    SDL_LIBRETRO_EVENT_ENV_SET_MESSAGE_EXT,
-    SDL_LIBRETRO_EVENT_ENV_GET_INPUT_MAX_USERS,
-    SDL_LIBRETRO_EVENT_ENV_SET_AUDIO_BUFFER_STATUS_CALLBACK,
-    SDL_LIBRETRO_EVENT_ENV_SET_MINIMUM_AUDIO_LATENCY,
-    SDL_LIBRETRO_EVENT_ENV_SET_FASTFORWARDING_OVERRIDE,
-    SDL_LIBRETRO_EVENT_ENV_SET_CONTENT_INFO_OVERRIDE,
-    SDL_LIBRETRO_EVENT_ENV_GET_GAME_INFO_EXT,
-    SDL_LIBRETRO_EVENT_ENV_SET_CORE_OPTIONS_V2,
-    SDL_LIBRETRO_EVENT_ENV_SET_CORE_OPTIONS_V2_INTL,
-    SDL_LIBRETRO_EVENT_ENV_SET_CORE_OPTIONS_UPDATE_DISPLAY_CALLBACK,
-    SDL_LIBRETRO_EVENT_ENV_SET_VARIABLE,
-    SDL_LIBRETRO_EVENT_ENV_GET_THROTTLE_STATE,
-    SDL_LIBRETRO_EVENT_ENV_GET_SAVESTATE_CONTEXT,
-    SDL_LIBRETRO_EVENT_ENV_GET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE_SUPPORT,
-    SDL_LIBRETRO_EVENT_ENV_GET_JIT_CAPABLE,
-    SDL_LIBRETRO_EVENT_ENV_GET_MICROPHONE_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_DEVICE_POWER,
-    SDL_LIBRETRO_EVENT_ENV_SET_NETPACKET_INTERFACE,
-    SDL_LIBRETRO_EVENT_ENV_GET_PLAYLIST_DIRECTORY,
-    SDL_LIBRETRO_EVENT_ENV_GET_FILE_BROWSER_START_DIRECTORY,
-    SDL_LIBRETRO_EVENT_ENV_GET_TARGET_SAMPLE_RATE,
-    SDL_LIBRETRO_EVENT_ENV_GET_NETPLAY_CLIENT_INDEX,
-    SDL_LIBRETRO_EVENT_ENV_EXEC_MEM_ALLOC,
-    SDL_LIBRETRO_EVENT_ENV_EXEC_MEM_FREE,
-    SDL_LIBRETRO_EVENT_ENV_GET_AUDIO_SAMPLE_BATCH_FLOAT,
-    SDL_LIBRETRO_EVENT_ENV_GET_MEMORY_STATUS,
-    SDL_LIBRETRO_EVENT_ENV_SET_HW_SHARED_CONTEXT,
-
-    // Lifecycle events.
-    SDL_LIBRETRO_EVENT_CORE_LOADED, /** A core finished loading. @see SDL_Libretro_GetCoreName() */
-    SDL_LIBRETRO_EVENT_GAME_LOADED, /** A game finished loading, whether directly or through the menu. @see SDL_Libretro_GetGameName() */
-
-    // Menu events, kept at the end.
-    SDL_LIBRETRO_EVENT_MENU_OPENED, /** The menu became visible; the game pauses. */
-    SDL_LIBRETRO_EVENT_MENU_CLOSED, /** The menu was dismissed; the game resumes. */
-
-    SDL_LIBRETRO_EVENT_COUNT /** The number of event types. */
-} SDL_LibretroEventType;
+#define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
 
 /**
- * An event reported through the SDL_libretro event callback.
+ * The SDL event type for the RETRO_ENVIRONMENT_* command cmd.
  *
- * \see SDL_Libretro_SetEventCallback()
+ * Strips the RETRO_ENVIRONMENT_EXPERIMENTAL flag, so it works for every
+ * command; plain commands can OR onto SDL_EVENT_LIBRETRO directly.
  */
-typedef struct SDL_LibretroEvent {
-    SDL_LibretroEventType type; /** What happened. */
-    SDL_Libretro* lr; /** The context that sent the event. */
-    struct {
-        unsigned cmd; /** The raw RETRO_ENVIRONMENT_* command number, including the RETRO_ENVIRONMENT_EXPERIMENTAL flag when the core passed it. */
-        void* data; /** The data pointer the core passed to the environment callback. */
-    } env; /** Only valid for SDL_LIBRETRO_EVENT_ENV_* events; zeroed otherwise. */
-} SDL_LibretroEvent;
+#define SDL_EVENT_LIBRETRO_ENV(cmd) (SDL_EVENT_LIBRETRO | ((cmd) & 0xFFF))
 
-/**
- * A callback invoked synchronously whenever SDL_libretro reports an event.
- *
- * For SDL_LIBRETRO_EVENT_ENV_* events, the return value is forwarded to the
- * core as the environment callback's result: return true to tell the core the
- * command was handled, which lets an application implement environment
- * commands the library doesn't. The return value is ignored for all other
- * event types.
- *
- * \param userdata the pointer given to SDL_Libretro_SetEventCallback().
- * \param event the event; only valid for the duration of the call.
- *
- * \see SDL_Libretro_SetEventCallback()
- */
-typedef bool (*SDL_LibretroEventCallback)(void* userdata, SDL_LibretroEvent* event);
-
-/**
- * Sets the callback that receives SDL_libretro events.
- *
- * Pass NULL to remove the callback; unhandled environment commands then
- * report failure to the core, as if no callback were ever set.
- *
- * \param lr the libretro context.
- * \param callback the callback to invoke, or NULL to clear it.
- * \param userdata passed through to the callback.
- *
- * \see SDL_LibretroEventCallback
- */
-void SDL_Libretro_SetEventCallback(SDL_Libretro* lr, SDL_LibretroEventCallback callback, void* userdata);
+#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading. @see SDL_Libretro_GetCoreName() */
+#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu. @see SDL_Libretro_GetGameName() */
+#define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /** The menu became visible; the game pauses. */
+#define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /** The menu was dismissed; the game resumes. */
 
 // Save States
 
@@ -879,10 +756,6 @@ struct SDL_Libretro {
 
     void* userData; /** Generic data available to the implementation. */
 
-    // Events
-    SDL_LibretroEventCallback eventCallback; /** The application's event callback. @see SDL_Libretro_SetEventCallback() */
-    void* eventCallbackUserData; /** The userdata handed to eventCallback. */
-
 #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
     bool physfsReady; /** PhysFS is initialized and the VFS overrides are installed. */
     char physfsMountSource[SDL_LIBRETRO_MAX_PATH]; /** The archive currently mounted at the mount point. */
@@ -916,9 +789,7 @@ static bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
 static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress);
 static void SDL_Libretro_FreeMessages(SDL_Libretro* lr);
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
-static bool SDL_Libretro_SendEvent(SDL_Libretro* lr, SDL_LibretroEventType type, unsigned envCmd, void* envData);
-static bool SDL_Libretro_SendEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data);
-static SDL_LibretroEventType SDL_Libretro_EnvEventType(unsigned cmd);
+static bool SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data);
 static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
