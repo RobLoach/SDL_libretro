@@ -106,7 +106,7 @@ static void SDL_Libretro_PerfLog(void) {
 
 static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_MAX_RUMBLE_PORTS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return false;
 
     float normalized = (float)strength / 65535.0f;
     if (effect == RETRO_RUMBLE_STRONG) {
@@ -129,11 +129,11 @@ static void SDL_Libretro_SetLEDState(int led, int state) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return;
     Uint8 v = state ? 255 : 0;
-    if (led >= 0 && led < SDL_LIBRETRO_MAX_GAMEPADS) {
+    if (led >= 0 && led < SDL_LIBRETRO_MAX_USERS) {
         if (lr->gamepads[led]) SDL_SetGamepadLED(lr->gamepads[led], v, v, v);
     }
     else {
-        for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+        for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
             if (lr->gamepads[i]) SDL_SetGamepadLED(lr->gamepads[i], v, v, v);
         }
     }
@@ -277,13 +277,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
             // Copy the input descriptors into our structure
             lr->core.inputDescriptors = (struct retro_input_descriptor*)SDL_malloc(count * sizeof(*desc));
-            if (lr->core.inputDescriptors) {
-                SDL_memcpy(lr->core.inputDescriptors, desc, count * sizeof(*desc));
-                lr->core.inputDescriptorsCount = count;
-                // Deep copy the description strings
-                for (unsigned i = 0; i < count; i++) {
-                    lr->core.inputDescriptors[i].description = SDL_strdup(desc[i].description);
-                }
+            if (!lr->core.inputDescriptors) {
+                return SDL_SetError("[SDL_Libretro] Out of memory copying input descriptors");
+            }
+            SDL_memcpy(lr->core.inputDescriptors, desc, count * sizeof(*desc));
+            lr->core.inputDescriptorsCount = count;
+            // Deep copy the description strings. SDL_strdup returns NULL on failure, which FreeInputDescriptors tolerates.
+            for (unsigned i = 0; i < count; i++) {
+                lr->core.inputDescriptors[i].description = SDL_strdup(desc[i].description);
             }
 
             return true;
@@ -590,7 +591,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS: {
             if (!data) return false;
-            *(unsigned*)data = SDL_LIBRETRO_MAX_GAMEPADS;
+            *(unsigned*)data = SDL_LIBRETRO_MAX_USERS;
             return true;
         }
 
@@ -661,13 +662,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                         subs[i].desc = SDL_strdup(info[i].desc ? info[i].desc : "");
                         subs[i].ident = SDL_strdup(info[i].ident ? info[i].ident : "");
                         subs[i].id = info[i].id;
-                        subs[i].num_roms = info[i].num_roms;
                         if (info[i].num_roms > 0 && info[i].roms) {
                             struct retro_subsystem_rom_info* roms = (struct retro_subsystem_rom_info*)SDL_calloc(
                                 info[i].num_roms,
                                 sizeof(*roms));
                             subs[i].roms = roms;
                             if (roms) {
+                                // Only publish the count once the array exists, so an allocation failure leaves num_roms at 0.
+                                subs[i].num_roms = info[i].num_roms;
                                 for (unsigned r = 0; r < info[i].num_roms; r++) {
                                     roms[r].desc = SDL_strdup(info[i].roms[r].desc ? info[i].roms[r].desc : "");
                                     roms[r].valid_extensions = SDL_strdup(
@@ -713,10 +715,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 lr->core.controllerInfoCount = count;
                 // Deep copy the data into our own data struture
                 for (unsigned i = 0; i < count; i++) {
-                    lr->core.controllerInfo[i].num_types = info[i].num_types;
                     if (info[i].num_types == 0) continue;
                     struct retro_controller_description* types = (struct retro_controller_description*)SDL_calloc(info[i].num_types, sizeof(*types));
                     if (types) {
+                        // Only publish the count once the array exists, so an allocation failure leaves num_types at 0.
+                        lr->core.controllerInfo[i].num_types = info[i].num_types;
                         for (unsigned t = 0; t < info[i].num_types; t++) {
                             types[t].id = info[i].types[t].id;
                             types[t].desc = info[i].types[t].desc ? SDL_strdup(info[i].types[t].desc) : NULL;
@@ -742,7 +745,16 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     // The core only guarantees the addrspace label strings for the duration of this call, so deep-copy them.
                     for (unsigned i = 0; i < lr->core.memoryMapDescriptorCount; i++) {
                         const char* as = lr->core.memoryMapDescriptors[i].addrspace;
-                        if (as) lr->core.memoryMapDescriptors[i].addrspace = SDL_strdup(as);
+                        if (!as) continue;
+                        lr->core.memoryMapDescriptors[i].addrspace = SDL_strdup(as);
+                        if (!lr->core.memoryMapDescriptors[i].addrspace) {
+                            // Clear the not-yet-copied labels (still the core's temporary pointers) before unwinding.
+                            for (unsigned j = i + 1; j < lr->core.memoryMapDescriptorCount; j++) {
+                                lr->core.memoryMapDescriptors[j].addrspace = NULL;
+                            }
+                            SDL_Libretro_FreeMemoryMap(lr);
+                            return SDL_SetError("[SDL_Libretro] Out of memory copying memory map");
+                        }
                     }
                 }
             }

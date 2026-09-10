@@ -7,7 +7,7 @@
  *
  * Enabled by defining SDL_LIBRETRO_ENABLE_MENU alongside
  * SDL_LIBRETRO_IMPLEMENTATION. Requires the vendored Nuklear,
- * nuklear_console, nuklear_gamepad, c-vector and tinydir submodules on the
+ * nuklear_console, nuklear_gamepad and c-vector submodules on the
  * include path (handled by the SDL_libretro_menu CMake target).
  *
  * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:
@@ -204,7 +204,7 @@ struct SDL_LibretroMenu {
     char builtCoreName[128]; /** Core library name when the submenu was last built. */
 
     // Controllers
-    SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
+    SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_USERS];
 
     nk_console* quitButton; /** Kept as the last top-level entry when the app adds its own. */
 
@@ -1143,7 +1143,7 @@ static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const
  * @internal
  */
 static void SDL_Libretro_MenuFreePortStates(SDL_LibretroMenu* menu) {
-    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
         SDL_free(menu->portStates[i].deviceList);
         menu->portStates[i].deviceList = NULL;
     }
@@ -1194,8 +1194,8 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
     SDL_Libretro_MenuAddBackButton(menu->controllersButton, "Controllers");
 
     unsigned count = lr->core.controllerInfoCount;
-    if (count > SDL_LIBRETRO_MAX_GAMEPADS) {
-        count = SDL_LIBRETRO_MAX_GAMEPADS;
+    if (count > SDL_LIBRETRO_MAX_USERS) {
+        count = SDL_LIBRETRO_MAX_USERS;
     }
 
     bool anyWidget = false;

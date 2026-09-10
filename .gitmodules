@@ -28,3 +28,8 @@
 	url = https://github.com/eteran/c-vector.git
     ignore = dirty
     branch = master
+[submodule "vendor/SDL_ini"]
+	path = vendor/SDL_ini
+	url = https://github.com/RobLoach/SDL_ini.git
+    ignore = dirty
+    branch = master
