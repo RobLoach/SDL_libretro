@@ -2025,14 +2025,18 @@ static int SDLCALL test_Events(void *arg) {
     SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
-    // Real loads push the lifecycle events.
+    // Real loads push the lifecycle events, with the loaded name in data2.
     SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_CORE_LOADED, &received) == 1,
         "CORE_LOADED is pushed after a core loads");
     SDLTest_AssertCheck(received.user.data1 == lr, "CORE_LOADED carries the context");
+    SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetCoreName(lr),
+        "CORE_LOADED data2 is the core name");
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
-    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GAME_LOADED, NULL) == 1,
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GAME_LOADED, &received) == 1,
         "GAME_LOADED is pushed after a game loads");
+    SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetGameName(lr),
+        "GAME_LOADED data2 is the game name");
     SDL_Libretro_UnloadCore(lr);
     SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
 #endif
@@ -2196,6 +2200,7 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(menuOpened == 1 && menuClosed == 1,
             "Open/close each push one menu event, got %d/%d", menuOpened, menuClosed);
         SDLTest_AssertCheck(lastOpened.user.data1 == lr, "Menu events carry the context");
+        SDLTest_AssertCheck(lastOpened.user.data2 == menu, "Menu events carry the menu in data2");
 
         // The menu passes SDL_libretro's own events through untouched.
         SDL_zero(event);

@@ -195,10 +195,10 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  */
 #define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
 
-#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading. @see SDL_Libretro_GetCoreName() */
-#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu. @see SDL_Libretro_GetGameName() */
-#define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /** The menu became visible; the game pauses. */
-#define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /** The menu was dismissed; the game resumes. */
+#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading; data2 is the core name. @see SDL_Libretro_GetCoreName() */
+#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu; data2 is the game name. @see SDL_Libretro_GetGameName() */
+#define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /** The menu became visible; the game pauses. data2 is the SDL_LibretroMenu. */
+#define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /** The menu was dismissed; the game resumes. data2 is the SDL_LibretroMenu. */
 
 // Save States
 

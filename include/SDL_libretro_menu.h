@@ -1819,7 +1819,7 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
     }
-    SDL_Libretro_PushEvent(menu->lr, open ? SDL_EVENT_LIBRETRO_MENU_OPENED : SDL_EVENT_LIBRETRO_MENU_CLOSED, NULL);
+    SDL_Libretro_PushEvent(menu->lr, open ? SDL_EVENT_LIBRETRO_MENU_OPENED : SDL_EVENT_LIBRETRO_MENU_CLOSED, menu);
 }
 
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {

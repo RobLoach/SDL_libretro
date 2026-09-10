@@ -240,7 +240,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
-    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_CORE_LOADED, NULL);
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_CORE_LOADED, lr->core.libraryName);
 
     return true;
 }
@@ -658,7 +658,7 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
         SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
     }
 
-    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GAME_LOADED, NULL);
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GAME_LOADED, lr->core.contentName);
 
     return true;
 }
@@ -1206,8 +1206,8 @@ int SDL_Libretro_GetVersion(void) {
 /**
  * Pushes an SDL_libretro event onto the SDL event queue.
  *
- * data1 is the context, data2 the environment data pointer (NULL for the
- * lifecycle events).
+ * data1 is the context, data2 the event-specific payload: the environment
+ * data pointer, a name, or the menu.
  *
  * @return true when an event watch claimed the event by setting a non-zero
  *         user.code; watches run synchronously inside SDL_PushEvent(), which

@@ -108,14 +108,14 @@ SDL_RenderPresent(renderer);
 SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event.
 
 - Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` — for example `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE`. Commands carrying the `RETRO_ENVIRONMENT_EXPERIMENTAL` flag need it masked off, since it doesn't fit the SDL event range: `SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`. The data pointer the core passed rides along in `event->user.data2`.
-- `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu.
-- `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes).
+- `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu. `data2` is the core or game name.
+- `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). `data2` is the `SDL_LibretroMenu*`.
 
 ```c
 while (SDL_PollEvent(&event)) {
     switch (event.type) {
         case SDL_EVENT_LIBRETRO_GAME_LOADED:
-            SDL_Log("Loaded: %s", SDL_Libretro_GetGameName(event.user.data1));
+            SDL_Log("Loaded: %s", (const char*)event.user.data2);
             break;
         case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
             SDL_Log("Core asked for location services");

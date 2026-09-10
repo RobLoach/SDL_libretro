@@ -21,9 +21,8 @@ typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
     SDL_Libretro* lr;
-#ifdef SDL_LIBRETRO_ENABLE_MENU
     SDL_LibretroMenu* menu;
-#endif
+    bool menuOpen; /* Tracked through SDL_EVENT_LIBRETRO_MENU_OPENED/CLOSED. */
 } AppContext;
 
 /**
@@ -47,11 +46,12 @@ static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
 /**
  * Handles the SDL events SDL_libretro pushes.
  *
- * The lifecycle events keep the window title current, the menu events are
- * logged, and SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_* events report
- * environment commands that SDL_libretro doesn't handle itself. Implementing
- * one of those would take an SDL_AddEventWatch() callback instead, so the
- * core's data pointer in user.data2 is still valid; this demo only logs them.
+ * The lifecycle events keep the window title current and close the menu when
+ * a game arrives, the menu events pause and resume the game, and
+ * SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_* events report environment
+ * commands that SDL_libretro doesn't handle itself. Implementing one of
+ * those would take an SDL_AddEventWatch() callback instead, so the core's
+ * data pointer in user.data2 is still valid; this demo only logs them.
  *
  * @return true when the event was an SDL_libretro event.
  */
@@ -59,21 +59,26 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
     switch (event->type) {
         // A core loaded; when it runs without content the core name titles the window.
         case SDL_EVENT_LIBRETRO_CORE_LOADED:
-            SDL_Log("Core loaded: %s", SDL_Libretro_GetCoreName(app->lr));
+            SDL_Log("Core loaded: %s", (const char*)event->user.data2);
             SDL_Libretro_DemoUpdateWindowTitle(app);
             return true;
 
         // A game loaded, from the command line, the menu, or drag & drop.
+        // Close the menu so the game is visible.
         case SDL_EVENT_LIBRETRO_GAME_LOADED:
-            SDL_Log("Game loaded: %s", SDL_Libretro_GetGameName(app->lr));
+            SDL_Log("Game loaded: %s", (const char*)event->user.data2);
             SDL_Libretro_DemoUpdateWindowTitle(app);
+            SDL_Libretro_SetMenuOpen(app->menu, false);
             return true;
 
+        // The menu pauses the game while it is open; see SDL_AppIterate().
         case SDL_EVENT_LIBRETRO_MENU_OPENED:
             SDL_Log("Menu opened");
+            app->menuOpen = true;
             return true;
         case SDL_EVENT_LIBRETRO_MENU_CLOSED:
             SDL_Log("Menu closed");
+            app->menuOpen = false;
             return true;
 
         // Environment commands the library leaves to the application. Plain
@@ -104,13 +109,10 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
     SDL_Libretro_UnloadCore(app->lr);
-    if (SDL_Libretro_LoadGame(app->lr, path)) {
-#ifdef SDL_LIBRETRO_ENABLE_MENU
-        // Close the menu so the freshly loaded game is visible, matching the
-        // menu's own Load Game flow. The queued GAME_LOADED event retitles
-        // the window.
-        SDL_Libretro_SetMenuOpen(app->menu, false);
-#endif
+    // On success the queued GAME_LOADED event closes the menu and retitles
+    // the window.
+    if (!SDL_Libretro_LoadGame(app->lr, path)) {
+        SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 }
 
@@ -206,7 +208,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 
-#ifdef SDL_LIBRETRO_ENABLE_MENU
     // The in-app menu; toggled with F1 or the gamepad Guide button.
     SDL_Libretro_SetRenderer(lr, renderer);
     app->menu = SDL_Libretro_CreateMenu(lr);
@@ -214,7 +215,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         SDL_Log("Failed to create menu: %s", SDL_GetError());
     }
     SDL_Libretro_AddMenuButton(app->menu, "Screenshot", &SDL_Libretro_MenuScreenshotClicked, NULL);
-#endif
 
 #ifdef __EMSCRIPTEN__
     // Hand the app pointer to the drag & drop bridge; it passes it back on drop.
@@ -240,12 +240,10 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_CONTINUE;
     }
 
-#ifdef SDL_LIBRETRO_ENABLE_MENU
     // The menu consumes input while it is open, and handles its toggle keys.
     if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
-#endif
 
     // Fast Forward
     if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
@@ -320,14 +318,11 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         return SDL_APP_SUCCESS;
     }
 
-    // Update the context, pausing the game while the menu is open.
-#ifdef SDL_LIBRETRO_ENABLE_MENU
-    if (!SDL_Libretro_IsMenuOpen(app->menu)) {
+    // Update the context, pausing the game while the menu is open; the state
+    // is tracked through the menu events in DemoHandleLibretroEvent().
+    if (!app->menuOpen) {
         SDL_Libretro_Update(lr);
     }
-#else
-    SDL_Libretro_Update(lr);
-#endif
 
     // Clear the screen
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -339,11 +334,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     // Tell them they can drop a file
     if (!SDL_Libretro_IsGameReady(lr)) {
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-#ifdef SDL_LIBRETRO_ENABLE_MENU
         SDL_RenderDebugText(renderer, 19.0f, 19.0f, "Drag & Drop a game to play, or press F1 for the menu");
-#else
-        SDL_RenderDebugText(renderer, 19.0f, 19.0f, "Drag & Drop a game to play");
-#endif
     }
 
     // Draw the current OSD message, if there is one.
@@ -353,11 +344,9 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
         SDL_RenderDebugText(renderer, 19.0f, 27.0f, message);
     }
 
-#ifdef SDL_LIBRETRO_ENABLE_MENU
     // Draw the menu on top of the game.
     SDL_Libretro_UpdateMenu(app->menu);
     SDL_Libretro_RenderMenu(app->menu);
-#endif
 
     SDL_RenderPresent(renderer);
 
@@ -367,9 +356,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
     AppContext* app = appstate;
     if (app) {
-#ifdef SDL_LIBRETRO_ENABLE_MENU
         SDL_Libretro_DestroyMenu(app->menu);
-#endif
         SDL_Libretro_Destroy(app->lr);
         SDL_DestroyRenderer(app->renderer);
         SDL_DestroyWindow(app->window);
