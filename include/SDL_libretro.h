@@ -399,6 +399,14 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open);
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu);
 bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
+
+/**
+ * Opens the menu and navigates to a page by its slash-separated label path,
+ * e.g. "Settings/Audio & Video", "Core Options" or "Disks".
+ *
+ * \return true when the path resolved; the menu stays open either way.
+ */
+bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path);
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style);
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
 

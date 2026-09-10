@@ -2328,6 +2328,46 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(customClicks == 2, "Custom entry callbacks fired, got %d", customClicks);
         SDLTest_AssertCheck(checkValue == true, "Checkbox value mirrors the widget state");
 
+        // Deep links open the menu and navigate by label path.
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(NULL, "Settings") == false, "OpenMenuPath(NULL) fails");
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, NULL) == false, "OpenMenuPath without a path fails");
+        SDL_Libretro_SetMenuOpen(menu, false);
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video") == true,
+            "OpenMenuPath resolves Settings/Audio & Video");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "OpenMenuPath opens the menu");
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "No Such Page") == false,
+            "OpenMenuPath rejects unknown paths");
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "Settings") == true, "OpenMenuPath resolves Settings");
+        SDL_Libretro_SetMenuOpen(menu, false);
+
+        // Keyboard binding runes round-trip through SDL scancodes.
+        SDLTest_AssertCheck(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_Z) == (nk_rune)'z', "Scancode Z maps to rune 'z'");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune((nk_rune)'z') == SDL_SCANCODE_Z, "Rune 'z' maps back to scancode Z");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_RETURN)) == SDL_SCANCODE_RETURN,
+            "Return round-trips through its rune");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_UP)) == SDL_SCANCODE_UP,
+            "Up round-trips through its rune");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_F5)) == SDL_SCANCODE_F5,
+            "F5 round-trips through its rune");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(NK_CONSOLE_KEY_NONE) == SDL_SCANCODE_UNKNOWN,
+            "An empty capture maps to no scancode");
+
+        // Without disk control the Disks page stays hidden.
+        SDLTest_AssertCheck(menu->disksButton->visible == nk_false, "Disks page hidden without disk control");
+
+        // A progress-type OSD message surfaces as the top progress bar.
+        SDL_Libretro_OsdPush(lr, "Working", 60.0, 0, RETRO_MESSAGE_TYPE_PROGRESS, 50);
+        SDL_Libretro_SetMenuOpen(menu, true);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->osdProgressWidget->visible == nk_true, "A progress OSD message shows the bar");
+        SDLTest_AssertCheck(menu->osdProgressValue == 50, "The bar tracks the message progress, got %d", (int)menu->osdProgressValue);
+        SDL_Libretro_SetMessage(lr, "", 0.0);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->osdProgressWidget->visible == nk_false, "The bar hides when the message clears");
+        SDL_Libretro_SetMenuOpen(menu, false);
+
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
         // With a game running the menu stays closed; opening it builds the
         // Core Options submenu from the test core's options.
