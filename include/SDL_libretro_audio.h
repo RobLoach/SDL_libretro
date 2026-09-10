@@ -41,14 +41,27 @@
 static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const void* samples, int bytes) {
     if (!lr->core.audioStream || bytes <= 0) return;
 
-    int queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
-    if (queued >= lr->core.audioQueueThresholdBytes) {
-        // Dropping is expected back-pressure when ramping up, so this can be debug noise.
-        if (lr->core.audioDropWarnCount < 10) {
-            SDL_LogDebug(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio queue full with %d bytes queued, dropping %d bytes", queued, bytes);
-            lr->core.audioDropWarnCount++;
+    // DRC steers the queue toward half of audioQueueThresholdBytes, so the
+    // hard cap sits at double the threshold and only catches transient spikes
+    // DRC can't absorb. When it trips, keep whatever still fits and drop just
+    // the overflow: cutting a whole batch mid-waveform is an audible pop.
+    int cap = lr->core.audioQueueThresholdBytes * 2;
+    if (cap > 0) {
+        int queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
+        if (queued >= 0 && bytes > cap - queued) {
+            int room = cap - queued;
+            if (room < 0) room = 0;
+            room -= room % (int)(sizeof(int16_t) * 2); // Keep whole frames.
+
+            // Dropping is expected back-pressure when ramping up, so this can be debug noise.
+            if (lr->core.audioDropWarnCount < 10) {
+                SDL_LogDebug(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio queue full with %d bytes queued, dropping %d bytes", queued, bytes - room);
+                lr->core.audioDropWarnCount++;
+            }
+
+            bytes = room;
+            if (bytes <= 0) return;
         }
-        return;
     }
 
     SDL_PutAudioStreamData(lr->core.audioStream, samples, bytes);
@@ -117,7 +130,10 @@ static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed) {
 }
 
 /**
- * Recompute the audio queue drop threshold from the current sample rate and requested latency.
+ * Recompute the audio queue latency threshold from the current sample rate and requested latency.
+ *
+ * DRC targets half of this fill level; the hard drop cap in
+ * SDL_Libretro_QueueAudio() sits at double it.
  *
  * @see SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS
  *
@@ -153,9 +169,10 @@ static void SDL_Libretro_ReportAudioBufferStatus(SDL_Libretro* lr) {
     bool active = (lr->core.audioStream != NULL);
 
     /**
-     * Queued bytes as a percentage (0-100) of the drop threshold.
+     * Queued bytes as a percentage (0-100) of the latency threshold.
      *
-     * It's the frontend's effective buffer cap.
+     * DRC holds the queue near half of it, so a healthy queue reads ~50%.
+     * (The hard drop cap sits at twice the threshold, which clamps to 100%.)
      *
      * @see SDL_Libretro_UpdateAudioThreshold
      */
@@ -222,7 +239,14 @@ static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
     lr->core.drcAdjustment = 1.0f;
     lr->core.drcEnabled = true;
     lr->core.drcDriftAvg = 0.0;
-    if (!SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->core.speed * lr->core.drcAdjustment)) {
+
+    // A reinit can land while paused (speed 0) or rewinding (speed < 0), and
+    // SDL rejects frequency ratios outside [0.01, 100] — failing here would
+    // tear the stream back down and leave audio dead. Seed a valid ratio;
+    // SetSpeed/UpdateDRC apply the real one as soon as playback moves.
+    float ratio = SDL_fabsf(lr->core.speed) * lr->core.drcAdjustment;
+    if (ratio < 0.01f) ratio = 1.0f;
+    if (!SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, ratio)) {
         SDL_SetError("[SDL_Libretro] Failed to set audio frequency: %s", SDL_GetError());
         SDL_DestroyAudioStream(lr->core.audioStream);
         lr->core.audioStream = NULL;

@@ -1824,6 +1824,80 @@ static int SDLCALL test_AudioLatency(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_AudioInitPausedRewind(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // Force SDL's dummy audio driver so the stream opens on machines (and CI
+    // runners) without a sound device. An SDL_AUDIO_DRIVER env var still wins.
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream opens on load");
+
+    // A deferred reinit (e.g. SET_SYSTEM_AV_INFO) can run while paused. SDL
+    // rejects a frequency ratio of 0, so this used to tear the stream back
+    // down and leave audio dead.
+    SDL_Libretro_SetSpeed(lr, 0.0f);
+    SDLTest_AssertCheck(SDL_Libretro_InitAudio(lr) == true, "InitAudio succeeds while paused");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after paused reinit");
+
+    // Same guard for a reinit during rewind (negative speed).
+    SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(SDL_Libretro_InitAudio(lr) == true, "InitAudio succeeds while rewinding");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after rewind reinit");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_AudioQueueOverflow(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // Force SDL's dummy audio driver so the stream opens on machines (and CI
+    // runners) without a sound device. An SDL_AUDIO_DRIVER env var still wins.
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after load");
+
+    // Pause the device so nothing drains while we measure the queue.
+    SDL_PauseAudioStreamDevice(lr->core.audioStream);
+
+    int threshold = lr->core.audioQueueThresholdBytes;
+    int cap = threshold * 2;
+    SDLTest_AssertCheck(threshold > 0, "Latency threshold computed (%d bytes)", threshold);
+
+    // Push well past the hard cap in batch-sized chunks.
+    static int16_t buf[512 * 2]; // Silence.
+    SDL_zeroa(buf);
+    int pushes = cap / (int)sizeof(buf) + 8;
+    for (int i = 0; i < pushes; i++) {
+        SDL_Libretro_QueueAudio(lr, buf, (int)sizeof(buf));
+    }
+
+    int queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
+    SDLTest_AssertCheck(queued > threshold, "Queue can exceed the latency threshold (%d > %d)", queued, threshold);
+    SDLTest_AssertCheck(queued <= cap, "Queue clamped to the hard cap (%d <= %d)", queued, cap);
+    // The final batch that crossed the cap is trimmed, not discarded whole.
+    SDLTest_AssertCheck(queued > cap - (int)sizeof(buf), "Overflowing batch partially queued (%d > %d)", queued, cap - (int)sizeof(buf));
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_PixelFormats(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -2222,6 +2296,8 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
     LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
+    LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),
+    LIBRETRO_TEST_CASE(test_AudioQueueOverflow, "Audio queue hard cap trims overflow"),
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
