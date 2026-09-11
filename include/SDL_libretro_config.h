@@ -22,17 +22,6 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
 }
 
 /**
- * The ini keys for the player 1 keyboard bindings under [keyboard], indexed
- * by RETRO_DEVICE_ID_JOYPAD_*. The values are SDL scancode names.
- *
- * @see SDL_GetScancodeName()
- */
-static const char* SDL_Libretro_KeyboardConfigKeys[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
-    "b", "y", "select", "start", "up", "down", "left", "right",
-    "a", "x", "l", "r", "l2", "r2", "l3", "r3",
-};
-
-/**
  * Initializes the config system based on the given file.
  *
  * Will load the configuration from the file, and save it when destroying the instance.
@@ -89,10 +78,10 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
 
     // Player 1 keyboard bindings, stored as SDL scancode names.
     for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
-        if (!INI_HasValue(ini, "keyboard", SDL_Libretro_KeyboardConfigKeys[button])) {
+        if (!INI_HasValue(ini, "keyboard", SDL_Libretro_JoypadButtonNames[button])) {
             continue;
         }
-        SDL_Scancode scancode = SDL_GetScancodeFromName(INI_GetString(ini, "keyboard", SDL_Libretro_KeyboardConfigKeys[button], ""));
+        SDL_Scancode scancode = SDL_GetScancodeFromName(INI_GetString(ini, "keyboard", SDL_Libretro_JoypadButtonNames[button], ""));
         if (scancode != SDL_SCANCODE_UNKNOWN) {
             SDL_Libretro_SetKeyboardMapping(lr, button, scancode);
         }
@@ -192,7 +181,7 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetString(lr->ini, NULL, "filebrowserdirectory", lr->fileBrowserStartDirectory);
 
     for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
-        INI_SetString(lr->ini, "keyboard", SDL_Libretro_KeyboardConfigKeys[button], SDL_GetScancodeName(lr->keyboardPlayer1[button]));
+        INI_SetString(lr->ini, "keyboard", SDL_Libretro_JoypadButtonNames[button], SDL_GetScancodeName(lr->keyboardPlayer1[button]));
     }
 
     return INI_Save(lr->ini, lr->iniFile);

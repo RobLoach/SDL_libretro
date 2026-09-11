@@ -223,9 +223,8 @@ struct SDL_LibretroMenu {
     // Disks, rebuilt when the menu opens.
     nk_console* disksButton;
     int diskSelected; /** Radio-selected disk index. */
-    unsigned builtDiskCount; /** Disk count when the submenu was last built. */
+    unsigned builtDiskCount; /** Disk count when the submenu was last built; bounds diskLabels. */
     char** diskLabels; /** Owned label copies backing the radios. */
-    unsigned diskLabelCount;
 
     // Progress rows, refreshed every update.
     nk_console* osdProgressWidget; /** Top-level bar for progress-type OSD messages. */
@@ -499,8 +498,7 @@ typedef struct SDL_LibretroMenuItem {
     void* userdata;
     char* label;
     nk_bool checked; /** Backing checkbox state when the caller brings none. */
-    nk_bool* checkedPtr; /** The widget's bound state; &checked or caller storage. */
-    bool* value; /** The app's checkbox value, mirrored from checkedPtr; may be NULL. */
+    bool* value; /** The app's checkbox value, mirrored from checked; may be NULL. */
 } SDL_LibretroMenuItem;
 
 /**
@@ -510,7 +508,7 @@ static void SDL_Libretro_MenuItemChanged(nk_console* widget, void* user_data) {
     (void)widget;
     SDL_LibretroMenuItem* item = (SDL_LibretroMenuItem*)user_data;
     if (item->value != NULL) {
-        *item->value = *item->checkedPtr == nk_true;
+        *item->value = item->checked == nk_true;
     }
     if (item->callback != NULL) {
         item->callback(item->menu, item->userdata);
@@ -538,7 +536,6 @@ static SDL_LibretroMenuItem* SDL_Libretro_MenuCreateItem(SDL_LibretroMenu* menu,
     item->menu = menu;
     item->callback = callback;
     item->userdata = userdata;
-    item->checkedPtr = &item->checked;
     item->label = SDL_strdup(label);
     if (item->label == NULL) {
         SDL_free(item);
@@ -585,14 +582,12 @@ static nk_console* SDL_Libretro_MenuAddCheckbox(SDL_LibretroMenu* menu, nk_conso
     if (item == NULL) {
         return NULL;
     }
-    if (checked != NULL) {
-        item->checkedPtr = checked;
-    }
+    nk_bool* storage = checked != NULL ? checked : &item->checked;
     item->value = value;
     if (value != NULL) {
-        *item->checkedPtr = (nk_bool)*value;
+        *storage = (nk_bool)*value;
     }
-    nk_console* checkbox = nk_console_checkbox(parent, item->label, item->checkedPtr);
+    nk_console* checkbox = nk_console_checkbox(parent, item->label, storage);
     if (checkbox == NULL) {
         SDL_Libretro_MenuItemDestroy(NULL, item);
         return NULL;
@@ -777,6 +772,46 @@ static void SDL_Libretro_MenuMuteChanged(SDL_LibretroMenu* menu, void* userdata)
 }
 
 /**
+ * Special keys that map between SDL scancodes and NK_CONSOLE_KEY_* runes.
+ *
+ * Aliases (keypad enter, right-hand modifiers) come after their primary, so
+ * rune-to-scancode lookups resolve to the primary. Printable keys are
+ * handled by the ASCII fallbacks in the lookups below.
+ *
+ * @internal
+ */
+static const struct { SDL_Scancode scancode; nk_rune rune; } SDL_Libretro_MenuKeyRunes[] = {
+    { SDL_SCANCODE_RETURN, NK_CONSOLE_KEY_ENTER },
+    { SDL_SCANCODE_KP_ENTER, NK_CONSOLE_KEY_ENTER },
+    { SDL_SCANCODE_TAB, NK_CONSOLE_KEY_TAB },
+    { SDL_SCANCODE_BACKSPACE, NK_CONSOLE_KEY_BACKSPACE },
+    { SDL_SCANCODE_ESCAPE, NK_CONSOLE_KEY_ESCAPE },
+    { SDL_SCANCODE_DELETE, NK_CONSOLE_KEY_DELETE },
+    { SDL_SCANCODE_UP, NK_CONSOLE_KEY_UP },
+    { SDL_SCANCODE_DOWN, NK_CONSOLE_KEY_DOWN },
+    { SDL_SCANCODE_LEFT, NK_CONSOLE_KEY_LEFT },
+    { SDL_SCANCODE_RIGHT, NK_CONSOLE_KEY_RIGHT },
+    { SDL_SCANCODE_LSHIFT, NK_CONSOLE_KEY_SHIFT },
+    { SDL_SCANCODE_RSHIFT, NK_CONSOLE_KEY_SHIFT },
+    { SDL_SCANCODE_LCTRL, NK_CONSOLE_KEY_CTRL },
+    { SDL_SCANCODE_RCTRL, NK_CONSOLE_KEY_CTRL },
+    { SDL_SCANCODE_LALT, NK_CONSOLE_KEY_ALT },
+    { SDL_SCANCODE_RALT, NK_CONSOLE_KEY_ALT },
+    { SDL_SCANCODE_F1, NK_CONSOLE_KEY_F1 },
+    { SDL_SCANCODE_F2, NK_CONSOLE_KEY_F2 },
+    { SDL_SCANCODE_F3, NK_CONSOLE_KEY_F3 },
+    { SDL_SCANCODE_F4, NK_CONSOLE_KEY_F4 },
+    { SDL_SCANCODE_F5, NK_CONSOLE_KEY_F5 },
+    { SDL_SCANCODE_F6, NK_CONSOLE_KEY_F6 },
+    { SDL_SCANCODE_F7, NK_CONSOLE_KEY_F7 },
+    { SDL_SCANCODE_F8, NK_CONSOLE_KEY_F8 },
+    { SDL_SCANCODE_F9, NK_CONSOLE_KEY_F9 },
+    { SDL_SCANCODE_F10, NK_CONSOLE_KEY_F10 },
+    { SDL_SCANCODE_F11, NK_CONSOLE_KEY_F11 },
+    { SDL_SCANCODE_F12, NK_CONSOLE_KEY_F12 },
+};
+
+/**
  * The NK_CONSOLE_KEY_* rune for an SDL scancode, to show the current binding
  * in a key-capture widget. NK_CONSOLE_KEY_NONE when the key has no rune; it
  * can still be rebound, just not displayed.
@@ -784,36 +819,10 @@ static void SDL_Libretro_MenuMuteChanged(SDL_LibretroMenu* menu, void* userdata)
  * @internal
  */
 static nk_rune SDL_Libretro_MenuRuneFromScancode(SDL_Scancode scancode) {
-    switch (scancode) {
-        case SDL_SCANCODE_RETURN:
-        case SDL_SCANCODE_KP_ENTER: return NK_CONSOLE_KEY_ENTER;
-        case SDL_SCANCODE_TAB: return NK_CONSOLE_KEY_TAB;
-        case SDL_SCANCODE_BACKSPACE: return NK_CONSOLE_KEY_BACKSPACE;
-        case SDL_SCANCODE_ESCAPE: return NK_CONSOLE_KEY_ESCAPE;
-        case SDL_SCANCODE_DELETE: return NK_CONSOLE_KEY_DELETE;
-        case SDL_SCANCODE_UP: return NK_CONSOLE_KEY_UP;
-        case SDL_SCANCODE_DOWN: return NK_CONSOLE_KEY_DOWN;
-        case SDL_SCANCODE_LEFT: return NK_CONSOLE_KEY_LEFT;
-        case SDL_SCANCODE_RIGHT: return NK_CONSOLE_KEY_RIGHT;
-        case SDL_SCANCODE_LSHIFT:
-        case SDL_SCANCODE_RSHIFT: return NK_CONSOLE_KEY_SHIFT;
-        case SDL_SCANCODE_LCTRL:
-        case SDL_SCANCODE_RCTRL: return NK_CONSOLE_KEY_CTRL;
-        case SDL_SCANCODE_LALT:
-        case SDL_SCANCODE_RALT: return NK_CONSOLE_KEY_ALT;
-        case SDL_SCANCODE_F1: return NK_CONSOLE_KEY_F1;
-        case SDL_SCANCODE_F2: return NK_CONSOLE_KEY_F2;
-        case SDL_SCANCODE_F3: return NK_CONSOLE_KEY_F3;
-        case SDL_SCANCODE_F4: return NK_CONSOLE_KEY_F4;
-        case SDL_SCANCODE_F5: return NK_CONSOLE_KEY_F5;
-        case SDL_SCANCODE_F6: return NK_CONSOLE_KEY_F6;
-        case SDL_SCANCODE_F7: return NK_CONSOLE_KEY_F7;
-        case SDL_SCANCODE_F8: return NK_CONSOLE_KEY_F8;
-        case SDL_SCANCODE_F9: return NK_CONSOLE_KEY_F9;
-        case SDL_SCANCODE_F10: return NK_CONSOLE_KEY_F10;
-        case SDL_SCANCODE_F11: return NK_CONSOLE_KEY_F11;
-        case SDL_SCANCODE_F12: return NK_CONSOLE_KEY_F12;
-        default: break;
+    for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
+        if (SDL_Libretro_MenuKeyRunes[i].scancode == scancode) {
+            return SDL_Libretro_MenuKeyRunes[i].rune;
+        }
     }
     SDL_Keycode key = SDL_GetKeyFromScancode(scancode, SDL_KMOD_NONE, false);
     if (key >= 32 && key < 127) {
@@ -829,32 +838,10 @@ static nk_rune SDL_Libretro_MenuRuneFromScancode(SDL_Scancode scancode) {
  * @internal
  */
 static SDL_Scancode SDL_Libretro_MenuScancodeFromRune(nk_rune rune) {
-    switch (rune) {
-        case NK_CONSOLE_KEY_ENTER: return SDL_SCANCODE_RETURN;
-        case NK_CONSOLE_KEY_TAB: return SDL_SCANCODE_TAB;
-        case NK_CONSOLE_KEY_BACKSPACE: return SDL_SCANCODE_BACKSPACE;
-        case NK_CONSOLE_KEY_ESCAPE: return SDL_SCANCODE_ESCAPE;
-        case NK_CONSOLE_KEY_DELETE: return SDL_SCANCODE_DELETE;
-        case NK_CONSOLE_KEY_UP: return SDL_SCANCODE_UP;
-        case NK_CONSOLE_KEY_DOWN: return SDL_SCANCODE_DOWN;
-        case NK_CONSOLE_KEY_LEFT: return SDL_SCANCODE_LEFT;
-        case NK_CONSOLE_KEY_RIGHT: return SDL_SCANCODE_RIGHT;
-        case NK_CONSOLE_KEY_SHIFT: return SDL_SCANCODE_LSHIFT;
-        case NK_CONSOLE_KEY_CTRL: return SDL_SCANCODE_LCTRL;
-        case NK_CONSOLE_KEY_ALT: return SDL_SCANCODE_LALT;
-        case NK_CONSOLE_KEY_F1: return SDL_SCANCODE_F1;
-        case NK_CONSOLE_KEY_F2: return SDL_SCANCODE_F2;
-        case NK_CONSOLE_KEY_F3: return SDL_SCANCODE_F3;
-        case NK_CONSOLE_KEY_F4: return SDL_SCANCODE_F4;
-        case NK_CONSOLE_KEY_F5: return SDL_SCANCODE_F5;
-        case NK_CONSOLE_KEY_F6: return SDL_SCANCODE_F6;
-        case NK_CONSOLE_KEY_F7: return SDL_SCANCODE_F7;
-        case NK_CONSOLE_KEY_F8: return SDL_SCANCODE_F8;
-        case NK_CONSOLE_KEY_F9: return SDL_SCANCODE_F9;
-        case NK_CONSOLE_KEY_F10: return SDL_SCANCODE_F10;
-        case NK_CONSOLE_KEY_F11: return SDL_SCANCODE_F11;
-        case NK_CONSOLE_KEY_F12: return SDL_SCANCODE_F12;
-        default: break;
+    for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
+        if (SDL_Libretro_MenuKeyRunes[i].rune == rune) {
+            return SDL_Libretro_MenuKeyRunes[i].scancode;
+        }
     }
     if (rune >= 'A' && rune <= 'Z') {
         rune += 'a' - 'A';
@@ -864,16 +851,6 @@ static SDL_Scancode SDL_Libretro_MenuScancodeFromRune(nk_rune rune) {
     }
     return SDL_SCANCODE_UNKNOWN;
 }
-
-/**
- * Labels for the Keyboard bindings page, indexed by RETRO_DEVICE_ID_JOYPAD_*.
- *
- * @internal
- */
-static const char* SDL_Libretro_MenuJoypadButtonNames[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
-    "B", "Y", "Select", "Start", "Up", "Down", "Left", "Right",
-    "A", "X", "L", "R", "L2", "R2", "L3", "R3",
-};
 
 /**
  * Refresh the Keyboard page's captured runes from the live mapping.
@@ -1915,12 +1892,14 @@ static void SDL_Libretro_MenuDiskClicked(nk_console* widget, void* user_data) {
  * @internal
  */
 static void SDL_Libretro_MenuFreeDiskLabels(SDL_LibretroMenu* menu) {
-    for (unsigned i = 0; i < menu->diskLabelCount; i++) {
+    if (menu->diskLabels == NULL) {
+        return;
+    }
+    for (unsigned i = 0; i < menu->builtDiskCount; i++) {
         SDL_free(menu->diskLabels[i]);
     }
     SDL_free(menu->diskLabels);
     menu->diskLabels = NULL;
-    menu->diskLabelCount = 0;
 }
 
 /**
@@ -1951,7 +1930,6 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
         menu->disksButton->visible = nk_false;
         return;
     }
-    menu->diskLabelCount = count;
 
     menu->disksButton->visible = nk_true;
     SDL_Libretro_MenuAddBackButton(menu->disksButton, "Disks");
@@ -2010,7 +1988,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
         menu->keyBinds[i].menu = menu;
         menu->keyBinds[i].button = i;
         SDL_Libretro_MenuOnChanged(
-            nk_console_input_key(keyboard, SDL_Libretro_MenuJoypadButtonNames[i], &menu->keyBinds[i].rune),
+            nk_console_input_key(keyboard, SDL_Libretro_JoypadButtonNames[i], &menu->keyBinds[i].rune),
             &SDL_Libretro_MenuKeyBindChanged, &menu->keyBinds[i]);
     }
 
@@ -2293,8 +2271,7 @@ static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justO
     }
     bool coreChanged = SDL_strcmp(menu->builtCoreName, lr->core.libraryName) != 0;
     bool countChanged = menu->builtOptionCount != lr->core.optionCount;
-    bool disksChanged = menu->builtDiskCount != SDL_Libretro_GetDiskCount(lr);
-    if (!justOpened && !coreChanged && !countChanged && !disksChanged && !menu->optionsStale) {
+    if (!justOpened && !coreChanged && !countChanged && !menu->optionsStale) {
         return;
     }
 
@@ -2368,9 +2345,9 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
 
     // Progress-type OSD messages get a live bar at the top of the menu.
     int osdProgress = SDL_Libretro_GetMessageProgress(lr);
-    const char* osdMessage = SDL_Libretro_GetMessage(lr);
-    if (osdProgress >= 0 && osdMessage != NULL) {
-        SDL_strlcpy(menu->osdProgressLabel, osdMessage, sizeof(menu->osdProgressLabel));
+    if (osdProgress >= 0) {
+        const char* osdMessage = SDL_Libretro_GetMessage(lr);
+        SDL_strlcpy(menu->osdProgressLabel, osdMessage != NULL ? osdMessage : "", sizeof(menu->osdProgressLabel));
         menu->osdProgressValue = (nk_size)(osdProgress > 100 ? 100 : osdProgress);
         nk_console_progress_update(menu->osdProgressWidget, menu->osdProgressLabel, &menu->osdProgressValue, 100);
         menu->osdProgressWidget->visible = nk_true;

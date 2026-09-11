@@ -182,10 +182,10 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  *
  * Environment commands the library doesn't handle itself arrive as
  * `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*`, with the data pointer the core
- * passed in event->user.data2. The RETRO_ENVIRONMENT_EXPERIMENTAL flag
- * doesn't fit the SDL event range, so commands carrying it need it masked
- * off: `SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE &
- * ~RETRO_ENVIRONMENT_EXPERIMENTAL)`.
+ * passed in event->user.data2. The RETRO_ENVIRONMENT_EXPERIMENTAL and
+ * RETRO_ENVIRONMENT_PRIVATE flags don't fit the SDL event range, so commands
+ * carrying them need the flag masked off: `SDL_EVENT_LIBRETRO |
+ * (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`.
  *
  * The data pointer is only valid while the core waits inside the environment
  * call, so to implement a command, handle the event from an
@@ -506,6 +506,17 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
  */
 #define SDL_LIBRETRO_MAX_JOYPAD_BUTTONS 16
 
+/**
+ * Display names for the RETRO_DEVICE_ID_JOYPAD_* buttons, indexed by id.
+ * Doubles as the config keys for the player 1 keyboard bindings.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_JoypadButtonNames[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
+    "B", "Y", "Select", "Start", "Up", "Down", "Left", "Right",
+    "A", "X", "L", "R", "L2", "R2", "L3", "R3",
+};
+
 typedef struct SDL_Libretro_CoreInfo {
     char* corename;
     char* supported_extensions;
@@ -797,7 +808,8 @@ static bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
 static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress);
 static void SDL_Libretro_FreeMessages(SDL_Libretro* lr);
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
-static bool SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data);
+static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data);
+static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data);
 static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);

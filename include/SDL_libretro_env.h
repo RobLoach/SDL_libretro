@@ -1061,10 +1061,9 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         // Anything else, including commands the library chooses not to
         // implement (camera, location, hardware rendering, achievements):
         // let the application implement the command through an event watch
-        // on SDL_EVENT_LIBRETRO | cmd. The experimental and private flags
-        // can't ride in an SDL event type, so they're masked off.
+        // on SDL_EVENT_LIBRETRO | cmd.
         default: {
-            if (SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE)), data)) {
+            if (SDL_Libretro_PushEnvEvent(lr, cmd, data)) {
                 return true;
             }
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unhandled environment callback: %u", cmd);

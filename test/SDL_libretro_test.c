@@ -2111,7 +2111,7 @@ static int SDLCALL test_Events(void *arg) {
     // and the core's pointer in data2, and reports unhandled to the core.
     SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
     int payload = 7;
-    SDLTest_AssertCheck(SDL_Libretro_PushEvent(lr, cameraEvent, &payload) == false,
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &payload) == false,
         "An unwatched env event reports unhandled");
     SDL_Event received;
     SDL_zero(received);
@@ -2123,7 +2123,7 @@ static int SDLCALL test_Events(void *arg) {
     // A watch runs synchronously inside the push; setting user.code there
     // reports the command handled to the core.
     SDL_AddEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
-    SDLTest_AssertCheck(SDL_Libretro_PushEvent(lr, cameraEvent, &payload) == true,
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &payload) == true,
         "A watch that sets user.code marks the env command handled");
     SDL_RemoveEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
     SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);

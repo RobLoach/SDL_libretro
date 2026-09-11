@@ -102,9 +102,6 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
         case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
             SDL_Log("Core asked for location services; not available in this demo");
             return true;
-        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
-            SDL_Log("Core offered a proc-address callback; this demo doesn't use it");
-            return true;
         case SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL):
             SDL_Log("Core asked for a camera interface; not available in this demo");
             return true;
@@ -292,11 +289,9 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
     }
 
-    // Screenshot
+    // Screenshot, the same action as the menu's Screenshot entry.
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F12) {
-        SDL_Surface* screenshot = SDL_Libretro_CreateSurface(lr);
-        SDL_SavePNG(screenshot, "screenshot.png");
-        SDL_DestroySurface(screenshot);
+        SDL_Libretro_MenuScreenshotClicked(app->menu, NULL);
     }
 
     // Save State

@@ -1211,33 +1211,40 @@ int SDL_Libretro_GetVersion(void) {
 }
 
 /**
- * Pushes an SDL_libretro event onto the SDL event queue.
- *
- * data1 is the context, data2 the event-specific payload: the environment
- * data pointer, a name, or the menu.
- *
- * @return true when the event was pushed successfully, matching
- *         SDL_PushEvent(), and an event watch claimed it by setting a
- *         non-zero user.code; watches run synchronously inside
- *         SDL_PushEvent(), which is how an application implements an
- *         environment command while the core waits.
+ * Pushes an SDL_libretro event onto the SDL event queue: data1 is the
+ * context, data2 the event-specific payload (a name, the menu, or NULL).
  *
  * @internal
  */
-static bool SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
+static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
     SDL_Event event;
     SDL_zero(event);
     event.user.type = type;
     event.user.data1 = lr;
     event.user.data2 = data;
-    bool result = SDL_PushEvent(&event);
+    SDL_PushEvent(&event);
+}
 
-    // No event watch claimed the event.
-    if (event.user.code == 0) {
-        return false;
-    }
-
-    return result;
+/**
+ * Reports an environment command the library doesn't handle itself as
+ * SDL_EVENT_LIBRETRO | cmd, masking off the experimental and private flags
+ * since they don't fit the SDL event range. data2 is the command's data
+ * pointer.
+ *
+ * @return true when the event was pushed and an event watch claimed the
+ *         command by setting a non-zero user.code; watches run synchronously
+ *         inside SDL_PushEvent(), which is how an application implements an
+ *         environment command while the core waits.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data) {
+    SDL_Event event;
+    SDL_zero(event);
+    event.user.type = SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE));
+    event.user.data1 = lr;
+    event.user.data2 = data;
+    return SDL_PushEvent(&event) && event.user.code != 0;
 }
 
 // Directory
