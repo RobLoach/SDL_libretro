@@ -240,6 +240,8 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
 
     SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core loaded: %s %s", lr->core.libraryName, lr->core.libraryVersion);
 
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_CORE_LOADED, lr->core.libraryName);
+
     return true;
 }
 
@@ -252,6 +254,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
  */
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (!lr) return;
+    bool hadCore = SDL_Libretro_IsCoreReady(lr);
 
     SDL_Libretro_UnloadGame(lr);
 
@@ -279,6 +282,10 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     }
 
     SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core unloaded");
+
+    if (hadCore) {
+        SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_CORE_UNLOADED, NULL);
+    }
 }
 
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
@@ -656,6 +663,8 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
         SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
     }
 
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GAME_LOADED, lr->core.contentName);
+
     return true;
 }
 
@@ -1025,6 +1034,8 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     SDL_Libretro_CloseVideo(lr);
     SDL_Libretro_PhysFS_ClearMount(lr);
     SDL_Log("[SDL_Libretro] Game unloaded");
+
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GAME_UNLOADED, NULL);
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
@@ -1197,6 +1208,43 @@ bool SDL_Libretro_ShouldQuit(const SDL_Libretro* lr) {
 
 int SDL_Libretro_GetVersion(void) {
     return SDL_LIBRETRO_VERSION;
+}
+
+/**
+ * Pushes an SDL_libretro event onto the SDL event queue: data1 is the
+ * context, data2 the event-specific payload (a name, the menu, or NULL).
+ *
+ * @internal
+ */
+static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
+    SDL_Event event;
+    SDL_zero(event);
+    event.user.type = type;
+    event.user.data1 = lr;
+    event.user.data2 = data;
+    SDL_PushEvent(&event);
+}
+
+/**
+ * Reports an environment command the library doesn't handle itself as
+ * SDL_EVENT_LIBRETRO | cmd, masking off the experimental and private flags
+ * since they don't fit the SDL event range. data2 is the command's data
+ * pointer.
+ *
+ * @return true when the event was pushed and an event watch claimed the
+ *         command by setting a non-zero user.code; watches run synchronously
+ *         inside SDL_PushEvent(), which is how an application implements an
+ *         environment command while the core waits.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data) {
+    SDL_Event event;
+    SDL_zero(event);
+    event.user.type = SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE));
+    event.user.data1 = lr;
+    event.user.data2 = data;
+    return SDL_PushEvent(&event) && event.user.code != 0;
 }
 
 // Directory
@@ -1504,6 +1552,17 @@ SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
  */
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
     return SDL_Libretro_IsCoreReady(lr) ? lr->core.libraryName : "";
+}
+
+/**
+ * Retrieve the human-readable name of the loaded game.
+ *
+ * This is the content file's base name without its extension. When the core
+ * runs without content, it falls back to the core's name. Returns an empty
+ * string when no game is loaded.
+ */
+const char* SDL_Libretro_GetGameName(const SDL_Libretro* lr) {
+    return SDL_Libretro_IsGameReady(lr) ? lr->core.contentName : "";
 }
 
 /**

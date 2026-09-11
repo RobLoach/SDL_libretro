@@ -220,6 +220,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SHUTDOWN: {
             SDL_Log("[SDL_Libretro] Shutdown requested");
             lr->core.shutdown = true;
+            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_SHUTDOWN, NULL);
             return true;
         }
 
@@ -483,6 +484,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     lr->core.audioReinitPending = true;
                 }
             }
+            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
             return true;
         }
 
@@ -491,6 +493,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
             // Geometry updates during runtime are applied in SDL_Libretro_VideoRefresh().
             lr->core.aspectRatio = geom->aspect_ratio;
+            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
             return true;
         }
 
@@ -1055,24 +1058,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        // Unimplemented
-        case 26:
-        case RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE:
-        case RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
-        case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK:
-        case 41:
-        case RETRO_ENVIRONMENT_GET_HW_RENDER_INTERFACE:
-        case 42:
-        case RETRO_ENVIRONMENT_SET_SUPPORT_ACHIEVEMENTS:
-        case 43:
-        case RETRO_ENVIRONMENT_SET_HW_RENDER_CONTEXT_NEGOTIATION_INTERFACE:
-        case 87:
-        case RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT: {
-            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unimplemented environment callback: %u", cmd);
-            return false;
-        }
-
+        // Anything else, including commands the library chooses not to
+        // implement (camera, location, hardware rendering, achievements):
+        // let the application implement the command through an event watch
+        // on SDL_EVENT_LIBRETRO | cmd.
         default: {
+            if (SDL_Libretro_PushEnvEvent(lr, cmd, data)) {
+                return true;
+            }
             SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Unhandled environment callback: %u", cmd);
             return false;
         }

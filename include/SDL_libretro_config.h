@@ -76,6 +76,17 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     if (INI_HasValue(ini, NULL, "filebrowserdirectory"))
         SDL_strlcpy(lr->fileBrowserStartDirectory, INI_GetString(ini, NULL, "filebrowserdirectory", ""), sizeof(lr->fileBrowserStartDirectory));
 
+    // Player 1 keyboard bindings, stored as SDL scancode names.
+    for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
+        if (!INI_HasValue(ini, "keyboard", SDL_Libretro_JoypadButtonNames[button])) {
+            continue;
+        }
+        SDL_Scancode scancode = SDL_GetScancodeFromName(INI_GetString(ini, "keyboard", SDL_Libretro_JoypadButtonNames[button], ""));
+        if (scancode != SDL_SCANCODE_UNKNOWN) {
+            SDL_Libretro_SetKeyboardMapping(lr, button, scancode);
+        }
+    }
+
     return true;
 }
 
@@ -168,6 +179,10 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetString(lr->ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr));
     INI_SetBoolean(lr->ini, NULL, "rewindenabled", SDL_Libretro_GetRewindEnabled(lr));
     INI_SetString(lr->ini, NULL, "filebrowserdirectory", lr->fileBrowserStartDirectory);
+
+    for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
+        INI_SetString(lr->ini, "keyboard", SDL_Libretro_JoypadButtonNames[button], SDL_GetScancodeName(lr->keyboardPlayer1[button]));
+    }
 
     return INI_Save(lr->ini, lr->iniFile);
 }

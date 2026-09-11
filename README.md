@@ -78,6 +78,10 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
 
+The menu reports what it does through SDL events (see [Events](#events)). Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`, and jump straight to a page with `SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video")`.
+
+Besides loading games and core options, the menu rebinds Player 1's keyboard (Settings > Keyboard), swaps disks for multi-disk games (Disks), and shows core-reported progress messages.
+
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION
 #define SDL_LIBRETRO_ENABLE_MENU
@@ -99,6 +103,45 @@ SDL_Libretro_Render(renderer, lr, NULL);
 SDL_Libretro_UpdateMenu(menu);
 SDL_Libretro_RenderMenu(menu);
 SDL_RenderPresent(renderer);
+```
+
+### Events
+
+SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event.
+
+- Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` — for example `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE`. Commands carrying the `RETRO_ENVIRONMENT_EXPERIMENTAL` (or `RETRO_ENVIRONMENT_PRIVATE`) flag need it masked off, since it doesn't fit the SDL event range: `SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`. The data pointer the core passed rides along in `event->user.data2`.
+- `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu. `data2` is the core or game name.
+- `SDL_EVENT_LIBRETRO_CORE_UNLOADED` / `SDL_EVENT_LIBRETRO_GAME_UNLOADED`: The core or game was unloaded; unloading a core reports the game first.
+- `SDL_EVENT_LIBRETRO_SHUTDOWN`: The core requested shutdown, mirroring `SDL_Libretro_ShouldQuit()`.
+- `SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED`: The video size, aspect ratio, or timing changed mid-game; query `SDL_Libretro_GetSize()` and friends for the new values.
+- `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). `data2` is the `SDL_LibretroMenu*`.
+
+```c
+while (SDL_PollEvent(&event)) {
+    switch (event.type) {
+        case SDL_EVENT_LIBRETRO_GAME_LOADED:
+            SDL_Log("Loaded: %s", (const char*)event.user.data2);
+            break;
+        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
+            SDL_Log("Core asked for location services");
+            break;
+    }
+}
+```
+
+An environment command's `data2` pointer is only valid while the core waits inside the environment call, which has already returned by the time the event is polled. To *implement* an environment command, handle the event from an [`SDL_AddEventWatch()`](https://wiki.libsdl.org/SDL3/SDL_AddEventWatch) callback instead — watches run synchronously while the core waits. Set `event->user.code` to a non-zero value there to tell the core the command succeeded.
+
+```c
+static bool SDLCALL MyEventWatch(void* userdata, SDL_Event* event) {
+    if (event->type == (SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL))) {
+        struct retro_camera_callback* camera = event->user.data2;
+        // ... fill in the camera interface ...
+        event->user.code = 1; // Tell the core the command succeeded.
+    }
+    return true;
+}
+
+SDL_AddEventWatch(MyEventWatch, NULL);
 ```
 
 ## Build
