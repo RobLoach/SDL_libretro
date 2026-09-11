@@ -220,6 +220,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SHUTDOWN: {
             SDL_Log("[SDL_Libretro] Shutdown requested");
             lr->core.shutdown = true;
+            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_SHUTDOWN, NULL);
             return true;
         }
 
@@ -483,6 +484,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     lr->core.audioReinitPending = true;
                 }
             }
+            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
             return true;
         }
 
@@ -491,6 +493,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
             // Geometry updates during runtime are applied in SDL_Libretro_VideoRefresh().
             lr->core.aspectRatio = geom->aspect_ratio;
+            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
             return true;
         }
 

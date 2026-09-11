@@ -70,6 +70,25 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
             SDL_Libretro_SetMenuOpen(app->menu, false);
             return true;
 
+        // The core or game went away; retitle the window.
+        case SDL_EVENT_LIBRETRO_CORE_UNLOADED:
+        case SDL_EVENT_LIBRETRO_GAME_UNLOADED:
+            SDL_Libretro_DemoUpdateWindowTitle(app);
+            return true;
+
+        // The core asked to shut down; SDL_AppIterate() quits through
+        // SDL_Libretro_ShouldQuit().
+        case SDL_EVENT_LIBRETRO_SHUTDOWN:
+            SDL_Log("Core requested shutdown");
+            return true;
+
+        case SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED: {
+            int w = 0, h = 0;
+            SDL_Libretro_GetSize(app->lr, &w, &h);
+            SDL_Log("Video geometry now %dx%d", w, h);
+            return true;
+        }
+
         case SDL_EVENT_LIBRETRO_MENU_OPENED:
             SDL_Log("Menu opened");
             return true;

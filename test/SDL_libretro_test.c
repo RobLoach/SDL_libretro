@@ -2141,8 +2141,35 @@ static int SDLCALL test_Events(void *arg) {
         "GAME_LOADED is pushed after a game loads");
     SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetGameName(lr),
         "GAME_LOADED data2 is the game name");
+
+    // Commands the library handles get curated events after the handling.
+    struct retro_game_geometry geometry = { 640, 480, 640, 480, 4.0f / 3.0f };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry) == true,
+        "SET_GEOMETRY is handled");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 1,
+        "GEOMETRY_CHANGED is pushed for SET_GEOMETRY");
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SHUTDOWN, NULL) == true,
+        "SHUTDOWN is handled");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_SHUTDOWN, NULL) == 1,
+        "SHUTDOWN is pushed");
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(lr) == true, "ShouldQuit reflects the shutdown");
+
+    // Unloading pushes the unload pair: game first, then the core.
     SDL_Libretro_UnloadCore(lr);
-    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+    int gameUnloaded = 0, coreUnloaded = 0;
+    SDL_Event drained;
+    while (SDL_PollEvent(&drained)) {
+        if (drained.type == SDL_EVENT_LIBRETRO_GAME_UNLOADED) {
+            gameUnloaded++;
+        } else if (drained.type == SDL_EVENT_LIBRETRO_CORE_UNLOADED) {
+            coreUnloaded++;
+        }
+    }
+    SDLTest_AssertCheck(gameUnloaded == 1 && coreUnloaded == 1,
+        "Unloading pushes GAME_UNLOADED and CORE_UNLOADED once each, got %d/%d", gameUnloaded, coreUnloaded);
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_CORE_UNLOADED, NULL) == 0,
+        "Unloading without a core pushes nothing");
 #endif
 
     SDL_Libretro_Destroy(lr);
@@ -2426,6 +2453,8 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_DestroyMenu(menuSave);
     }
     SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
+    // A rebound key persists through the config file alongside the menu state.
+    SDL_Libretro_SetKeyboardMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_K);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
     SDL_Libretro* lrLoad = SDL_Libretro_Create();
@@ -2436,6 +2465,10 @@ static int SDLCALL test_Menu(void *arg) {
         "Menu theme persists through the config file");
     SDLTest_AssertCheck(menuLoad != NULL && menuLoad->muteChecked == nk_true, "Mute state persists through the config file");
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
+    SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
+        "Keyboard bindings persist through the config file");
+    SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X,
+        "Untouched bindings keep their defaults");
     if (menuLoad != NULL) {
         menuLoad->muteChecked = nk_false;
         SDL_Libretro_MenuMuteChanged(menuLoad, NULL);

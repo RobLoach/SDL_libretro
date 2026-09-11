@@ -254,6 +254,7 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
  */
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (!lr) return;
+    bool hadCore = SDL_Libretro_IsCoreReady(lr);
 
     SDL_Libretro_UnloadGame(lr);
 
@@ -281,6 +282,10 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     }
 
     SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core unloaded");
+
+    if (hadCore) {
+        SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_CORE_UNLOADED, NULL);
+    }
 }
 
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
@@ -1029,6 +1034,8 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     SDL_Libretro_CloseVideo(lr);
     SDL_Libretro_PhysFS_ClearMount(lr);
     SDL_Log("[SDL_Libretro] Game unloaded");
+
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GAME_UNLOADED, NULL);
 }
 
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {

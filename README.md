@@ -111,6 +111,9 @@ SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent
 
 - Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` — for example `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE`. Commands carrying the `RETRO_ENVIRONMENT_EXPERIMENTAL` flag need it masked off, since it doesn't fit the SDL event range: `SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`. The data pointer the core passed rides along in `event->user.data2`.
 - `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu. `data2` is the core or game name.
+- `SDL_EVENT_LIBRETRO_CORE_UNLOADED` / `SDL_EVENT_LIBRETRO_GAME_UNLOADED`: The core or game was unloaded; unloading a core reports the game first.
+- `SDL_EVENT_LIBRETRO_SHUTDOWN`: The core requested shutdown, mirroring `SDL_Libretro_ShouldQuit()`.
+- `SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED`: The video size, aspect ratio, or timing changed mid-game; query `SDL_Libretro_GetSize()` and friends for the new values.
 - `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). `data2` is the `SDL_LibretroMenu*`.
 
 ```c

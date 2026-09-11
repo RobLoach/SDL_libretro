@@ -199,6 +199,10 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
 #define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu; data2 is the game name. @see SDL_Libretro_GetGameName() */
 #define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /** The menu became visible; the game pauses. data2 is the SDL_LibretroMenu. */
 #define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /** The menu was dismissed; the game resumes. data2 is the SDL_LibretroMenu. */
+#define SDL_EVENT_LIBRETRO_CORE_UNLOADED (SDL_EVENT_LIBRETRO | 0xF04) /** The core was unloaded, along with any game it ran. */
+#define SDL_EVENT_LIBRETRO_GAME_UNLOADED (SDL_EVENT_LIBRETRO | 0xF05) /** The game was unloaded, whether directly or through the core unloading. */
+#define SDL_EVENT_LIBRETRO_SHUTDOWN (SDL_EVENT_LIBRETRO | 0xF06) /** The core requested shutdown. @see SDL_Libretro_ShouldQuit() */
+#define SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED (SDL_EVENT_LIBRETRO | 0xF07) /** The video size, aspect ratio, or timing changed mid-game. @see SDL_Libretro_GetSize() */
 
 // Save States
 
