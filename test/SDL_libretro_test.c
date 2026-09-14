@@ -2143,11 +2143,15 @@ static int SDLCALL test_Events(void *arg) {
         "GAME_LOADED data2 is the game name");
 
     // Commands the library handles get curated events after the handling.
-    struct retro_game_geometry geometry = { 640, 480, 640, 480, 4.0f / 3.0f };
+    struct retro_game_geometry geometry = { 640, 480, 640, 480, 2.0f };
     SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry) == true,
         "SET_GEOMETRY is handled");
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 1,
         "GEOMETRY_CHANGED is pushed for SET_GEOMETRY");
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry) == true,
+        "A repeated SET_GEOMETRY is handled");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 0,
+        "An unchanged geometry pushes nothing");
     SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SHUTDOWN, NULL) == true,
         "SHUTDOWN is handled");
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_SHUTDOWN, NULL) == 1,
@@ -2379,6 +2383,20 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(NK_CONSOLE_KEY_NONE) == SDL_SCANCODE_UNKNOWN,
             "An empty capture maps to no scancode");
 
+        // The capture handler applies keys to the live mapping, and captures
+        // without an SDL equivalent revert to the current binding.
+        menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B].rune = (nk_rune)'k';
+        SDL_Libretro_MenuKeyBindChanged(NULL, &menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
+            "A captured key applies to the mapping");
+        menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B].rune = NK_CONSOLE_KEY_NONE;
+        SDL_Libretro_MenuKeyBindChanged(NULL, &menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
+            "An empty capture keeps the mapping");
+        SDLTest_AssertCheck(menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B].rune == (nk_rune)'k',
+            "An empty capture reverts to the current binding");
+        SDL_Libretro_SetKeyboardMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_Z);
+
         // Without disk control the Disks page stays hidden.
         SDLTest_AssertCheck(menu->disksButton->visible == nk_false, "Disks page hidden without disk control");
 
@@ -2430,6 +2448,21 @@ static int SDLCALL test_Menu(void *arg) {
         }
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
 
+        // Adding a second disk brings up the Disks page on the next open, and
+        // picking a radio runs the eject/set/insert swap.
+        SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == true, "EjectDisk before adding a disk");
+        SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, TEST_CONTENT_PATH) == true, "AddDiskImage adds a second disk");
+        SDLTest_AssertCheck(SDL_Libretro_InsertDisk(lr) == true, "InsertDisk after adding");
+        SDL_Libretro_SetMenuOpen(menu, false);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_SetMenuOpen(menu, true);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->disksButton->visible == nk_true, "Disks page appears with two disks");
+        menu->diskSelected = 1;
+        SDL_Libretro_MenuDiskClicked(NULL, menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetDiskIndex(lr) == 1, "The menu swap changes the disk index");
+
         // About page with a loaded core: core and content lines appear.
         SDL_Libretro_MenuBuildAbout(menu);
         bool aboutHasCore = false;
@@ -2473,6 +2506,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
     // A rebound key persists through the config file alongside the menu state.
     SDL_Libretro_SetKeyboardMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_K);
+    SDL_Libretro_SetRewindMemoryLimit(lrSave, (size_t)48 << 20);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
     SDL_Libretro* lrLoad = SDL_Libretro_Create();
@@ -2487,6 +2521,8 @@ static int SDLCALL test_Menu(void *arg) {
         "Keyboard bindings persist through the config file");
     SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X,
         "Untouched bindings keep their defaults");
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lrLoad) == (size_t)48 << 20,
+        "Rewind memory limit persists through the config file");
     if (menuLoad != NULL) {
         menuLoad->muteChecked = nk_false;
         SDL_Libretro_MenuMuteChanged(menuLoad, NULL);

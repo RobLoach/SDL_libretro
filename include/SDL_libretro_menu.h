@@ -485,6 +485,24 @@ static nk_console* SDL_Libretro_MenuOnChanged(nk_console* widget, nk_console_eve
 }
 
 /**
+ * Move the active parent up to root when it sits inside root's subtree, so
+ * rebuilding root's children can't leave it pointing at freed widgets.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuGuardActiveParent(SDL_LibretroMenu* menu, nk_console* root) {
+    nk_console* active = nk_console_active_parent(menu->console);
+    for (nk_console* it = active; it != NULL; it = it->parent) {
+        if (it == root) {
+            if (active != root) {
+                nk_console_set_active_parent(root);
+            }
+            return;
+        }
+    }
+}
+
+/**
  * One menu entry created through the shared button/checkbox path; the menu's
  * own widgets and the application-added entries both use it.
  *
@@ -757,7 +775,9 @@ static void SDL_Libretro_MenuVSyncChanged(SDL_LibretroMenu* menu, void* userdata
  */
 static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
-    SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true, 0, 0);
+    // Keep the capacity and interval the app configured.
+    SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true,
+                                  menu->lr->rewindCapacity, menu->lr->rewindCaptureInterval);
 }
 
 /**
@@ -1195,6 +1215,7 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
 
     // Drop the previous widgets before the option states they point into.
+    SDL_Libretro_MenuGuardActiveParent(menu, menu->optionsButton);
     nk_console_free_children(menu->optionsButton);
     SDL_Libretro_MenuFreeOptionStates(menu);
 
@@ -1481,6 +1502,7 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
 
     // Drop the previous widgets before the port states they point into.
+    SDL_Libretro_MenuGuardActiveParent(menu, menu->controllersButton);
     nk_console_free_children(menu->controllersButton);
     SDL_Libretro_MenuFreePortStates(menu);
 
@@ -1901,7 +1923,10 @@ static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
     SDL_GetRenderVSync(lr->renderer, &vsync);
     menu->vsyncChecked = (nk_bool)(vsync != 0);
     menu->rewindChecked = (nk_bool)SDL_Libretro_GetRewindEnabled(lr);
-    menu->rewindBufferMB = (int)(SDL_Libretro_GetRewindMemoryLimit(lr) >> 20);
+    // Clamped to the widget's range: nk_property clamps the bound value while
+    // rendering, and the CHANGED writeback would shrink a larger app budget.
+    size_t rewindLimitMB = SDL_Libretro_GetRewindMemoryLimit(lr) >> 20;
+    menu->rewindBufferMB = rewindLimitMB > 1024 ? 1024 : (int)rewindLimitMB;
 }
 
 /**
@@ -1916,9 +1941,13 @@ static void SDL_Libretro_MenuDiskClicked(nk_console* widget, void* user_data) {
     if (menu->diskSelected < 0 || (unsigned)menu->diskSelected == SDL_Libretro_GetDiskIndex(lr)) {
         return;
     }
-    if (SDL_Libretro_EjectDisk(lr) &&
-        SDL_Libretro_SetDiskIndex(lr, (unsigned)menu->diskSelected) &&
-        SDL_Libretro_InsertDisk(lr)) {
+    bool changed = false;
+    if (SDL_Libretro_EjectDisk(lr)) {
+        changed = SDL_Libretro_SetDiskIndex(lr, (unsigned)menu->diskSelected);
+        // Close the tray even when the index change failed.
+        changed = SDL_Libretro_InsertDisk(lr) && changed;
+    }
+    if (changed) {
         nk_console_show_message(menu->console, "Disk changed");
     }
     else {
@@ -1954,12 +1983,17 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
 
     // Drop the previous widgets before the labels they point into.
+    SDL_Libretro_MenuGuardActiveParent(menu, menu->disksButton);
     nk_console_free_children(menu->disksButton);
     SDL_Libretro_MenuFreeDiskLabels(menu);
 
     unsigned count = SDL_Libretro_GetDiskCount(lr);
     menu->builtDiskCount = count;
     if (count < 2) {
+        // The page is going away; don't strand the user on an empty parent.
+        if (nk_console_active_parent(menu->console) == menu->disksButton) {
+            nk_console_set_active_parent(menu->console);
+        }
         menu->disksButton->visible = nk_false;
         return;
     }
@@ -2185,6 +2219,9 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
     if (menu == NULL) {
         return;
     }
+    // Queued menu events carry this menu in data2; drop them before it goes away.
+    SDL_FlushEvent(SDL_EVENT_LIBRETRO_MENU_OPENED);
+    SDL_FlushEvent(SDL_EVENT_LIBRETRO_MENU_CLOSED);
     if (menu->settingsDirty) {
         SDL_Libretro_MenuSaveState(menu);
     }
@@ -2332,26 +2369,16 @@ bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path) {
         return SDL_InvalidParamError("menu");
     }
     SDL_Libretro_SetMenuOpen(menu, true);
-    // Build the lazy pages (Core Options, Controllers, Disks) so their paths
-    // resolve before the first frame.
+    // Do the just-opened work here so the next SDL_Libretro_UpdateMenu()
+    // doesn't rebuild the lazy pages again underneath the navigation, and so
+    // their paths resolve before the first frame.
     SDL_Libretro_MenuRebuildCoreMenus(menu, true);
+    SDL_Libretro_MenuSyncSettings(menu);
+    SDL_Libretro_MenuSyncSettingsBuffers(menu);
+    SDL_Libretro_MenuSyncKeyBinds(menu);
+    menu->wasOpen = true;
 
-    // Mirrors nk_console_navigate_to_path() without its window-scroll reset,
-    // which asserts outside a Nuklear frame; the console re-centers scroll
-    // on the active widget when it renders.
-    nk_console* target = nk_console_find_by_path(menu->console, path);
-    if (target == NULL) {
-        return false;
-    }
-    nk_console_top_data* topData = (nk_console_top_data*)menu->console->data;
-    if (target->children != NULL) {
-        topData->active_parent = target;
-    }
-    else {
-        topData->active_parent = target->parent != NULL ? target->parent : menu->console;
-        nk_console_set_active_widget(target);
-    }
-    return true;
+    return nk_console_navigate_to_path(menu->console, path) == nk_true;
 }
 
 void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {

@@ -195,8 +195,8 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  */
 #define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
 
-#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading; data2 is the core name. @see SDL_Libretro_GetCoreName() */
-#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu; data2 is the game name. @see SDL_Libretro_GetGameName() */
+#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading; data2 is the core name, valid until the next load or unload. @see SDL_Libretro_GetCoreName() */
+#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu; data2 is the game name, valid until the next load or unload. @see SDL_Libretro_GetGameName() */
 #define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /** The menu became visible; the game pauses. data2 is the SDL_LibretroMenu. */
 #define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /** The menu was dismissed; the game resumes. data2 is the SDL_LibretroMenu. */
 #define SDL_EVENT_LIBRETRO_CORE_UNLOADED (SDL_EVENT_LIBRETRO | 0xF04) /** The core was unloaded, along with any game it ran. */
@@ -406,7 +406,7 @@ bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
 
 /**
  * Opens the menu and navigates to a page by its slash-separated label path,
- * e.g. "Settings/Audio & Video", "Core Options" or "Disks".
+ * e.g. "Settings/Audio & Video", "Settings/Core Options" or "Disks".
  *
  * \return true when the path resolved; the menu stays open either way.
  */
@@ -423,6 +423,11 @@ SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
 typedef void (*SDL_LibretroMenuCallback)(SDL_LibretroMenu* menu, void* userdata);
 
 bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata);
+
+/**
+ * Adds a checkbox to the top of the menu. The value pointer is written on
+ * every toggle, so it must outlive the menu.
+ */
 bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
 
 /**

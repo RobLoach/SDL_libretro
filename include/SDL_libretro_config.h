@@ -74,7 +74,7 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     if (INI_HasValue(ini, NULL, "rewindenabled"))
         SDL_Libretro_SetRewindEnabled(lr, INI_GetBoolean(ini, NULL, "rewindenabled", false), 0, 0);
     if (INI_HasValue(ini, NULL, "rewindmemorylimit"))
-        SDL_Libretro_SetRewindMemoryLimit(lr, (size_t)INI_GetInt(ini, NULL, "rewindmemorylimit", 0));
+        SDL_Libretro_SetRewindMemoryLimit(lr, (size_t)INI_GetInt(ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr)));
     if (INI_HasValue(ini, NULL, "filebrowserdirectory"))
         SDL_strlcpy(lr->fileBrowserStartDirectory, INI_GetString(ini, NULL, "filebrowserdirectory", ""), sizeof(lr->fileBrowserStartDirectory));
 

@@ -103,6 +103,10 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     SDL_Libretro_FreeMessages(lr);
     SDL_Libretro_CloseConfig(lr);
 
+    // Queued SDL_libretro events (including the unloads pushed above) carry
+    // pointers into this context; drop them before it goes away.
+    SDL_FlushEvents(SDL_EVENT_LIBRETRO, SDL_EVENT_LIBRETRO | 0xFFF);
+
     SDL_free(lr);
 }
 

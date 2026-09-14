@@ -492,8 +492,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!data) return true;
             const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
             // Geometry updates during runtime are applied in SDL_Libretro_VideoRefresh().
-            lr->core.aspectRatio = geom->aspect_ratio;
-            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
+            // Cores may call this every frame, so only report actual changes.
+            if (geom->aspect_ratio != lr->core.aspectRatio) {
+                lr->core.aspectRatio = geom->aspect_ratio;
+                SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
+            }
             return true;
         }
 
