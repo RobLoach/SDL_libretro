@@ -1425,7 +1425,9 @@ static nk_console* SDL_Libretro_MenuAddSettingDir(nk_console* parent, const char
     // The web build's virtual file system isn't worth browsing.
     return SDL_Libretro_MenuAddSettingTextedit(parent, label, menu, buffer, bufferSize);
 #else
-    return SDL_Libretro_MenuOnChanged(nk_console_dir_action(parent, label, buffer, (int)bufferSize),
+    // nk_console_dir (not dir_action) keeps the label in its own column, so
+    // the directory type stays visible next to the picked path.
+    return SDL_Libretro_MenuOnChanged(nk_console_dir(parent, label, buffer, (int)bufferSize),
                                       &SDL_Libretro_MenuSettingChanged, menu);
 #endif
 }
