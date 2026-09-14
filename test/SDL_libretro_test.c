@@ -2126,7 +2126,8 @@ static int SDLCALL test_Events(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &payload) == true,
         "A watch that sets user.code marks the env command handled");
     SDL_RemoveEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
-    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+    SDLTest_AssertCheck(test_DrainEvents(cameraEvent, NULL) == 0,
+        "A claimed env command is consumed by the watch, not queued");
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
     // Real loads push the lifecycle events, with the loaded name in data2.

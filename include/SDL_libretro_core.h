@@ -1248,7 +1248,16 @@ static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data
     event.user.type = SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE));
     event.user.data1 = lr;
     event.user.data2 = data;
-    return SDL_PushEvent(&event) && event.user.code != 0;
+    if (!SDL_PushEvent(&event) || event.user.code == 0) {
+        return false;
+    }
+
+    // A watch implemented the command, so each event is delivered exactly
+    // once: the queued copy would only re-report it with an expired data
+    // pointer, so drop it. Unclaimed commands stay queued for observation.
+    SDL_Event claimed;
+    SDL_PeepEvents(&claimed, 1, SDL_GETEVENT, event.user.type, event.user.type);
+    return true;
 }
 
 // Directory
