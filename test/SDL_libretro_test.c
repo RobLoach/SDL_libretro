@@ -2382,6 +2382,14 @@ static int SDLCALL test_Menu(void *arg) {
         // Without disk control the Disks page stays hidden.
         SDLTest_AssertCheck(menu->disksButton->visible == nk_false, "Disks page hidden without disk control");
 
+        // The Rewind toggle mirrors the live rewind state when settings sync.
+        SDL_Libretro_SetRewindEnabled(lr, true, 8, 1);
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDLTest_AssertCheck(menu->rewindChecked == nk_true, "Rewind toggle syncs from the context");
+        menu->rewindChecked = nk_false;
+        SDL_Libretro_MenuRewindChanged(menu, NULL);
+        SDLTest_AssertCheck(SDL_Libretro_GetRewindEnabled(lr) == false, "Rewind toggle disables rewind");
+
         // A progress-type OSD message surfaces as the top progress bar.
         SDL_Libretro_OsdPush(lr, "Working", 60.0, 0, RETRO_MESSAGE_TYPE_PROGRESS, 50);
         SDL_Libretro_SetMenuOpen(menu, true);

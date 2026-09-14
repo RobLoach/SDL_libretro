@@ -201,6 +201,7 @@ struct SDL_LibretroMenu {
     nk_bool fullscreenChecked;
     nk_bool vsyncChecked;
     nk_bool muteChecked;
+    nk_bool rewindChecked;
     float preMuteVolume; /** Volume to restore when unmuting. */
 
     // Load Game
@@ -750,6 +751,14 @@ static void SDL_Libretro_MenuVSyncChanged(SDL_LibretroMenu* menu, void* userdata
     (void)userdata;
     SDL_SetRenderVSync(menu->lr->renderer, menu->vsyncChecked == nk_true ? 1 : 0);
     menu->settingsDirty = true;
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
+    SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true, 0, 0);
 }
 
 /**
@@ -1863,6 +1872,7 @@ static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
     int vsync = 0;
     SDL_GetRenderVSync(lr->renderer, &vsync);
     menu->vsyncChecked = (nk_bool)(vsync != 0);
+    menu->rewindChecked = (nk_bool)SDL_Libretro_GetRewindEnabled(lr);
 }
 
 /**
@@ -1999,9 +2009,12 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
                                             menu->usernameBuffer, sizeof(menu->usernameBuffer)),
         "Reported to cores that ask for a username");
 
-    // Rewind buffer usage, hidden unless rewind runs with a memory limit.
+    // Rewind toggle, with the buffer usage below it; the bar hides unless
+    // rewind runs with a memory limit.
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuAddCheckbox(menu, settings, "Rewind", &menu->rewindChecked, NULL, &SDL_Libretro_MenuRewindChanged, NULL),
+        "Capture state snapshots so gameplay can rewind");
     menu->rewindProgressWidget = nk_console_progress(settings, "Rewind Buffer", &menu->rewindProgressValue, 100);
-    menu->rewindProgressWidget->selectable = nk_false; // Display only.
     nk_console_set_tooltip(menu->rewindProgressWidget, "Memory used by the rewind buffer");
     menu->rewindProgressWidget->visible = nk_false;
 
@@ -2032,7 +2045,6 @@ static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
 
     // Progress reported by the core through a progress-type OSD message.
     menu->osdProgressWidget = nk_console_progress(menu->console, "Progress", &menu->osdProgressValue, 100);
-    menu->osdProgressWidget->selectable = nk_false; // Display only.
     menu->osdProgressWidget->visible = nk_false;
 
     // Resume
