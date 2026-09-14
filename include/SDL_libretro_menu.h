@@ -186,6 +186,7 @@ struct SDL_LibretroMenu {
     // Widgets whose visibility depends on the running game.
     nk_console* resumeButton;
     nk_console* stateRow;
+    nk_console* screenshotButton;
     nk_console* resetButton;
     nk_console* optionsButton;
     nk_console* controllersButton;
@@ -234,7 +235,6 @@ struct SDL_LibretroMenu {
     nk_console* rewindProgressWidget; /** Settings bar showing rewind buffer usage. */
     nk_size rewindProgressValue;
 
-    nk_console* gameRule; /** Separator under the game actions; hidden with them. */
     nk_console* quitButton; /** Kept as the last top-level entry when the app adds its own. */
 
     // Settings textedit buffers (directories + username).
@@ -1965,6 +1965,23 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
 static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console* settings = SDL_Libretro_MenuAddSubmenu(menu->console, "Settings", NK_SYMBOL_HAMBURGER);
 
+    // General
+    nk_console* general = SDL_Libretro_MenuAddSubmenu(settings, "General", NK_SYMBOL_TRIANGLE_RIGHT);
+    SDL_Libretro_MenuSyncSettingsBuffers(menu);
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuAddSettingTextedit(general, "Username", menu,
+                                            menu->usernameBuffer, sizeof(menu->usernameBuffer)),
+        "Reported to cores that ask for a username");
+
+    // Rewind toggle, with the buffer usage below it; the bar hides unless
+    // rewind runs with a memory limit.
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuAddCheckbox(menu, general, "Rewind", &menu->rewindChecked, NULL, &SDL_Libretro_MenuRewindChanged, NULL),
+        "Capture state snapshots so gameplay can rewind");
+    menu->rewindProgressWidget = nk_console_progress(general, "Rewind Buffer", &menu->rewindProgressValue, 100);
+    nk_console_set_tooltip(menu->rewindProgressWidget, "Memory used by the rewind buffer");
+    menu->rewindProgressWidget->visible = nk_false;
+
     // Audio & Video
     nk_console* audioVideo = SDL_Libretro_MenuAddSubmenu(settings, "Audio & Video", NK_SYMBOL_TRIANGLE_RIGHT);
 
@@ -1990,6 +2007,16 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
                                    &SDL_Libretro_MenuUIScaleChanged, menu),
         "Menu size; Auto picks one from the resolution");
 
+    // Core Options, populated lazily once a core registers options.
+    menu->optionsButton = nk_console_button(settings, "Core Options");
+    nk_console_button_set_symbol(menu->optionsButton, NK_SYMBOL_TRIANGLE_RIGHT);
+    menu->optionsButton->visible = nk_false;
+
+    // Controllers, populated lazily once a core registers controller info.
+    menu->controllersButton = nk_console_button(settings, "Controllers");
+    nk_console_button_set_symbol(menu->controllersButton, NK_SYMBOL_TRIANGLE_RIGHT);
+    menu->controllersButton->visible = nk_false;
+
     // Keyboard bindings for player 1's virtual controller.
     nk_console* keyboard = SDL_Libretro_MenuAddSubmenu(settings, "Keyboard", NK_SYMBOL_TRIANGLE_RIGHT);
     nk_console_set_tooltip(keyboard, "Keyboard keys for Player 1's controller");
@@ -2001,22 +2028,6 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
             nk_console_input_key(keyboard, SDL_Libretro_JoypadButtonNames[i], &menu->keyBinds[i].rune),
             &SDL_Libretro_MenuKeyBindChanged, &menu->keyBinds[i]);
     }
-
-    // Username
-    SDL_Libretro_MenuSyncSettingsBuffers(menu);
-    nk_console_set_tooltip(
-        SDL_Libretro_MenuAddSettingTextedit(settings, "Username", menu,
-                                            menu->usernameBuffer, sizeof(menu->usernameBuffer)),
-        "Reported to cores that ask for a username");
-
-    // Rewind toggle, with the buffer usage below it; the bar hides unless
-    // rewind runs with a memory limit.
-    nk_console_set_tooltip(
-        SDL_Libretro_MenuAddCheckbox(menu, settings, "Rewind", &menu->rewindChecked, NULL, &SDL_Libretro_MenuRewindChanged, NULL),
-        "Capture state snapshots so gameplay can rewind");
-    menu->rewindProgressWidget = nk_console_progress(settings, "Rewind Buffer", &menu->rewindProgressValue, 100);
-    nk_console_set_tooltip(menu->rewindProgressWidget, "Memory used by the rewind buffer");
-    menu->rewindProgressWidget->visible = nk_false;
 
     // Directories
     nk_console* directories = SDL_Libretro_MenuAddSubmenu(settings, "Directories", NK_SYMBOL_TRIANGLE_RIGHT);
@@ -2073,6 +2084,9 @@ static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
     }
     nk_console_row_end(menu->stateRow);
 
+    // Screenshot
+    menu->screenshotButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Screenshot", NK_SYMBOL_CIRCLE_OUTLINE, &SDL_Libretro_MenuScreenshotClicked, NULL);
+
     // Reset
     menu->resetButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Reset", NK_SYMBOL_CIRCLE_SOLID, &SDL_Libretro_MenuResetClicked, NULL);
 
@@ -2081,27 +2095,12 @@ static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(menu->disksButton, "Swap disks for multi-disk games");
     menu->disksButton->visible = nk_false;
 
-    // Separates the game actions above from the pages below; hidden with them.
-    menu->gameRule = nk_console_rule_horizontal(menu->console, menu->ctx->style.window.border_color, nk_false);
-
-    // Core Options, populated lazily once a core registers options.
-    menu->optionsButton = nk_console_button(menu->console, "Core Options");
-    nk_console_button_set_symbol(menu->optionsButton, NK_SYMBOL_TRIANGLE_RIGHT);
-    menu->optionsButton->visible = nk_false;
-
-    // Controllers, populated lazily once a core registers controller info.
-    menu->controllersButton = nk_console_button(menu->console, "Controllers");
-    nk_console_button_set_symbol(menu->controllersButton, NK_SYMBOL_TRIANGLE_RIGHT);
-    menu->controllersButton->visible = nk_false;
-
     SDL_Libretro_MenuBuildSettings(menu);
 
     // About, rebuilt by the CLICKED handler whenever the page opens.
     menu->aboutButton = SDL_Libretro_MenuAddButton(menu, menu->console, "About", NK_SYMBOL_TRIANGLE_RIGHT, &SDL_Libretro_MenuAboutOpened, NULL);
 
-    // Quit after a separator, kept as the last top-level entry when the app
-    // adds its own; application entries land between the rule and Quit.
-    nk_console_rule_horizontal(menu->console, menu->ctx->style.window.border_color, nk_false);
+    // Quit, kept as the last top-level entry when the app adds its own.
     menu->quitButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Quit", NK_SYMBOL_X, &SDL_Libretro_MenuQuitClicked, NULL);
 }
 
@@ -2352,8 +2351,8 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     bool gameReady = SDL_Libretro_IsGameReady(lr);
     menu->resumeButton->visible = (nk_bool)gameReady;
     menu->stateRow->visible = (nk_bool)gameReady;
+    menu->screenshotButton->visible = (nk_bool)gameReady;
     menu->resetButton->visible = (nk_bool)gameReady;
-    menu->gameRule->visible = (nk_bool)gameReady;
 
     // Progress-type OSD messages get a live bar at the top of the menu.
     int osdProgress = SDL_Libretro_GetMessageProgress(lr);

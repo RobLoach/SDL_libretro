@@ -226,7 +226,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if (!app->menu) {
         SDL_Log("Failed to create menu: %s", SDL_GetError());
     }
-    SDL_Libretro_AddMenuButton(app->menu, "Screenshot", &SDL_Libretro_MenuScreenshotClicked, NULL);
 
 #ifdef __EMSCRIPTEN__
     // Hand the app pointer to the drag & drop bridge; it passes it back on drop.
