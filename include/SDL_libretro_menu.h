@@ -203,6 +203,7 @@ struct SDL_LibretroMenu {
     nk_bool vsyncChecked;
     nk_bool muteChecked;
     nk_bool rewindChecked;
+    int rewindBufferMB; /** Rewind memory limit in MB; 0 for no limit. */
     float preMuteVolume; /** Volume to restore when unmuting. */
 
     // Load Game
@@ -232,8 +233,6 @@ struct SDL_LibretroMenu {
     nk_console* osdProgressWidget; /** Top-level bar for progress-type OSD messages. */
     nk_size osdProgressValue;
     char osdProgressLabel[128];
-    nk_console* rewindProgressWidget; /** Settings bar showing rewind buffer usage. */
-    nk_size rewindProgressValue;
 
     nk_console* quitButton; /** Kept as the last top-level entry when the app adds its own. */
 
@@ -759,6 +758,15 @@ static void SDL_Libretro_MenuVSyncChanged(SDL_LibretroMenu* menu, void* userdata
 static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
     SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true, 0, 0);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuRewindBufferChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetRewindMemoryLimit(menu->lr, (size_t)menu->rewindBufferMB << 20);
 }
 
 /**
@@ -1405,6 +1413,24 @@ static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const
 }
 
 /**
+ * Create a directory-picker widget under @p parent and wire it to the
+ * consolidated Settings callback.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuAddSettingDir(nk_console* parent, const char* label,
+                                                  SDL_LibretroMenu* menu,
+                                                  char* buffer, size_t bufferSize) {
+#ifdef __EMSCRIPTEN__
+    // The web build's virtual file system isn't worth browsing.
+    return SDL_Libretro_MenuAddSettingTextedit(parent, label, menu, buffer, bufferSize);
+#else
+    return SDL_Libretro_MenuOnChanged(nk_console_dir_action(parent, label, buffer, (int)bufferSize),
+                                      &SDL_Libretro_MenuSettingChanged, menu);
+#endif
+}
+
+/**
  * @internal
  */
 static void SDL_Libretro_MenuFreePortStates(SDL_LibretroMenu* menu) {
@@ -1873,6 +1899,7 @@ static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
     SDL_GetRenderVSync(lr->renderer, &vsync);
     menu->vsyncChecked = (nk_bool)(vsync != 0);
     menu->rewindChecked = (nk_bool)SDL_Libretro_GetRewindEnabled(lr);
+    menu->rewindBufferMB = (int)(SDL_Libretro_GetRewindMemoryLimit(lr) >> 20);
 }
 
 /**
@@ -1973,19 +2000,19 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
                                             menu->usernameBuffer, sizeof(menu->usernameBuffer)),
         "Reported to cores that ask for a username");
 
-    // Rewind toggle, with the buffer usage below it; the bar hides unless
-    // rewind runs with a memory limit.
+    // Rewind toggle, with its memory budget below it.
     nk_console_set_tooltip(
         SDL_Libretro_MenuAddCheckbox(menu, general, "Rewind", &menu->rewindChecked, NULL, &SDL_Libretro_MenuRewindChanged, NULL),
         "Capture state snapshots so gameplay can rewind");
-    menu->rewindProgressWidget = nk_console_progress(general, "Rewind Buffer", &menu->rewindProgressValue, 100);
-    nk_console_set_tooltip(menu->rewindProgressWidget, "Memory used by the rewind buffer");
-    menu->rewindProgressWidget->visible = nk_false;
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_property_int(general, "Rewind Buffer (MB)", 0, &menu->rewindBufferMB, 1024, 8, 1.0f),
+                                   &SDL_Libretro_MenuRewindBufferChanged, menu),
+        "Memory the rewind buffer may use; 0 for no limit");
 
     // Audio & Video
     nk_console* audioVideo = SDL_Libretro_MenuAddSubmenu(settings, "Audio & Video", NK_SYMBOL_TRIANGLE_RIGHT);
 
-    SDL_Libretro_MenuOnChanged(nk_console_property_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f),
+    SDL_Libretro_MenuOnChanged(nk_console_knob_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f),
                                &SDL_Libretro_MenuVolumeChanged, menu);
     nk_console_set_tooltip(
         SDL_Libretro_MenuAddCheckbox(menu, audioVideo, "Mute", &menu->muteChecked, NULL, &SDL_Libretro_MenuMuteChanged, NULL),
@@ -2032,14 +2059,14 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     // Directories
     nk_console* directories = SDL_Libretro_MenuAddSubmenu(settings, "Directories", NK_SYMBOL_TRIANGLE_RIGHT);
 
-    SDL_Libretro_MenuAddSettingTextedit(directories, "Cores", menu,
-                                        menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
-    SDL_Libretro_MenuAddSettingTextedit(directories, "Saves", menu,
-                                        menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
-    SDL_Libretro_MenuAddSettingTextedit(directories, "System", menu,
-                                        menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
-    SDL_Libretro_MenuAddSettingTextedit(directories, "Content", menu,
-                                        menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Cores", menu,
+                                   menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Saves", menu,
+                                   menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "System", menu,
+                                   menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Content", menu,
+                                   menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
 }
 
 /**
@@ -2365,17 +2392,6 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     }
     else {
         menu->osdProgressWidget->visible = nk_false;
-    }
-
-    // Rewind buffer fullness against its memory limit.
-    size_t rewindLimit = SDL_Libretro_GetRewindMemoryLimit(lr);
-    if (SDL_Libretro_GetRewindEnabled(lr) && rewindLimit > 0) {
-        size_t rewindUsage = SDL_Libretro_GetRewindMemoryUsage(lr);
-        menu->rewindProgressValue = (nk_size)(rewindUsage >= rewindLimit ? 100 : rewindUsage * 100 / rewindLimit);
-        menu->rewindProgressWidget->visible = nk_true;
-    }
-    else {
-        menu->rewindProgressWidget->visible = nk_false;
     }
 
     // Settings that can change outside the menu.

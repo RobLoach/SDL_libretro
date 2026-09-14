@@ -2390,6 +2390,16 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_MenuRewindChanged(menu, NULL);
         SDLTest_AssertCheck(SDL_Libretro_GetRewindEnabled(lr) == false, "Rewind toggle disables rewind");
 
+        // The rewind buffer setting drives the memory limit, in MB.
+        menu->rewindBufferMB = 16;
+        SDL_Libretro_MenuRewindBufferChanged(NULL, menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) == (size_t)16 << 20,
+            "Rewind buffer setting applies the memory limit");
+        SDL_Libretro_SetRewindMemoryLimit(lr, 32 << 20);
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDLTest_AssertCheck(menu->rewindBufferMB == 32, "Rewind buffer setting syncs from the context");
+        SDL_Libretro_SetRewindMemoryLimit(lr, 0);
+
         // A progress-type OSD message surfaces as the top progress bar.
         SDL_Libretro_OsdPush(lr, "Working", 60.0, 0, RETRO_MESSAGE_TYPE_PROGRESS, 50);
         SDL_Libretro_SetMenuOpen(menu, true);
