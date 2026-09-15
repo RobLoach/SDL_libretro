@@ -21,6 +21,17 @@ static int SDLCALL test_CreateDestroy(void *arg) {
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START] == SDL_SCANCODE_RETURN, "Start mapped to Return");
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_UP] == SDL_SCANCODE_UP, "Up mapped to Up");
 
+    // Default Gamepad Mappings
+    SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_SOUTH, "B mapped to South");
+    SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_L3] == SDL_GAMEPAD_BUTTON_LEFT_STICK, "L3 mapped to Left Stick");
+
+    // SetGamepadMapping bounds and application.
+    SDL_Libretro_SetGamepadMapping(NULL, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lr, -1, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lr, SDL_LIBRETRO_MAX_JOYPAD_BUTTONS, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
+    SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH, "SetGamepadMapping applies");
+
     SDL_Libretro_Destroy(lr);
     SDL_Libretro_Destroy(NULL);
 
@@ -2398,6 +2409,24 @@ static int SDLCALL test_Menu(void *arg) {
             "An empty capture reverts to the current binding");
         SDL_Libretro_SetKeyboardMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_Z);
 
+        // Gamepad captures translate through nk_gamepad and revert when
+        // there's no SDL equivalent.
+        SDLTest_AssertCheck(SDL_Libretro_MenuNkButtonFromSDL(SDL_GAMEPAD_BUTTON_SOUTH) == NK_GAMEPAD_BUTTON_A,
+            "South maps to nk_gamepad A");
+        SDLTest_AssertCheck(nk_gamepad_sdl3_map_button(NK_GAMEPAD_BUTTON_A) == SDL_GAMEPAD_BUTTON_SOUTH,
+            "nk_gamepad A maps back to South");
+        menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B].captured = NK_GAMEPAD_BUTTON_Y;
+        SDL_Libretro_MenuPadBindChanged(NULL, &menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
+            "A captured pad button applies to the mapping");
+        menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B].captured = NK_GAMEPAD_BUTTON_INVALID;
+        SDL_Libretro_MenuPadBindChanged(NULL, &menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
+            "An empty pad capture keeps the mapping");
+        SDLTest_AssertCheck(menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B].captured == NK_GAMEPAD_BUTTON_Y,
+            "An empty pad capture reverts to the current binding");
+        SDL_Libretro_SetGamepadMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_SOUTH);
+
         // Without disk control the Disks page stays hidden.
         SDLTest_AssertCheck(menu->disksButton->visible == nk_false, "Disks page hidden without disk control");
 
@@ -2507,6 +2536,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
     // A rebound key persists through the config file alongside the menu state.
     SDL_Libretro_SetKeyboardMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_K);
+    SDL_Libretro_SetGamepadMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
     SDL_Libretro_SetRewindMemoryLimit(lrSave, (size_t)48 << 20);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
@@ -2522,6 +2552,8 @@ static int SDLCALL test_Menu(void *arg) {
         "Keyboard bindings persist through the config file");
     SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X,
         "Untouched bindings keep their defaults");
+    SDLTest_AssertCheck(lrLoad->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
+        "Gamepad bindings persist through the config file");
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lrLoad) == (size_t)48 << 20,
         "Rewind memory limit persists through the config file");
     if (menuLoad != NULL) {

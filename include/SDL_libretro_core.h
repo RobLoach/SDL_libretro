@@ -75,6 +75,9 @@ SDL_Libretro* SDL_Libretro_Create(void) {
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_L3] = SDL_SCANCODE_D;
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_R3] = SDL_SCANCODE_F;
 
+    // Gamepad Mappings
+    SDL_memcpy(lr->gamepadButtons, SDL_Libretro_DefaultGamepadButtons, sizeof(lr->gamepadButtons));
+
     return lr;
 }
 

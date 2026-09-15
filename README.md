@@ -80,7 +80,7 @@ To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking 
 
 The menu reports what it does through SDL events (see [Events](#events)). Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`, and jump straight to a page with `SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video")`.
 
-Besides loading games and core options, the menu rebinds Player 1's keyboard (Settings > Keyboard), swaps disks for multi-disk games (Disks), and shows core-reported progress messages.
+Besides loading games and core options, the menu rebinds Player 1's keyboard (Settings > Keyboard) and the gamepad buttons for every port (Settings > Gamepad, or `SDL_Libretro_SetGamepadMapping()` from code), swaps disks for multi-disk games (Disks), and shows core-reported progress messages.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION

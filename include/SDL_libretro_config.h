@@ -89,6 +89,17 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         }
     }
 
+    // Gamepad bindings, stored as SDL gamepad button names.
+    for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
+        if (!INI_HasValue(ini, "gamepad", SDL_Libretro_JoypadButtonNames[button])) {
+            continue;
+        }
+        SDL_GamepadButton pad = SDL_GetGamepadButtonFromString(INI_GetString(ini, "gamepad", SDL_Libretro_JoypadButtonNames[button], ""));
+        if (pad != SDL_GAMEPAD_BUTTON_INVALID) {
+            SDL_Libretro_SetGamepadMapping(lr, button, pad);
+        }
+    }
+
     return true;
 }
 
@@ -185,6 +196,8 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
 
     for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
         INI_SetString(lr->ini, "keyboard", SDL_Libretro_JoypadButtonNames[button], SDL_GetScancodeName(lr->keyboardPlayer1[button]));
+        const char* padName = SDL_GetGamepadStringForButton(lr->gamepadButtons[button]);
+        INI_SetString(lr->ini, "gamepad", SDL_Libretro_JoypadButtonNames[button], padName != NULL ? padName : "");
     }
 
     return INI_Save(lr->ini, lr->iniFile);
