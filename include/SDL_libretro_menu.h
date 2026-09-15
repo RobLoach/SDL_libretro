@@ -170,6 +170,17 @@ typedef struct SDL_LibretroMenuKeyBind {
     nk_rune rune; /** The captured key, as an NK_CONSOLE_KEY_* value. */
 } SDL_LibretroMenuKeyBind;
 
+/**
+ * Per-button UI state for the "Gamepad" bindings submenu.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuPadBind {
+    SDL_LibretroMenu* menu;
+    int button; /** The RETRO_DEVICE_ID_JOYPAD_* index. */
+    enum nk_gamepad_button captured; /** The captured gamepad button. */
+} SDL_LibretroMenuPadBind;
+
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
     struct nk_context* ctx;
@@ -222,6 +233,9 @@ struct SDL_LibretroMenu {
 
     // Keyboard bindings for player 1 (Settings > Keyboard).
     SDL_LibretroMenuKeyBind keyBinds[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+
+    // Gamepad bindings for every port (Settings > Gamepad).
+    SDL_LibretroMenuPadBind padBinds[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
 
     // Disks, rebuilt when the menu opens.
     nk_console* disksButton;
@@ -914,6 +928,51 @@ static void SDL_Libretro_MenuKeyBindChanged(nk_console* widget, void* user_data)
         return;
     }
     SDL_Libretro_SetKeyboardMapping(menu->lr, bind->button, scancode);
+}
+
+/**
+ * The nk_gamepad button whose SDL equivalent is the given button, for
+ * showing the current binding in a capture widget. NK_GAMEPAD_BUTTON_INVALID
+ * when nk_gamepad has no equivalent (e.g. the trigger paddle defaults).
+ *
+ * @internal
+ */
+static enum nk_gamepad_button SDL_Libretro_MenuNkButtonFromSDL(SDL_GamepadButton button) {
+    for (int i = NK_GAMEPAD_BUTTON_FIRST; i <= NK_GAMEPAD_BUTTON_R3; i++) {
+        if (nk_gamepad_sdl3_map_button(i) == button) {
+            return (enum nk_gamepad_button)i;
+        }
+    }
+    return NK_GAMEPAD_BUTTON_INVALID;
+}
+
+/**
+ * Refresh the Gamepad page's captured buttons from the live mapping.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSyncPadBinds(SDL_LibretroMenu* menu) {
+    for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
+        menu->padBinds[i].captured = SDL_Libretro_MenuNkButtonFromSDL(menu->lr->gamepadButtons[i]);
+    }
+}
+
+/**
+ * Apply a captured gamepad button to the mapping; captures without an SDL
+ * equivalent (including a timed-out prompt) revert to the current binding.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuPadBindChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuPadBind* bind = (SDL_LibretroMenuPadBind*)user_data;
+    SDL_LibretroMenu* menu = bind->menu;
+    SDL_GamepadButton button = nk_gamepad_sdl3_map_button((int)bind->captured);
+    if (button == SDL_GAMEPAD_BUTTON_INVALID) {
+        bind->captured = SDL_Libretro_MenuNkButtonFromSDL(menu->lr->gamepadButtons[bind->button]);
+        return;
+    }
+    SDL_Libretro_SetGamepadMapping(menu->lr, bind->button, button);
 }
 
 /**
@@ -2089,6 +2148,18 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
             &SDL_Libretro_MenuKeyBindChanged, &menu->keyBinds[i]);
     }
 
+    // Gamepad bindings, shared by every controller port.
+    nk_console* gamepad = SDL_Libretro_MenuAddSubmenu(settings, "Gamepad", NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_set_tooltip(gamepad, "Gamepad buttons for the retro controller; the triggers stay analog");
+    SDL_Libretro_MenuSyncPadBinds(menu);
+    for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
+        menu->padBinds[i].menu = menu;
+        menu->padBinds[i].button = i;
+        SDL_Libretro_MenuOnChanged(
+            nk_console_input_gamepad(gamepad, SDL_Libretro_JoypadButtonNames[i], -1, NULL, &menu->padBinds[i].captured),
+            &SDL_Libretro_MenuPadBindChanged, &menu->padBinds[i]);
+    }
+
     // Directories
     nk_console* directories = SDL_Libretro_MenuAddSubmenu(settings, "Directories", NK_SYMBOL_TRIANGLE_RIGHT);
 
@@ -2425,6 +2496,7 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuSyncSettings(menu);
         SDL_Libretro_MenuSyncSettingsBuffers(menu);
         SDL_Libretro_MenuSyncKeyBinds(menu);
+        SDL_Libretro_MenuSyncPadBinds(menu);
     }
 
     // Flush changed menu settings into the config.

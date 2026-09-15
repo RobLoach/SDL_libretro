@@ -169,6 +169,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event);
 bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device);
 unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port);
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode);
+void SDL_Libretro_SetGamepadMapping(SDL_Libretro* lr, int retroButton, SDL_GamepadButton button);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr);
 bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, unsigned* port, unsigned* device, unsigned* id, const char** description);
@@ -727,6 +728,7 @@ struct SDL_Libretro {
     SDL_LibretroFitMode fitMode; /** How the libretro context should fit into its destination when rendering. */
     SDL_ScaleMode scaleMode; /** The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+    SDL_GamepadButton gamepadButtons[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS]; /** SDL button per RETRO_DEVICE_ID_JOYPAD_*, applied to every port. @see SDL_Libretro_SetGamepadMapping() */
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
     char systemDirectory[SDL_LIBRETRO_MAX_PATH];
@@ -823,7 +825,7 @@ static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
-static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
+static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(const SDL_Libretro* lr, unsigned button);
 
 // Sensors
 
