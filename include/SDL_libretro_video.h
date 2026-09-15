@@ -209,6 +209,23 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
 }
 
 /**
+ * Saves a PNG screenshot of the current frame.
+ *
+ * @param path The destination file, or NULL for "screenshot.png".
+ *
+ * @return true when the file was written.
+ */
+bool SDL_Libretro_SaveScreenshot(const SDL_Libretro* lr, const char* path) {
+    SDL_Surface* screenshot = SDL_Libretro_CreateSurface(lr);
+    if (screenshot == NULL) {
+        return false;
+    }
+    bool saved = SDL_SavePNG(screenshot, path != NULL ? path : "screenshot.png");
+    SDL_DestroySurface(screenshot);
+    return saved;
+}
+
+/**
  * Shrink `*rect` from the available area to the on-screen rectangle.
  *
  * Letterboxed to the aspect ratio, inverted for a 90/270 turn when

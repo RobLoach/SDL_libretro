@@ -1684,6 +1684,13 @@ static int SDLCALL test_Rotation(void *arg) {
         SDL_DestroySurface(shot);
     }
 
+    // --- SaveScreenshot writes the frame as a PNG ---
+    SDLTest_AssertCheck(SDL_Libretro_SaveScreenshot(NULL, NULL) == false, "SaveScreenshot(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_SaveScreenshot(lr, "/tmp/sdl_libretro_shot.png") == true,
+        "SaveScreenshot writes a PNG");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/sdl_libretro_shot.png", NULL) == true, "Screenshot file exists");
+    SDL_RemovePath("/tmp/sdl_libretro_shot.png");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

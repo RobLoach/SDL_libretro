@@ -141,6 +141,7 @@ bool SDL_Libretro_SetRenderer(SDL_Libretro* lr, SDL_Renderer* renderer);
 SDL_Renderer* SDL_Libretro_GetRenderer(const SDL_Libretro* lr);
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr);
 SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr);
+bool SDL_Libretro_SaveScreenshot(const SDL_Libretro* lr, const char* path);
 bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRect* dstRect);
 void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h);
 float SDL_Libretro_GetAspectRatio(const SDL_Libretro* lr);
