@@ -409,16 +409,13 @@ void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata) 
     if (menu == NULL) {
         return;
     }
-    const char* path = userdata != NULL ? (const char*)userdata : "screenshot.png";
-    SDL_Surface* screenshot = SDL_Libretro_CreateSurface(menu->lr);
-    if (screenshot != NULL && SDL_SavePNG(screenshot, path)) {
+    if (SDL_Libretro_SaveScreenshot(menu->lr, (const char*)userdata)) {
         nk_console_show_message(menu->console, "Screenshot saved");
     }
     else {
         SDL_Log("Failed to save screenshot: %s", SDL_GetError());
         nk_console_show_message(menu->console, "Screenshot failed");
     }
-    SDL_DestroySurface(screenshot);
 }
 
 /**

@@ -290,7 +290,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
     // Screenshot, the same action as the menu's Screenshot entry.
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F12) {
-        SDL_Libretro_MenuScreenshotClicked(app->menu, NULL);
+        SDL_Libretro_SaveScreenshot(lr, NULL);
     }
 
     // Save State
