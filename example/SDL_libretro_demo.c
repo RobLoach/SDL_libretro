@@ -89,6 +89,14 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
             return true;
         }
 
+        case SDL_EVENT_LIBRETRO_OPTIONS_CHANGED:
+            SDL_Log("Core options changed");
+            return true;
+
+        case SDL_EVENT_LIBRETRO_MESSAGE:
+            SDL_Log("Core message: %s", (const char*)event->user.data2);
+            return true;
+
         case SDL_EVENT_LIBRETRO_MENU_OPENED:
             SDL_Log("Menu opened");
             return true;

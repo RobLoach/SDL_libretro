@@ -866,6 +866,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                     lr->core.options[i].visible = opt->visible;
                     lr->core.optionsDirtyCore = true;
                     lr->core.optionsDirtyApp = true;
+                    SDL_Libretro_PushOptionsChanged(lr);
                     return true;
                 }
             }

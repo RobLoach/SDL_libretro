@@ -205,6 +205,8 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
 #define SDL_EVENT_LIBRETRO_GAME_UNLOADED (SDL_EVENT_LIBRETRO | 0xF05) /** The game was unloaded, whether directly or through the core unloading. */
 #define SDL_EVENT_LIBRETRO_SHUTDOWN (SDL_EVENT_LIBRETRO | 0xF06) /** The core requested shutdown. @see SDL_Libretro_ShouldQuit() */
 #define SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED (SDL_EVENT_LIBRETRO | 0xF07) /** The video size, aspect ratio, or timing changed mid-game. @see SDL_Libretro_GetSize() */
+#define SDL_EVENT_LIBRETRO_OPTIONS_CHANGED (SDL_EVENT_LIBRETRO | 0xF08) /** The core options, their values, or their visibility changed; bursts coalesce into one queued event. @see SDL_Libretro_GetOptionCount() */
+#define SDL_EVENT_LIBRETRO_MESSAGE (SDL_EVENT_LIBRETRO | 0xF09) /** A new on-screen message was queued; data2 is the message text, valid until it expires or the queue clears. @see SDL_Libretro_GetMessage() */
 
 // Save States
 
