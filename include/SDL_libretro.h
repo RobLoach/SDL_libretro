@@ -418,6 +418,13 @@ bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle sty
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
 
 /**
+ * Loads a game through the menu, showing the "Select Core" picker when more
+ * than one scanned core claims the content's extension. Use for external
+ * triggers like drag & drop.
+ */
+void SDL_Libretro_MenuLoadGame(SDL_LibretroMenu* menu, const char* path);
+
+/**
  * A callback for menu entries added by the application.
  *
  * \see SDL_Libretro_AddMenuButton()

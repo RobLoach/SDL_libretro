@@ -331,11 +331,10 @@ static int SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, const 
     }
 #endif
 
-    const char* dot = SDL_strrchr(contentPath, '.');
-    if (dot == NULL || dot[1] == '\0') {
+    const char* extension = SDL_Libretro_GetExtension(contentPath);
+    if (extension[0] == '\0') {
         return 0;
     }
-    const char* extension = dot + 1;
 
     menu->coreChoicesCount = 0;
     if (lr->coreLibraryCount > 0) {
@@ -419,56 +418,6 @@ static void SDL_Libretro_MenuSetActiveParent(SDL_LibretroMenu* menu, nk_console*
         window->scrollbar.x = 0;
         window->scrollbar.y = 0;
     }
-}
-
-/**
- * A core was chosen in the "Select Core" picker: load it, then the game.
- *
- * @internal
- */
-static void SDL_Libretro_MenuCoreChoiceClicked(nk_console* widget, void* user_data) {
-    const SDL_Libretro_CoreInfo* info = (const SDL_Libretro_CoreInfo*)user_data;
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)nk_console_user_data(widget);
-    if (menu == NULL) {
-        return;
-    }
-
-    SDL_Libretro_UnloadCore(menu->lr);
-    bool loaded = SDL_Libretro_LoadCore(menu->lr, info->path);
-    if (!loaded) {
-        SDL_Log("Failed to load core: %s", SDL_GetError());
-        nk_console_show_message(menu->console, "Failed to load core");
-        return;
-    }
-    if (SDL_Libretro_MenuLoadGameNow(menu, menu->pendingGamePath)) {
-        // Leave the picker so the next open starts at the top level.
-        SDL_Libretro_MenuSetActiveParent(menu, menu->console);
-        menu->pendingGamePath[0] = '\0';
-    }
-}
-
-/**
- * Populate the "Select Core" picker with the collected candidates and make
- * it the active menu level.
- *
- * @internal
- */
-static void SDL_Libretro_MenuBuildCorePicker(SDL_LibretroMenu* menu) {
-    if (menu->corePickerButton == NULL) {
-        return;
-    }
-    nk_console_free_children(menu->corePickerButton);
-
-    // Backing out cancels and returns to the top level.
-    nk_console_button_set_symbol(
-        nk_console_button_onclick(menu->corePickerButton, "Select Core", &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_UP);
-
-    for (int i = 0; i < menu->coreChoicesCount; i++) {
-        nk_console_button_onclick_handler(menu->corePickerButton, menu->coreChoices[i]->corename_display, &SDL_Libretro_MenuCoreChoiceClicked, (void*)menu->coreChoices[i], NULL);
-    }
-
-    SDL_Libretro_MenuSetActiveParent(menu, menu->corePickerButton);
 }
 
 #ifndef __EMSCRIPTEN__
@@ -777,6 +726,53 @@ static nk_console* SDL_Libretro_MenuAddCheckbox(SDL_LibretroMenu* menu, nk_conso
     }
     nk_console_add_event_handler(checkbox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuItemChanged, item, &SDL_Libretro_MenuItemDestroy);
     return checkbox;
+}
+
+/**
+ * A core was chosen in the "Select Core" picker: load it, then the game.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuCoreChoiceClicked(SDL_LibretroMenu* menu, void* userdata) {
+    const SDL_Libretro_CoreInfo* info = (const SDL_Libretro_CoreInfo*)userdata;
+
+    SDL_Libretro_UnloadCore(menu->lr);
+    if (!SDL_Libretro_LoadCore(menu->lr, info->path)) {
+        SDL_Log("Failed to load core: %s", SDL_GetError());
+        nk_console_show_message(menu->console, "Failed to load core");
+        return;
+    }
+    if (SDL_Libretro_MenuLoadGameNow(menu, menu->pendingGamePath)) {
+        // Leave the picker so the next open starts at the top level.
+        SDL_Libretro_MenuSetActiveParent(menu, menu->console);
+        menu->pendingGamePath[0] = '\0';
+    }
+}
+
+/**
+ * Populate the "Select Core" picker with the collected candidates and make
+ * it the active menu level.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildCorePicker(SDL_LibretroMenu* menu) {
+    if (menu->corePickerButton == NULL) {
+        return;
+    }
+    nk_console_free_children(menu->corePickerButton);
+
+    // Backing out cancels and returns to the top level.
+    SDL_Libretro_MenuAddBackButton(menu->corePickerButton, "Select Core");
+
+    // Explain the choice: several scanned cores can open this content.
+    nk_console_label(menu->corePickerButton, "Select which core to use to load the game:");
+
+    for (int i = 0; i < menu->coreChoicesCount; i++) {
+        SDL_Libretro_MenuAddButton(menu, menu->corePickerButton, menu->coreChoices[i]->corename_display,
+            NK_SYMBOL_NONE, &SDL_Libretro_MenuCoreChoiceClicked, (void*)menu->coreChoices[i]);
+    }
+
+    SDL_Libretro_MenuSetActiveParent(menu, menu->corePickerButton);
 }
 
 /**

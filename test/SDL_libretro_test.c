@@ -1,5 +1,4 @@
 #define SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
 #include <SDL3/SDL_main.h>
@@ -2593,9 +2592,8 @@ static int SDLCALL test_MenuCorePicker(void *arg) {
         SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->corePickerButton,
             "Picker is the active menu level");
 
-        // Choosing a candidate loads the core and the pending game. Any
-        // widget in the console tree resolves the menu for the callback.
-        SDL_Libretro_MenuCoreChoiceClicked(menu->corePickerButton, (void*)menu->coreChoices[0]);
+        // Choosing a candidate loads the core and the pending game.
+        SDL_Libretro_MenuCoreChoiceClicked(menu, (void*)menu->coreChoices[0]);
         SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Choosing a core loads the pending game");
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu closes after the picked core loads");
         SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->console,

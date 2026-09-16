@@ -9,8 +9,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+// SDL_LIBRETRO_ENABLE_PHYSFS comes from the SDL_libretro_physfs CMake target
+// when the SDL_LIBRETRO_PHYSFS option is enabled.
 #define SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
 #ifdef __EMSCRIPTEN__
