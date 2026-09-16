@@ -89,6 +89,31 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         }
     }
 
+    // Per-port gamepad bindings ([gamepad1]..[gamepadN]), stored as SDL
+    // gamepad button names, with the analog-to-digital stick by mode name.
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        char section[16];
+        SDL_snprintf(section, sizeof(section), "gamepad%u", port + 1);
+        for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
+            if (!INI_HasValue(ini, section, SDL_Libretro_JoypadButtonNames[button])) {
+                continue;
+            }
+            SDL_GamepadButton pad = SDL_GetGamepadButtonFromString(INI_GetString(ini, section, SDL_Libretro_JoypadButtonNames[button], ""));
+            if (pad != SDL_GAMEPAD_BUTTON_INVALID) {
+                SDL_Libretro_SetGamepadMapping(lr, port, button, pad);
+            }
+        }
+
+        const char* analog = INI_GetString(ini, section, "AnalogToDigital", NULL);
+        if (analog != NULL) {
+            for (int mode = 0; mode < SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT; mode++) {
+                if (SDL_strcasecmp(analog, SDL_Libretro_AnalogToDigitalNames[mode]) == 0) {
+                    SDL_Libretro_SetAnalogToDigital(lr, port, (SDL_LibretroAnalogToDigital)mode);
+                }
+            }
+        }
+    }
+
     return true;
 }
 
@@ -185,6 +210,17 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
 
     for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
         INI_SetString(lr->ini, "keyboard", SDL_Libretro_JoypadButtonNames[button], SDL_GetScancodeName(lr->keyboardPlayer1[button]));
+    }
+
+    // Per-port gamepad bindings ([gamepad1]..[gamepadN]).
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        char section[16];
+        SDL_snprintf(section, sizeof(section), "gamepad%u", port + 1);
+        for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
+            const char* padName = SDL_GetGamepadStringForButton(lr->gamepadButtons[port][button]);
+            INI_SetString(lr->ini, section, SDL_Libretro_JoypadButtonNames[button], padName != NULL ? padName : "");
+        }
+        INI_SetString(lr->ini, section, "AnalogToDigital", SDL_Libretro_AnalogToDigitalNames[lr->analogToDigital[port]]);
     }
 
     return INI_Save(lr->ini, lr->iniFile);
