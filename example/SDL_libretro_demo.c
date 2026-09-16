@@ -25,12 +25,105 @@ typedef struct {
 } AppContext;
 
 /**
+ * Names the window "Game Name — SDL_libretro" after the loaded game, or
+ * "Core Name — SDL_libretro" when a core runs without content.
+ */
+static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
+    const char* name = SDL_Libretro_GetGameName(app->lr);
+    if (name[0] == '\0') {
+        name = SDL_Libretro_GetCoreName(app->lr);
+    }
+    if (name[0] == '\0') {
+        SDL_SetWindowTitle(app->window, "SDL_libretro_demo");
+        return;
+    }
+    char title[1024];
+    SDL_snprintf(title, sizeof(title), "%s — SDL_libretro", name);
+    SDL_SetWindowTitle(app->window, title);
+}
+
+/**
+ * Handles the SDL events SDL_libretro pushes.
+ *
+ * The lifecycle events keep the window title current and close the menu when
+ * a game arrives, the menu events are logged, and
+ * SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_* events report environment
+ * commands that SDL_libretro doesn't handle itself. Implementing one of
+ * those would take an SDL_AddEventWatch() callback instead, so the core's
+ * data pointer in user.data2 is still valid; this demo only logs them.
+ *
+ * @return true when the event was an SDL_libretro event.
+ */
+static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Event* event) {
+    switch (event->type) {
+        // A core loaded; when it runs without content the core name titles the window.
+        case SDL_EVENT_LIBRETRO_CORE_LOADED:
+            SDL_Log("Core loaded: %s", (const char*)event->user.data2);
+            SDL_Libretro_DemoUpdateWindowTitle(app);
+            return true;
+
+        // A game loaded, from the command line, the menu, or drag & drop.
+        // Close the menu so the game is visible.
+        case SDL_EVENT_LIBRETRO_GAME_LOADED:
+            SDL_Log("Game loaded: %s", (const char*)event->user.data2);
+            SDL_Libretro_DemoUpdateWindowTitle(app);
+            SDL_Libretro_SetMenuOpen(app->menu, false);
+            return true;
+
+        // The core or game went away; retitle the window.
+        case SDL_EVENT_LIBRETRO_CORE_UNLOADED:
+        case SDL_EVENT_LIBRETRO_GAME_UNLOADED:
+            SDL_Libretro_DemoUpdateWindowTitle(app);
+            return true;
+
+        // The core asked to shut down; SDL_AppIterate() quits through
+        // SDL_Libretro_ShouldQuit().
+        case SDL_EVENT_LIBRETRO_SHUTDOWN:
+            SDL_Log("Core requested shutdown");
+            return true;
+
+        case SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED: {
+            int w = 0, h = 0;
+            SDL_Libretro_GetSize(app->lr, &w, &h);
+            SDL_Log("Video geometry now %dx%d", w, h);
+            return true;
+        }
+
+        case SDL_EVENT_LIBRETRO_MENU_OPENED:
+            SDL_Log("Menu opened");
+            return true;
+        case SDL_EVENT_LIBRETRO_MENU_CLOSED:
+            SDL_Log("Menu closed");
+            return true;
+
+        // Environment commands the library leaves to the application. Plain
+        // commands OR onto SDL_EVENT_LIBRETRO; experimental ones need their
+        // flag masked off, since it doesn't fit the SDL event range.
+        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
+            SDL_Log("Core asked for location services; not available in this demo");
+            return true;
+        case SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL):
+            SDL_Log("Core asked for a camera interface; not available in this demo");
+            return true;
+
+        // Any other environment command: log the number for diagnostics.
+        default:
+            if (event->type >= SDL_EVENT_LIBRETRO && event->type < SDL_EVENT_LIBRETRO_CORE_LOADED) {
+                SDL_Log("Core called unhandled environment command %u", (unsigned)(event->type - SDL_EVENT_LIBRETRO));
+                return true;
+            }
+            return false;
+    }
+}
+
+/**
  * Called when dragging and dropping a game onto the window.
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
     // Route through the menu so an extension claimed by several cores shows the
     // "Select Core" picker instead of silently loading the first match. The
-    // menu unloads the current core, loads the game, and closes on success.
+    // menu unloads the current core, loads the game, and closes on success;
+    // the queued GAME_LOADED event retitles the window.
     SDL_Libretro_MenuLoadGame(app->menu, path);
 }
 
@@ -89,8 +182,20 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         return SDL_APP_FAILURE;
     }
 
-    // Create the libretro environment.
+    AppContext* app = SDL_calloc(1, sizeof(AppContext));
+    if (!app) {
+        return SDL_APP_FAILURE;
+    }
+    app->window = window;
+    app->renderer = renderer;
+    *appstate = app;
+
+    // Create the libretro environment. Everything it reports — core/game
+    // loads, the menu, environment commands it doesn't handle — arrives
+    // through the SDL event queue; see DemoHandleLibretroEvent().
     SDL_Libretro* lr = SDL_Libretro_Create();
+    app->lr = lr;
+
     SDL_Libretro_SetCoreDirectory(lr, "cores");
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");
@@ -113,15 +218,6 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     else if ((corePath || gamePath) && !SDL_Libretro_LoadGame(lr, gamePath)) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
-
-    AppContext* app = SDL_calloc(1, sizeof(AppContext));
-    if (!app) {
-        return SDL_APP_FAILURE;
-    }
-    app->window = window;
-    app->renderer = renderer;
-    app->lr = lr;
-    *appstate = app;
 
     // The in-app menu; toggled with F1 or the gamepad Guide button.
     SDL_Libretro_SetRenderer(lr, renderer);
@@ -149,13 +245,18 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_SUCCESS;
     }
 
+    // Events SDL_libretro pushed onto the queue.
+    if (SDL_Libretro_DemoHandleLibretroEvent(app, event)) {
+        return SDL_APP_CONTINUE;
+    }
+
     // The menu consumes input while it is open, and handles its toggle keys.
     if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
 
     // Fast Forward
-    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
         SDL_Libretro_SetSpeed(lr, 2.0f);
     }
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F) {
@@ -186,11 +287,9 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
     }
 
-    // Screenshot
+    // Screenshot, the same action as the menu's Screenshot entry.
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F12) {
-        SDL_Surface* screenshot = SDL_Libretro_CreateSurface(lr);
-        SDL_SavePNG(screenshot, "screenshot.png");
-        SDL_DestroySurface(screenshot);
+        SDL_Libretro_SaveScreenshot(lr, NULL);
     }
 
     // Save State

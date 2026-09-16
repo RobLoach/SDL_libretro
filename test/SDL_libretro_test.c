@@ -146,6 +146,36 @@ static int SDLCALL test_VolumeSpeed(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_DRCDisable(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // Force SDL's dummy audio driver so the stream opens on machines (and CI
+    // runners) without a sound device. An SDL_AUDIO_DRIVER env var still wins.
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after load");
+
+    // Turning DRC off must unwind a leftover nudge rather than freeze it in
+    // the stream's frequency ratio.
+    lr->core.drcAdjustment = 1.004f;
+    SDL_SetAudioStreamFrequencyRatio(lr->core.audioStream, lr->core.drcAdjustment);
+    lr->core.drcEnabled = false;
+    SDL_Libretro_UpdateDRC(lr, 1.0f);
+    SDLTest_AssertCheck(lr->core.drcAdjustment == 1.0f, "DRC adjustment reset when disabled");
+    float ratio = SDL_GetAudioStreamFrequencyRatio(lr->core.audioStream);
+    SDLTest_AssertCheck(ratio == 1.0f, "Frequency ratio back to plain speed, got %f", ratio);
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_Input(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -169,7 +199,7 @@ static int SDLCALL test_Input(void *arg) {
     SDL_Libretro_SetVirtualButton(NULL, 0, 0, true);
 
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_JOYPAD, "Port 0 device defaults to JOYPAD");
-    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, SDL_LIBRETRO_MAX_GAMEPADS - 1) == RETRO_DEVICE_JOYPAD, "Last port device defaults to JOYPAD");
+    SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, SDL_LIBRETRO_MAX_USERS - 1) == RETRO_DEVICE_JOYPAD, "Last port device defaults to JOYPAD");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_MOUSE) == true, "SetPortDevice port 0 true");
     SDLTest_AssertCheck(SDL_Libretro_GetPortDevice(lr, 0) == RETRO_DEVICE_MOUSE, "GetPortDevice returns stored device");
     SDLTest_AssertCheck(SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_NONE) == true, "SetPortDevice port 0 NONE true");
@@ -730,9 +760,9 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
 
     // Texture scale mode applies to the live texture and reads back.
-    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetTextureScaleMode(NULL) fails");
-    SDLTest_AssertCheck(SDL_Libretro_SetTextureScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetTextureScaleMode(LINEAR) succeeds");
-    SDLTest_AssertCheck(SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetTextureScaleMode returns LINEAR");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL) fails");
+    SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetScaleMode(LINEAR) succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetScaleMode returns LINEAR");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -767,6 +797,10 @@ static int SDLCALL test_GameInfoExt(void *arg) {
             "GET_GAME_INFO_EXT reports lower-case ext 'txt', got '%s'", (const char*)probe);
         SDLTest_AssertCheck(probe[16] == 1, "content-info override set persistent_data");
         SDLTest_AssertCheck(probe[17] == 1, "content data buffer present (need_fullpath false)");
+        SDLTest_AssertCheck(probe[18] == 1, "GET_INPUT_MAX_USERS supported");
+        SDLTest_AssertCheck(probe[19] == SDL_LIBRETRO_MAX_USERS,
+            "GET_INPUT_MAX_USERS reports SDL_LIBRETRO_MAX_USERS (%d), got %d",
+            SDL_LIBRETRO_MAX_USERS, (int)probe[19]);
     }
 
     SDL_Libretro_Destroy(lr);
@@ -1650,6 +1684,13 @@ static int SDLCALL test_Rotation(void *arg) {
         SDL_DestroySurface(shot);
     }
 
+    // --- SaveScreenshot writes the frame as a PNG ---
+    SDLTest_AssertCheck(SDL_Libretro_SaveScreenshot(NULL, NULL) == false, "SaveScreenshot(NULL) false");
+    SDLTest_AssertCheck(SDL_Libretro_SaveScreenshot(lr, "/tmp/sdl_libretro_shot.png") == true,
+        "SaveScreenshot writes a PNG");
+    SDLTest_AssertCheck(SDL_GetPathInfo("/tmp/sdl_libretro_shot.png", NULL) == true, "Screenshot file exists");
+    SDL_RemovePath("/tmp/sdl_libretro_shot.png");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -1820,6 +1861,80 @@ static int SDLCALL test_AudioLatency(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_AudioInitPausedRewind(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // Force SDL's dummy audio driver so the stream opens on machines (and CI
+    // runners) without a sound device. An SDL_AUDIO_DRIVER env var still wins.
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream opens on load");
+
+    // A deferred reinit (e.g. SET_SYSTEM_AV_INFO) can run while paused. SDL
+    // rejects a frequency ratio of 0, so this used to tear the stream back
+    // down and leave audio dead.
+    SDL_Libretro_SetSpeed(lr, 0.0f);
+    SDLTest_AssertCheck(SDL_Libretro_InitAudio(lr) == true, "InitAudio succeeds while paused");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after paused reinit");
+
+    // Same guard for a reinit during rewind (negative speed).
+    SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(SDL_Libretro_InitAudio(lr) == true, "InitAudio succeeds while rewinding");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after rewind reinit");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_AudioQueueOverflow(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    // Force SDL's dummy audio driver so the stream opens on machines (and CI
+    // runners) without a sound device. An SDL_AUDIO_DRIVER env var still wins.
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after load");
+
+    // Pause the device so nothing drains while we measure the queue.
+    SDL_PauseAudioStreamDevice(lr->core.audioStream);
+
+    int threshold = lr->core.audioQueueThresholdBytes;
+    int cap = threshold * 2;
+    SDLTest_AssertCheck(threshold > 0, "Latency threshold computed (%d bytes)", threshold);
+
+    // Push well past the hard cap in batch-sized chunks.
+    static int16_t buf[512 * 2]; // Silence.
+    SDL_zeroa(buf);
+    int pushes = cap / (int)sizeof(buf) + 8;
+    for (int i = 0; i < pushes; i++) {
+        SDL_Libretro_QueueAudio(lr, buf, (int)sizeof(buf));
+    }
+
+    int queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
+    SDLTest_AssertCheck(queued > threshold, "Queue can exceed the latency threshold (%d > %d)", queued, threshold);
+    SDLTest_AssertCheck(queued <= cap, "Queue clamped to the hard cap (%d <= %d)", queued, cap);
+    // The final batch that crossed the cap is trimmed, not discarded whole.
+    SDLTest_AssertCheck(queued > cap - (int)sizeof(buf), "Overflowing batch partially queued (%d > %d)", queued, cap - (int)sizeof(buf));
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_PixelFormats(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -1853,6 +1968,13 @@ static int SDLCALL test_PixelFormats(void *arg) {
     SDL_Libretro_Update(lr);
     tex = SDL_Libretro_GetTexture(lr);
     SDLTest_AssertCheck(tex != NULL, "Texture recreated for 0RGB1555");
+
+    // CloseVideo clears the software framebuffer pointer even when the texture is already gone.
+    SDL_Libretro_CloseVideo(lr);
+    SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "Texture destroyed by CloseVideo");
+    lr->core.softwareFramebufferPixels = (void*)lr;
+    SDL_Libretro_CloseVideo(lr);
+    SDLTest_AssertCheck(lr->core.softwareFramebufferPixels == NULL, "CloseVideo clears stale framebuffer pointer without texture");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -1947,7 +2069,145 @@ static int SDLCALL test_OSD(void *arg) {
     return TEST_COMPLETED;
 }
 
+/**
+ * Drains the SDL event queue, counting events of the given type and keeping
+ * the last one seen in *last (when non-NULL).
+ */
+static int test_DrainEvents(Uint32 type, SDL_Event* last) {
+    int count = 0;
+    SDL_Event event;
+    while (SDL_PollEvent(&event)) {
+        if (event.type == type) {
+            count++;
+            if (last != NULL) {
+                *last = event;
+            }
+        }
+    }
+    return count;
+}
+
+/**
+ * An event watch that implements the env command in its userdata: marks the
+ * event handled for the core by setting user.code.
+ */
+static bool SDLCALL test_EventsWatch(void* userdata, SDL_Event* event) {
+    if (event->type == (Uint32)(uintptr_t)userdata) {
+        event->user.code = 1;
+    }
+    return true;
+}
+
+static int SDLCALL test_Events(void *arg) {
+    (void)arg;
+
+    // The event space sits in the SDL user event range; the experimental
+    // flag is masked off so every command fits below the lifecycle events.
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO >= SDL_EVENT_USER, "SDL_EVENT_LIBRETRO is a user event");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_MENU_CLOSED <= SDL_EVENT_LAST, "The libretro events fit the SDL event range");
+    SDLTest_AssertCheck((SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE) <= SDL_EVENT_LAST,
+        "Plain commands OR directly onto SDL_EVENT_LIBRETRO");
+    SDLTest_AssertCheck((SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT & ~RETRO_ENVIRONMENT_EXPERIMENTAL)) < (Uint32)SDL_EVENT_LIBRETRO_CORE_LOADED,
+        "Env events stay below the lifecycle events");
+
+    SDL_Init(SDL_INIT_EVENTS);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    const Uint32 cameraEvent = SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL);
+
+    // An unwatched env command lands in the queue with the context in data1
+    // and the core's pointer in data2, and reports unhandled to the core.
+    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+    int payload = 7;
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &payload) == false,
+        "An unwatched env event reports unhandled");
+    SDL_Event received;
+    SDL_zero(received);
+    SDLTest_AssertCheck(test_DrainEvents(cameraEvent, &received) == 1, "The env event is queued once");
+    SDLTest_AssertCheck(received.user.data1 == lr, "data1 carries the context");
+    SDLTest_AssertCheck(received.user.data2 == &payload, "data2 carries the core's data pointer");
+    SDLTest_AssertCheck(received.user.code == 0, "An unclaimed event has a zero code");
+
+    // A watch runs synchronously inside the push; setting user.code there
+    // reports the command handled to the core.
+    SDL_AddEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &payload) == true,
+        "A watch that sets user.code marks the env command handled");
+    SDL_RemoveEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
+    SDLTest_AssertCheck(test_DrainEvents(cameraEvent, NULL) == 0,
+        "A claimed env command is consumed by the watch, not queued");
+
+#if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
+    // Real loads push the lifecycle events, with the loaded name in data2.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_CORE_LOADED, &received) == 1,
+        "CORE_LOADED is pushed after a core loads");
+    SDLTest_AssertCheck(received.user.data1 == lr, "CORE_LOADED carries the context");
+    SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetCoreName(lr),
+        "CORE_LOADED data2 is the core name");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GAME_LOADED, &received) == 1,
+        "GAME_LOADED is pushed after a game loads");
+    SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetGameName(lr),
+        "GAME_LOADED data2 is the game name");
+
+    // Commands the library handles get curated events after the handling.
+    struct retro_game_geometry geometry = { 640, 480, 640, 480, 2.0f };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry) == true,
+        "SET_GEOMETRY is handled");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 1,
+        "GEOMETRY_CHANGED is pushed for SET_GEOMETRY");
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry) == true,
+        "A repeated SET_GEOMETRY is handled");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 0,
+        "An unchanged geometry pushes nothing");
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SHUTDOWN, NULL) == true,
+        "SHUTDOWN is handled");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_SHUTDOWN, NULL) == 1,
+        "SHUTDOWN is pushed");
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(lr) == true, "ShouldQuit reflects the shutdown");
+
+    // Unloading pushes the unload pair: game first, then the core.
+    SDL_Libretro_UnloadCore(lr);
+    int gameUnloaded = 0, coreUnloaded = 0;
+    SDL_Event drained;
+    while (SDL_PollEvent(&drained)) {
+        if (drained.type == SDL_EVENT_LIBRETRO_GAME_UNLOADED) {
+            gameUnloaded++;
+        } else if (drained.type == SDL_EVENT_LIBRETRO_CORE_UNLOADED) {
+            coreUnloaded++;
+        }
+    }
+    SDLTest_AssertCheck(gameUnloaded == 1 && coreUnloaded == 1,
+        "Unloading pushes GAME_UNLOADED and CORE_UNLOADED once each, got %d/%d", gameUnloaded, coreUnloaded);
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_CORE_UNLOADED, NULL) == 0,
+        "Unloading without a core pushes nothing");
+#endif
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
 #ifdef SDL_LIBRETRO_ENABLE_MENU
+static void test_MenuCustomClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)menu;
+    (*(int*)userdata)++;
+}
+
+/**
+ * Applies the style and checks three probe colors in the resulting Nuklear
+ * style: text, window background, and the toggle cursor accent.
+ */
+static bool test_MenuStyleHasColors(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style,
+        struct nk_color text, struct nk_color window, struct nk_color toggleCursor) {
+    if (!SDL_Libretro_SetMenuStyle(menu, style)) {
+        return false;
+    }
+    return SDL_memcmp(&menu->ctx->style.text.color, &text, sizeof(text)) == 0 &&
+        SDL_memcmp(&menu->ctx->style.window.background, &window, sizeof(window)) == 0 &&
+        SDL_memcmp(&menu->ctx->style.checkbox.cursor_normal.data.color, &toggleCursor, sizeof(toggleCursor)) == 0;
+}
+
 static int SDLCALL test_Menu(void *arg) {
     // NULL safety
     SDLTest_AssertCheck(SDL_Libretro_CreateMenu(NULL) == NULL, "CreateMenu(NULL) returns NULL");
@@ -1961,6 +2221,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetMenuLibretro(NULL) == NULL, "GetMenuLibretro(NULL) NULL");
     SDL_Libretro_SetMenuUserData(NULL, (void*)1);
     SDLTest_AssertCheck(SDL_Libretro_GetMenuUserData(NULL) == NULL, "GetMenuUserData(NULL) NULL");
+    SDL_Libretro_MenuScreenshotClicked(NULL, NULL);
 
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
     SDL_Init(SDL_INIT_VIDEO);
@@ -2000,6 +2261,23 @@ static int SDLCALL test_Menu(void *arg) {
                 SDL_Libretro_GetMenuStyle(menu) == (SDL_LibretroMenuStyle)style;
         }
         SDLTest_AssertCheck(stylesApplied, "Every menu style applies and reads back");
+
+        // Regression probes for the theme colors.
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
+            nk_rgba(205, 214, 244, 255), nk_rgba(30, 30, 46, 235), nk_rgba(180, 190, 254, 255)),
+            "Mocha colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE,
+            nk_rgba(76, 79, 105, 255), nk_rgba(239, 241, 245, 235), nk_rgba(223, 142, 29, 255)),
+            "Latte colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE,
+            nk_rgba(198, 208, 245, 255), nk_rgba(48, 52, 70, 235), nk_rgba(244, 184, 228, 255)),
+            "Frappe colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO,
+            nk_rgba(202, 211, 245, 255), nk_rgba(36, 39, 58, 235), nk_rgba(238, 212, 159, 255)),
+            "Macchiato colors match");
+        SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_DRACULA,
+            nk_rgba(248, 248, 242, 255), nk_rgba(40, 42, 54, 235), nk_rgba(255, 121, 198, 255)),
+            "Dracula colors match");
 
         // UI scale: the resolution thresholds step the automatic scale.
         SDLTest_AssertCheck(SDL_Libretro_MenuAutoScale(1279) == 1.0f, "Auto scale 1x below 1280");
@@ -2046,6 +2324,121 @@ static int SDLCALL test_Menu(void *arg) {
         event.key.key = SDLK_A;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Closed menu ignores gameplay input");
 
+        // Menu notifications arrive through the SDL event queue.
+        SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+        SDL_Libretro_SetMenuOpen(menu, true);
+        SDL_Libretro_SetMenuOpen(menu, true); // No change: no second event.
+        SDL_Libretro_SetMenuOpen(menu, false);
+        int menuOpened = 0, menuClosed = 0;
+        SDL_Event menuEvent, lastOpened;
+        SDL_zero(lastOpened);
+        while (SDL_PollEvent(&menuEvent)) {
+            if (menuEvent.type == SDL_EVENT_LIBRETRO_MENU_OPENED) {
+                menuOpened++;
+                lastOpened = menuEvent;
+            } else if (menuEvent.type == SDL_EVENT_LIBRETRO_MENU_CLOSED) {
+                menuClosed++;
+            }
+        }
+        SDLTest_AssertCheck(menuOpened == 1 && menuClosed == 1,
+            "Open/close each push one menu event, got %d/%d", menuOpened, menuClosed);
+        SDLTest_AssertCheck(lastOpened.user.data1 == lr, "Menu events carry the context");
+        SDLTest_AssertCheck(lastOpened.user.data2 == menu, "Menu events carry the menu in data2");
+
+        // The menu passes SDL_libretro's own events through untouched.
+        SDL_zero(event);
+        event.type = SDL_EVENT_LIBRETRO_MENU_OPENED;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
+            "Libretro events pass through the menu");
+
+        // Application-added entries fire their callbacks and keep Quit last.
+        int customClicks = 0;
+        bool checkValue = true;
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuButton(NULL, "x", NULL, NULL) == false, "AddMenuButton(NULL) fails");
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuButton(menu, NULL, NULL, NULL) == false, "AddMenuButton without a label fails");
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuButton(menu, "Custom", &test_MenuCustomClicked, &customClicks) == true,
+            "AddMenuButton succeeds");
+        SDLTest_AssertCheck(SDL_Libretro_AddMenuCheckbox(menu, "Custom Check", &checkValue, &test_MenuCustomClicked, &customClicks) == true,
+            "AddMenuCheckbox succeeds");
+        size_t childCount = cvector_size(menu->console->children);
+        SDLTest_AssertCheck(menu->console->children[childCount - 1] == menu->quitButton, "Quit stays the last entry");
+        nk_console_trigger_event(menu->console->children[childCount - 3], NK_CONSOLE_EVENT_CLICKED);
+        nk_console_trigger_event(menu->console->children[childCount - 2], NK_CONSOLE_EVENT_CHANGED);
+        SDLTest_AssertCheck(customClicks == 2, "Custom entry callbacks fired, got %d", customClicks);
+        SDLTest_AssertCheck(checkValue == true, "Checkbox value mirrors the widget state");
+
+        // Deep links open the menu and navigate by label path.
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(NULL, "Settings") == false, "OpenMenuPath(NULL) fails");
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, NULL) == false, "OpenMenuPath without a path fails");
+        SDL_Libretro_SetMenuOpen(menu, false);
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video") == true,
+            "OpenMenuPath resolves Settings/Audio & Video");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "OpenMenuPath opens the menu");
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "No Such Page") == false,
+            "OpenMenuPath rejects unknown paths");
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "Settings") == true, "OpenMenuPath resolves Settings");
+        SDL_Libretro_SetMenuOpen(menu, false);
+
+        // Keyboard binding runes round-trip through SDL scancodes.
+        SDLTest_AssertCheck(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_Z) == (nk_rune)'z', "Scancode Z maps to rune 'z'");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune((nk_rune)'z') == SDL_SCANCODE_Z, "Rune 'z' maps back to scancode Z");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_RETURN)) == SDL_SCANCODE_RETURN,
+            "Return round-trips through its rune");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_UP)) == SDL_SCANCODE_UP,
+            "Up round-trips through its rune");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(SDL_Libretro_MenuRuneFromScancode(SDL_SCANCODE_F5)) == SDL_SCANCODE_F5,
+            "F5 round-trips through its rune");
+        SDLTest_AssertCheck(SDL_Libretro_MenuScancodeFromRune(NK_CONSOLE_KEY_NONE) == SDL_SCANCODE_UNKNOWN,
+            "An empty capture maps to no scancode");
+
+        // The capture handler applies keys to the live mapping, and captures
+        // without an SDL equivalent revert to the current binding.
+        menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B].rune = (nk_rune)'k';
+        SDL_Libretro_MenuKeyBindChanged(NULL, &menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
+            "A captured key applies to the mapping");
+        menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B].rune = NK_CONSOLE_KEY_NONE;
+        SDL_Libretro_MenuKeyBindChanged(NULL, &menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
+            "An empty capture keeps the mapping");
+        SDLTest_AssertCheck(menu->keyBinds[RETRO_DEVICE_ID_JOYPAD_B].rune == (nk_rune)'k',
+            "An empty capture reverts to the current binding");
+        SDL_Libretro_SetKeyboardMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_Z);
+
+        // Without disk control the Disks page stays hidden.
+        SDLTest_AssertCheck(menu->disksButton->visible == nk_false, "Disks page hidden without disk control");
+
+        // The Rewind toggle mirrors the live rewind state when settings sync.
+        SDL_Libretro_SetRewindEnabled(lr, true, 8, 1);
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDLTest_AssertCheck(menu->rewindChecked == nk_true, "Rewind toggle syncs from the context");
+        menu->rewindChecked = nk_false;
+        SDL_Libretro_MenuRewindChanged(menu, NULL);
+        SDLTest_AssertCheck(SDL_Libretro_GetRewindEnabled(lr) == false, "Rewind toggle disables rewind");
+
+        // The rewind buffer setting drives the memory limit, in MB.
+        menu->rewindBufferMB = 16;
+        SDL_Libretro_MenuRewindBufferChanged(NULL, menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) == (size_t)16 << 20,
+            "Rewind buffer setting applies the memory limit");
+        SDL_Libretro_SetRewindMemoryLimit(lr, 32 << 20);
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDLTest_AssertCheck(menu->rewindBufferMB == 32, "Rewind buffer setting syncs from the context");
+        SDL_Libretro_SetRewindMemoryLimit(lr, 0);
+
+        // A progress-type OSD message surfaces as the top progress bar.
+        SDL_Libretro_OsdPush(lr, "Working", 60.0, 0, RETRO_MESSAGE_TYPE_PROGRESS, 50);
+        SDL_Libretro_SetMenuOpen(menu, true);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->osdProgressWidget->visible == nk_true, "A progress OSD message shows the bar");
+        SDLTest_AssertCheck(menu->osdProgressValue == 50, "The bar tracks the message progress, got %d", (int)menu->osdProgressValue);
+        SDL_Libretro_SetMessage(lr, "", 0.0);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->osdProgressWidget->visible == nk_false, "The bar hides when the message clears");
+        SDL_Libretro_SetMenuOpen(menu, false);
+
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
         // With a game running the menu stays closed; opening it builds the
         // Core Options submenu from the test core's options.
@@ -2062,6 +2455,21 @@ static int SDLCALL test_Menu(void *arg) {
             SDL_Libretro_RenderMenu(menu);
         }
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Menu stays open across frames");
+
+        // Adding a second disk brings up the Disks page on the next open, and
+        // picking a radio runs the eject/set/insert swap.
+        SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == true, "EjectDisk before adding a disk");
+        SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, TEST_CONTENT_PATH) == true, "AddDiskImage adds a second disk");
+        SDLTest_AssertCheck(SDL_Libretro_InsertDisk(lr) == true, "InsertDisk after adding");
+        SDL_Libretro_SetMenuOpen(menu, false);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_SetMenuOpen(menu, true);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->disksButton->visible == nk_true, "Disks page appears with two disks");
+        menu->diskSelected = 1;
+        SDL_Libretro_MenuDiskClicked(NULL, menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetDiskIndex(lr) == 1, "The menu swap changes the disk index");
 
         // About page with a loaded core: core and content lines appear.
         SDL_Libretro_MenuBuildAbout(menu);
@@ -2098,11 +2506,15 @@ static int SDLCALL test_Menu(void *arg) {
         // Mute captures the pre-mute volume and silences the output.
         SDL_Libretro_SetVolume(lrSave, 0.5f);
         menuSave->muteChecked = nk_true;
-        SDL_Libretro_MenuMuteChanged(NULL, menuSave);
+        SDL_Libretro_MenuMuteChanged(menuSave, NULL);
         SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrSave) == 0.0f, "Mute drops the volume to zero");
 
         SDL_Libretro_DestroyMenu(menuSave);
     }
+    SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
+    // A rebound key persists through the config file alongside the menu state.
+    SDL_Libretro_SetKeyboardMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_K);
+    SDL_Libretro_SetRewindMemoryLimit(lrSave, (size_t)48 << 20);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
     SDL_Libretro* lrLoad = SDL_Libretro_Create();
@@ -2111,12 +2523,17 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_LibretroMenu* menuLoad = SDL_Libretro_CreateMenu(lrLoad);
     SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuStyle(menuLoad) == SDL_LIBRETRO_MENU_STYLE_DRACULA,
         "Menu theme persists through the config file");
-    SDLTest_AssertCheck(menuLoad != NULL && menuLoad->uiScaleIndex == 3, "UI scale persists through the config file");
     SDLTest_AssertCheck(menuLoad != NULL && menuLoad->muteChecked == nk_true, "Mute state persists through the config file");
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
+    SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
+        "Keyboard bindings persist through the config file");
+    SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X,
+        "Untouched bindings keep their defaults");
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lrLoad) == (size_t)48 << 20,
+        "Rewind memory limit persists through the config file");
     if (menuLoad != NULL) {
         menuLoad->muteChecked = nk_false;
-        SDL_Libretro_MenuMuteChanged(NULL, menuLoad);
+        SDL_Libretro_MenuMuteChanged(menuLoad, NULL);
         SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lrLoad) - 0.5f) < 0.001f,
             "Unmute restores the pre-mute volume");
     }
@@ -2218,6 +2635,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_NullSafety,       "All getters handle NULL without crashing"),
     LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
+    LIBRETRO_TEST_CASE(test_DRCDisable,       "Disabling DRC unwinds the ratio nudge"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_GamepadEvents,    "Gamepad hotplug events update gamepadCount"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
@@ -2255,9 +2673,12 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
     LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
+    LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),
+    LIBRETRO_TEST_CASE(test_AudioQueueOverflow, "Audio queue hard cap trims overflow"),
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
+    LIBRETRO_TEST_CASE(test_Events,           "SDL event pushes: env dispatch, watches, and lifecycle"),
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     LIBRETRO_TEST_CASE(test_Menu,             "Menu create/toggle/update/render lifecycle"),
 #if defined(TEST_CORE_PATH) && defined(TEST_CORE_NOVFS_PATH) && defined(TEST_CONTENT_PATH)

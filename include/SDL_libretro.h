@@ -141,6 +141,7 @@ bool SDL_Libretro_SetRenderer(SDL_Libretro* lr, SDL_Renderer* renderer);
 SDL_Renderer* SDL_Libretro_GetRenderer(const SDL_Libretro* lr);
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr);
 SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr);
+bool SDL_Libretro_SaveScreenshot(const SDL_Libretro* lr, const char* path);
 bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRect* dstRect);
 void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h);
 float SDL_Libretro_GetAspectRatio(const SDL_Libretro* lr);
@@ -148,8 +149,8 @@ double SDL_Libretro_GetFPS(const SDL_Libretro* lr);
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr);
 bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode);
 SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr);
-bool SDL_Libretro_SetTextureScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode);
-SDL_ScaleMode SDL_Libretro_GetTextureScaleMode(const SDL_Libretro* lr);
+bool SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode);
+SDL_ScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr);
 
 // Audio
 
@@ -171,6 +172,40 @@ void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scan
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr);
 bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, unsigned* port, unsigned* device, unsigned* id, const char** description);
+
+// Events
+
+/**
+ * The base SDL event type for SDL_libretro events.
+ *
+ * SDL_libretro reports everything through the SDL event queue as
+ * SDL_UserEvent, with event->user.data1 the SDL_Libretro* that sent it.
+ *
+ * Environment commands the library doesn't handle itself arrive as
+ * `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*`, with the data pointer the core
+ * passed in event->user.data2. The RETRO_ENVIRONMENT_EXPERIMENTAL and
+ * RETRO_ENVIRONMENT_PRIVATE flags don't fit the SDL event range, so commands
+ * carrying them need the flag masked off: `SDL_EVENT_LIBRETRO |
+ * (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`.
+ *
+ * The data pointer is only valid while the core waits inside the environment
+ * call, so to implement a command, handle the event from an
+ * SDL_AddEventWatch() callback — watches run synchronously during the push —
+ * and set event->user.code to a non-zero value there to tell the core the
+ * command succeeded. A claimed command is consumed by the watch and doesn't
+ * also reach the event queue; unclaimed commands arrive there once, with the
+ * data pointer already expired.
+ */
+#define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
+
+#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading; data2 is the core name, valid until the next load or unload. @see SDL_Libretro_GetCoreName() */
+#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu; data2 is the game name, valid until the next load or unload. @see SDL_Libretro_GetGameName() */
+#define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /** The menu became visible; the game pauses. data2 is the SDL_LibretroMenu. */
+#define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /** The menu was dismissed; the game resumes. data2 is the SDL_LibretroMenu. */
+#define SDL_EVENT_LIBRETRO_CORE_UNLOADED (SDL_EVENT_LIBRETRO | 0xF04) /** The core was unloaded, along with any game it ran. */
+#define SDL_EVENT_LIBRETRO_GAME_UNLOADED (SDL_EVENT_LIBRETRO | 0xF05) /** The game was unloaded, whether directly or through the core unloading. */
+#define SDL_EVENT_LIBRETRO_SHUTDOWN (SDL_EVENT_LIBRETRO | 0xF06) /** The core requested shutdown. @see SDL_Libretro_ShouldQuit() */
+#define SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED (SDL_EVENT_LIBRETRO | 0xF07) /** The video size, aspect ratio, or timing changed mid-game. @see SDL_Libretro_GetSize() */
 
 // Save States
 
@@ -271,6 +306,7 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr);
 // Meta Data
 
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr);
+const char* SDL_Libretro_GetGameName(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr);
@@ -370,8 +406,42 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open);
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu);
 bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
+
+/**
+ * Opens the menu and navigates to a page by its slash-separated label path,
+ * e.g. "Settings/Audio & Video", "Settings/Core Options" or "Disks".
+ *
+ * \return true when the path resolved; the menu stays open either way.
+ */
+bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path);
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style);
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
+
+/**
+ * A callback for menu entries added by the application.
+ *
+ * \see SDL_Libretro_AddMenuButton()
+ * \see SDL_Libretro_AddMenuCheckbox()
+ */
+typedef void (*SDL_LibretroMenuCallback)(SDL_LibretroMenu* menu, void* userdata);
+
+bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata);
+
+/**
+ * Adds a checkbox to the top of the menu. The value pointer is written on
+ * every toggle, so it must outlive the menu.
+ */
+bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
+
+/**
+ * A ready-made menu callback that saves a PNG screenshot of the current frame.
+ *
+ * Pass it to SDL_Libretro_AddMenuButton(); userdata is the destination path
+ * as a const char*, or NULL for "screenshot.png".
+ *
+ * \see SDL_Libretro_AddMenuButton()
+ */
+void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata);
 
 /**
  * The SDL_Libretro context the menu was created for, or NULL.
@@ -421,15 +491,17 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
 #define SDL_LIBRETRO_MAX_PATH 4096
 #endif
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
-#define SDL_LIBRETRO_MAX_RUMBLE_PORTS 4
-#define SDL_LIBRETRO_MAX_SENSOR_PORTS 4
 #define SDL_LIBRETRO_OSD_INITIAL_CAPACITY 4
 
-#ifndef SDL_LIBRETRO_MAX_GAMEPADS
+#ifndef SDL_LIBRETRO_MAX_USERS
 /**
  * The number of controller ports (gamepads) the frontend tracks.
+ *
+ * This is the single source of truth for every per-port cap: gamepad, rumble
+ * and sensor arrays, port bound checks, and the value reported through
+ * RETRO_ENVIRONMENT_GET_INPUT_MAX_USERS.
  */
-#define SDL_LIBRETRO_MAX_GAMEPADS 8
+#define SDL_LIBRETRO_MAX_USERS 4
 #endif
 
 /**
@@ -441,6 +513,17 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
  * @internal
  */
 #define SDL_LIBRETRO_MAX_JOYPAD_BUTTONS 16
+
+/**
+ * Display names for the RETRO_DEVICE_ID_JOYPAD_* buttons, indexed by id.
+ * Doubles as the config keys for the player 1 keyboard bindings.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_JoypadButtonNames[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
+    "B", "Y", "Select", "Start", "Up", "Down", "Left", "Right",
+    "A", "X", "L", "R", "L2", "R2", "L3", "R3",
+};
 
 typedef struct SDL_Libretro_CoreInfo {
     char* corename;
@@ -528,7 +611,6 @@ typedef struct SDL_LibretroCoreData {
 
     // Video
     SDL_Texture* texture;
-    SDL_ScaleMode textureScaleMode;
     SDL_FRect renderDstRect; /** The desired destination rendering rectangle. */
     bool videoReinitPending; /** True when the video requires a re-initialization. */
 
@@ -554,8 +636,8 @@ typedef struct SDL_LibretroCoreData {
     float inputMouseX, inputMouseY;
     float inputWheelAccumX, inputWheelAccumY; /** Wheel delta accumulated between frames via SDL_Libretro_HandleEvent(). */
     float inputWheelX, inputWheelY; /** Wheel deltas for the current frame, snapshotted in SDL_Libretro_InputPoll(). */
-    unsigned portDeviceMap[SDL_LIBRETRO_MAX_GAMEPADS];
-    bool virtualJoypadState[SDL_LIBRETRO_MAX_GAMEPADS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+    unsigned portDeviceMap[SDL_LIBRETRO_MAX_USERS];
+    bool virtualJoypadState[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     retro_keyboard_event_t keyboard_event;
 
     // Timing
@@ -604,14 +686,14 @@ typedef struct SDL_LibretroCoreData {
     unsigned subsystemCount;
 
     // Rumble
-    float rumbleStrong[SDL_LIBRETRO_MAX_RUMBLE_PORTS];
-    float rumbleWeak[SDL_LIBRETRO_MAX_RUMBLE_PORTS];
+    float rumbleStrong[SDL_LIBRETRO_MAX_USERS];
+    float rumbleWeak[SDL_LIBRETRO_MAX_USERS];
 
     // Sensors
-    SDL_Sensor* sensorAccel[SDL_LIBRETRO_MAX_SENSOR_PORTS];
-    SDL_Sensor* sensorGyro[SDL_LIBRETRO_MAX_SENSOR_PORTS];
-    float sensorAccelData[SDL_LIBRETRO_MAX_SENSOR_PORTS][3];
-    float sensorGyroData[SDL_LIBRETRO_MAX_SENSOR_PORTS][3];
+    SDL_Sensor* sensorAccel[SDL_LIBRETRO_MAX_USERS];
+    SDL_Sensor* sensorGyro[SDL_LIBRETRO_MAX_USERS];
+    float sensorAccelData[SDL_LIBRETRO_MAX_USERS][3];
+    float sensorGyroData[SDL_LIBRETRO_MAX_USERS][3];
 
     // Microphone
     SDL_LibretroMicrophone* microphone;
@@ -644,6 +726,7 @@ struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /** The audio volume. */
     SDL_LibretroFitMode fitMode; /** How the libretro context should fit into its destination when rendering. */
+    SDL_ScaleMode scaleMode; /** The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
@@ -686,7 +769,7 @@ struct SDL_Libretro {
     bool rewindActive; /** true only during a backward step's re-run (mutes audio, neutralizes input) */
 
     // Input
-    SDL_Gamepad* gamepads[SDL_LIBRETRO_MAX_GAMEPADS];
+    SDL_Gamepad* gamepads[SDL_LIBRETRO_MAX_USERS];
     unsigned gamepadCount;
 
     SDL_LibretroCoreData core; /** The loaded core state. */
@@ -734,6 +817,8 @@ static bool SDL_Libretro_RewindStep(SDL_Libretro* lr);
 static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress);
 static void SDL_Libretro_FreeMessages(SDL_Libretro* lr);
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data);
+static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data);
+static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data);
 static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);

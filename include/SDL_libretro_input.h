@@ -398,7 +398,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
             }
 
             // Virtual joypad (per-port)
-            if (port < SDL_LIBRETRO_MAX_GAMEPADS && id < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS &&
+            if (port < SDL_LIBRETRO_MAX_USERS && id < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS &&
                 lr->core.virtualJoypadState[port][id]) {
                 return 1;
             }
@@ -411,7 +411,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
             }
 
             // Gamepad
-            if (port < SDL_LIBRETRO_MAX_GAMEPADS && lr->gamepads[port]) {
+            if (port < SDL_LIBRETRO_MAX_USERS && lr->gamepads[port]) {
                 // L2/R2 are axes, not buttons
                 if (id == RETRO_DEVICE_ID_JOYPAD_L2) {
                     Sint16 val = SDL_GetGamepadAxis(lr->gamepads[port], SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
@@ -431,7 +431,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         }
 
         case RETRO_DEVICE_ANALOG: {
-            if (port < SDL_LIBRETRO_MAX_GAMEPADS && lr->gamepads[port]) {
+            if (port < SDL_LIBRETRO_MAX_USERS && lr->gamepads[port]) {
                 SDL_Gamepad* gp = lr->gamepads[port];
                 if (index == RETRO_DEVICE_INDEX_ANALOG_LEFT ||
                     index == RETRO_DEVICE_INDEX_ANALOG_RIGHT) {
@@ -613,7 +613,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
             SDL_JoystickID jid = event->gdevice.which;
             SDL_Gamepad* gp = SDL_OpenGamepad(jid);
             if (gp) {
-                for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+                for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
                     if (!lr->gamepads[i]) {
                         lr->gamepads[i] = gp;
                         const char* name = SDL_GetGamepadName(gp);
@@ -627,7 +627,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
         }
         case SDL_EVENT_GAMEPAD_REMOVED: {
             SDL_JoystickID jid = event->gdevice.which;
-            for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+            for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
                 if (lr->gamepads[i] && SDL_GetGamepadID(lr->gamepads[i]) == jid) {
                     const char* name = SDL_GetGamepadName(lr->gamepads[i]);
                     SDL_Log("[SDL_Libretro] Gamepad removed: #%u %s", i + 1, name ? name : "");
@@ -635,7 +635,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
                     lr->gamepads[i] = NULL;
                     // Recompute the gamepad count as the highest occupied port + 1.
                     lr->gamepadCount = 0;
-                    for (unsigned j = 0; j < SDL_LIBRETRO_MAX_GAMEPADS; j++) {
+                    for (unsigned j = 0; j < SDL_LIBRETRO_MAX_USERS; j++) {
                         if (lr->gamepads[j]) lr->gamepadCount = j + 1;
                     }
                     break;
@@ -667,7 +667,7 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
 }
 
 bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device) {
-    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return false;
     lr->core.portDeviceMap[port] = device;
     if (SDL_Libretro_IsCoreReady(lr)) {
         lr->core.symbols.retro_set_controller_port_device(port, device);
@@ -683,13 +683,13 @@ bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device
  * device is explicitly assigned. Invalid arguments return RETRO_DEVICE_NONE.
  *
  * @param lr the libretro context.
- * @param port the controller port, at a max of SDL_LIBRETRO_MAX_GAMEPADS.
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_USERS.
  * @returns the assigned RETRO_DEVICE_* type, or RETRO_DEVICE_NONE on invalid arguments.
  *
- * @see SDL_LIBRETRO_MAX_GAMEPADS
+ * @see SDL_LIBRETRO_MAX_USERS
  */
 unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port) {
-    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS) return RETRO_DEVICE_NONE;
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return RETRO_DEVICE_NONE;
     return lr->core.portDeviceMap[port];
 }
 
@@ -699,7 +699,7 @@ void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scan
 }
 
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed) {
-    if (!lr || port >= SDL_LIBRETRO_MAX_GAMEPADS ||
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS ||
         button < 0 || button >= SDL_LIBRETRO_MAX_JOYPAD_BUTTONS) {
         return;
     }
@@ -766,7 +766,7 @@ static SDL_Sensor* SDL_Libretro_OpenSensorByType(SDL_SensorType type) {
 
 static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action action, unsigned rate) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_MAX_SENSOR_PORTS) return false;
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return false;
     (void)rate;
 
     switch (action) {
@@ -804,7 +804,7 @@ static bool SDL_Libretro_SetSensorState(unsigned port, enum retro_sensor_action 
 
 static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
     SDL_Libretro* lr = SDL_Libretro_active;
-    if (!lr || port >= SDL_LIBRETRO_MAX_SENSOR_PORTS) return 0.0f;
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return 0.0f;
 
     // Accelerometer
     if (id >= RETRO_SENSOR_ACCELEROMETER_X && id <= RETRO_SENSOR_ACCELEROMETER_Z && lr->core.sensorAccel[port]) {
@@ -836,7 +836,7 @@ static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
 static void SDL_Libretro_CloseSensors(SDL_Libretro* lr) {
     if (!lr) return;
 
-    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_SENSOR_PORTS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
         // Accelerometer
         if (lr->core.sensorAccel[i]) {
             SDL_CloseSensor(lr->core.sensorAccel[i]);

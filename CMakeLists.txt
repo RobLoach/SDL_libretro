@@ -30,6 +30,7 @@ add_library(SDL_libretro INTERFACE)
 target_include_directories(SDL_libretro INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/SDL_ini>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -98,8 +99,8 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     add_executable(SDL_libretro_basic example/SDL_libretro_basic.c)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
 
-    # The demo always includes the menu.
     if(SDL_LIBRETRO_MENU)
+        # The demo assumes the menu; SDL_libretro_basic is the menu-less example.
         add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
         target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs SDL_libretro_menu)
     endif()
@@ -126,7 +127,10 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
         FILES_MATCHING PATTERN "SDL_*.h"
     )
-    install(FILES vendor/libretro-common/include/libretro.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(FILES
+        vendor/libretro-common/include/libretro.h
+        vendor/SDL_ini/SDL_ini.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 
     install(EXPORT SDL_libretroTargets
         NAMESPACE SDL_libretro::

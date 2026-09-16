@@ -7,7 +7,7 @@
  *
  * Enabled by defining SDL_LIBRETRO_ENABLE_MENU alongside
  * SDL_LIBRETRO_IMPLEMENTATION. Requires the vendored Nuklear,
- * nuklear_console, nuklear_gamepad, c-vector and tinydir submodules on the
+ * nuklear_console, nuklear_gamepad and c-vector submodules on the
  * include path (handled by the SDL_libretro_menu CMake target).
  *
  * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:
@@ -166,6 +166,17 @@ typedef struct SDL_LibretroMenuPortState {
     char label[16]; /** The "Port N" combobox label; must outlive the widget. */
 } SDL_LibretroMenuPortState;
 
+/**
+ * Per-button UI state for the "Keyboard" bindings submenu.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuKeyBind {
+    SDL_LibretroMenu* menu;
+    int button; /** The RETRO_DEVICE_ID_JOYPAD_* index. */
+    nk_rune rune; /** The captured key, as an NK_CONSOLE_KEY_* value. */
+} SDL_LibretroMenuKeyBind;
+
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
     struct nk_context* ctx;
@@ -182,6 +193,7 @@ struct SDL_LibretroMenu {
     // Widgets whose visibility depends on the running game.
     nk_console* resumeButton;
     nk_console* stateRow;
+    nk_console* screenshotButton;
     nk_console* resetButton;
     nk_console* optionsButton;
     nk_console* controllersButton;
@@ -197,6 +209,8 @@ struct SDL_LibretroMenu {
     nk_bool fullscreenChecked;
     nk_bool vsyncChecked;
     nk_bool muteChecked;
+    nk_bool rewindChecked;
+    int rewindBufferMB; /** Rewind memory limit in MB; 0 for no limit. */
     float preMuteVolume; /** Volume to restore when unmuting. */
 
     // Load Game
@@ -213,11 +227,35 @@ struct SDL_LibretroMenu {
     SDL_LibretroMenuOptionState* optionStates;
     unsigned optionStateCount;
     bool optionsStale; /** The Core Options submenu no longer matches the core's options. */
+    bool settingsDirty; /** A menu-owned setting changed and awaits SDL_Libretro_MenuSaveState(). */
     unsigned builtOptionCount; /** Option count when the submenu was last built. */
     char builtCoreName[128]; /** Core library name when the submenu was last built. */
 
     // Controllers
-    SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_GAMEPADS];
+    SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_USERS];
+
+    // Keyboard bindings for player 1 (Settings > Keyboard).
+    SDL_LibretroMenuKeyBind keyBinds[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+
+    // Disks, rebuilt when the menu opens.
+    nk_console* disksButton;
+    int diskSelected; /** Radio-selected disk index. */
+    unsigned builtDiskCount; /** Disk count when the submenu was last built; bounds diskLabels. */
+    char** diskLabels; /** Owned label copies backing the radios. */
+
+    // Progress rows, refreshed every update.
+    nk_console* osdProgressWidget; /** Top-level bar for progress-type OSD messages. */
+    nk_size osdProgressValue;
+    char osdProgressLabel[128];
+
+    nk_console* quitButton; /** Kept as the last top-level entry when the app adds its own. */
+
+    // Settings textedit buffers (directories + username).
+    char coreDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char saveDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char systemDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char browseDirBuffer[SDL_LIBRETRO_MAX_PATH];
+    char usernameBuffer[64];
 
     // About page, rebuilt each time it opens. The labels read the arena
     // lazily, so it must stay allocated for as long as the menu.
@@ -233,12 +271,21 @@ struct SDL_LibretroMenu {
  *
  * @internal
  */
-static void SDL_Libretro_MenuResumeClicked(nk_console* widget, void* user_data) {
-    (void)widget;
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuResumeClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
     if (SDL_Libretro_IsGameReady(menu->lr)) {
         SDL_Libretro_SetMenuOpen(menu, false);
     }
+}
+
+/**
+ * BACK on the top level acts like Resume.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBackClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_Libretro_MenuResumeClicked((SDL_LibretroMenu*)user_data, NULL);
 }
 
 /**
@@ -253,6 +300,7 @@ static bool SDL_Libretro_MenuLoadGameNow(SDL_LibretroMenu* menu, const char* pat
     bool loaded = SDL_Libretro_LoadGame(menu->lr, path);
 #endif
     if (loaded) {
+        // The load path already pushed SDL_EVENT_LIBRETRO_GAME_LOADED.
         SDL_Libretro_SetMenuOpen(menu, false);
     }
     else {
@@ -484,48 +532,65 @@ EMSCRIPTEN_KEEPALIVE void SDL_Libretro_MenuLoadGameFromJS(SDL_LibretroMenu* menu
 /**
  * @internal
  */
-static void SDL_Libretro_MenuWebLoadGameClicked(nk_console* widget, void* user_data) {
-    (void)widget;
-    SDL_Libretro_MenuOpenWebFilePicker((SDL_LibretroMenu*)user_data);
+static void SDL_Libretro_MenuWebLoadGameClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
+    SDL_Libretro_MenuOpenWebFilePicker(menu);
 }
 #endif /* __EMSCRIPTEN__ */
 
 /**
  * @internal
  */
-static void SDL_Libretro_MenuSaveStateClicked(nk_console* widget, void* user_data) {
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuSaveStateClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
     char savePath[SDL_LIBRETRO_MAX_PATH];
     if (SDL_Libretro_GetSavePath(menu->lr, ".sav", savePath, sizeof(savePath)) > 0 &&
         SDL_Libretro_SaveState(menu->lr, savePath)) {
-        nk_console_show_message(nk_console_get_top(widget), "State saved");
+        nk_console_show_message(menu->console, "State saved");
     }
     else {
-        nk_console_show_message(nk_console_get_top(widget), "Save State failed");
+        nk_console_show_message(menu->console, "Save State failed");
     }
 }
 
 /**
  * @internal
  */
-static void SDL_Libretro_MenuLoadStateClicked(nk_console* widget, void* user_data) {
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuLoadStateClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
     char savePath[SDL_LIBRETRO_MAX_PATH];
     if (SDL_Libretro_GetSavePath(menu->lr, ".sav", savePath, sizeof(savePath)) > 0 &&
         SDL_Libretro_LoadState(menu->lr, savePath)) {
         SDL_Libretro_SetMenuOpen(menu, false);
     }
     else {
-        nk_console_show_message(nk_console_get_top(widget), "Load State failed");
+        nk_console_show_message(menu->console, "Load State failed");
+    }
+}
+
+/**
+ * Save a PNG screenshot of the current frame, reporting the result in the
+ * menu. Suitable for SDL_Libretro_AddMenuButton(); userdata is the
+ * destination path, or NULL for "screenshot.png".
+ */
+void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata) {
+    if (menu == NULL) {
+        return;
+    }
+    if (SDL_Libretro_SaveScreenshot(menu->lr, (const char*)userdata)) {
+        nk_console_show_message(menu->console, "Screenshot saved");
+    }
+    else {
+        SDL_Log("Failed to save screenshot: %s", SDL_GetError());
+        nk_console_show_message(menu->console, "Screenshot failed");
     }
 }
 
 /**
  * @internal
  */
-static void SDL_Libretro_MenuResetClicked(nk_console* widget, void* user_data) {
-    (void)widget;
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuResetClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
     if (SDL_Libretro_Reset(menu->lr)) {
         SDL_Libretro_SetMenuOpen(menu, false);
     }
@@ -547,6 +612,171 @@ static const char* SDL_Libretro_MenuPixelFormatName(enum retro_pixel_format form
         default:
             return "Unknown";
     }
+}
+
+/**
+ * Standard submenu header: a back button labeled like the submenu itself.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuAddBackButton(nk_console* parent, const char* label) {
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(parent, label, &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_UP);
+}
+
+/**
+ * Create a submenu button with a symbol and the standard back-button header.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuAddSubmenu(nk_console* parent, const char* label, enum nk_symbol_type symbol) {
+    nk_console* button = nk_console_button(parent, label);
+    nk_console_button_set_symbol(button, symbol);
+    SDL_Libretro_MenuAddBackButton(button, label);
+    return button;
+}
+
+/**
+ * Wire a CHANGED handler onto a freshly created widget.
+ *
+ * @return The widget, for further configuration.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuOnChanged(nk_console* widget, nk_console_event callback, void* user_data) {
+    nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED, callback, user_data, NULL);
+    return widget;
+}
+
+/**
+ * Move the active parent up to root when it sits inside root's subtree, so
+ * rebuilding root's children can't leave it pointing at freed widgets.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuGuardActiveParent(SDL_LibretroMenu* menu, nk_console* root) {
+    nk_console* active = nk_console_active_parent(menu->console);
+    for (nk_console* it = active; it != NULL; it = it->parent) {
+        if (it == root) {
+            if (active != root) {
+                nk_console_set_active_parent(root);
+            }
+            return;
+        }
+    }
+}
+
+/**
+ * One menu entry created through the shared button/checkbox path; the menu's
+ * own widgets and the application-added entries both use it.
+ *
+ * Owns the label copy; freed through the widget's event destructor.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuItem {
+    SDL_LibretroMenu* menu;
+    SDL_LibretroMenuCallback callback;
+    void* userdata;
+    char* label;
+    nk_bool checked; /** Backing checkbox state when the caller brings none. */
+    bool* value; /** The app's checkbox value, mirrored from checked; may be NULL. */
+} SDL_LibretroMenuItem;
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuItemChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuItem* item = (SDL_LibretroMenuItem*)user_data;
+    if (item->value != NULL) {
+        *item->value = item->checked == nk_true;
+    }
+    if (item->callback != NULL) {
+        item->callback(item->menu, item->userdata);
+    }
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuItemDestroy(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuItem* item = (SDL_LibretroMenuItem*)user_data;
+    SDL_free(item->label);
+    SDL_free(item);
+}
+
+/**
+ * @internal
+ */
+static SDL_LibretroMenuItem* SDL_Libretro_MenuCreateItem(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata) {
+    SDL_LibretroMenuItem* item = (SDL_LibretroMenuItem*)SDL_calloc(1, sizeof(SDL_LibretroMenuItem));
+    if (item == NULL) {
+        return NULL;
+    }
+    item->menu = menu;
+    item->callback = callback;
+    item->userdata = userdata;
+    item->label = SDL_strdup(label);
+    if (item->label == NULL) {
+        SDL_free(item);
+        return NULL;
+    }
+    return item;
+}
+
+/**
+ * Create a button under parent whose CLICKED handler is an
+ * SDL_LibretroMenuCallback. Backs the menu's own entries and
+ * SDL_Libretro_AddMenuButton().
+ *
+ * @return The widget, or NULL on allocation failure.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuAddButton(SDL_LibretroMenu* menu, nk_console* parent, const char* label, enum nk_symbol_type symbol, SDL_LibretroMenuCallback callback, void* userdata) {
+    SDL_LibretroMenuItem* item = SDL_Libretro_MenuCreateItem(menu, label, callback, userdata);
+    if (item == NULL) {
+        return NULL;
+    }
+    nk_console* button = nk_console_button_onclick_handler(parent, item->label, &SDL_Libretro_MenuItemChanged, item, &SDL_Libretro_MenuItemDestroy);
+    if (button == NULL) {
+        SDL_Libretro_MenuItemDestroy(NULL, item);
+        return NULL;
+    }
+    nk_console_button_set_symbol(button, symbol);
+    return button;
+}
+
+/**
+ * Create a checkbox under parent whose CHANGED handler is an
+ * SDL_LibretroMenuCallback. checked is the widget's live storage, or NULL to
+ * use the item's own, mirrored into the optional value bool. Backs the
+ * menu's own entries and SDL_Libretro_AddMenuCheckbox().
+ *
+ * @return The widget, or NULL on allocation failure.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuAddCheckbox(SDL_LibretroMenu* menu, nk_console* parent, const char* label, nk_bool* checked, bool* value, SDL_LibretroMenuCallback callback, void* userdata) {
+    SDL_LibretroMenuItem* item = SDL_Libretro_MenuCreateItem(menu, label, callback, userdata);
+    if (item == NULL) {
+        return NULL;
+    }
+    nk_bool* storage = checked != NULL ? checked : &item->checked;
+    item->value = value;
+    if (value != NULL) {
+        *storage = (nk_bool)*value;
+    }
+    nk_console* checkbox = nk_console_checkbox(parent, item->label, storage);
+    if (checkbox == NULL) {
+        SDL_Libretro_MenuItemDestroy(NULL, item);
+        return NULL;
+    }
+    nk_console_add_event_handler(checkbox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuItemChanged, item, &SDL_Libretro_MenuItemDestroy);
+    return checkbox;
 }
 
 /**
@@ -586,9 +816,7 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
 
     nk_console_free_children(menu->aboutButton);
     menu->aboutTextLength = 0;
-    nk_console_button_set_symbol(
-        nk_console_button_onclick(menu->aboutButton, "About", &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_UP);
+    SDL_Libretro_MenuAddBackButton(menu->aboutButton, "About");
 
     // Frontend
     SDL_Libretro_MenuAboutLine(menu, "SDL_libretro %d.%d.%d",
@@ -643,17 +871,18 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
  *
  * @internal
  */
-static void SDL_Libretro_MenuAboutOpened(nk_console* widget, void* user_data) {
-    SDL_Libretro_MenuBuildAbout((SDL_LibretroMenu*)user_data);
-    nk_console_set_active_parent(widget);
+static void SDL_Libretro_MenuAboutOpened(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
+    SDL_Libretro_MenuBuildAbout(menu);
+    nk_console_set_active_parent(menu->aboutButton);
 }
 
 /**
  * @internal
  */
-static void SDL_Libretro_MenuQuitClicked(nk_console* widget, void* user_data) {
-    (void)widget;
-    (void)user_data;
+static void SDL_Libretro_MenuQuitClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)menu;
+    (void)userdata;
     SDL_Event event;
     SDL_zero(event);
     event.type = SDL_EVENT_QUIT;
@@ -685,31 +914,44 @@ static void SDL_Libretro_MenuFitModeChanged(nk_console* widget, void* user_data)
 static void SDL_Libretro_MenuFilterChanged(nk_console* widget, void* user_data) {
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
-    SDL_Libretro_SetTextureScaleMode(menu->lr, menu->filterIndex == 1 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+    SDL_Libretro_SetScaleMode(menu->lr, menu->filterIndex == 1 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
 }
 
 /**
  * @internal
  */
-static void SDL_Libretro_MenuFullscreenChanged(nk_console* widget, void* user_data) {
-    (void)widget;
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuFullscreenChanged(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
     SDL_SetWindowFullscreen(menu->lr->window, menu->fullscreenChecked == nk_true);
-    if (menu->lr->ini != NULL) {
-        INI_SetBoolean(menu->lr->ini, NULL, "menufullscreen", menu->fullscreenChecked == nk_true);
-    }
+    menu->settingsDirty = true;
 }
 
 /**
  * @internal
  */
-static void SDL_Libretro_MenuVSyncChanged(nk_console* widget, void* user_data) {
+static void SDL_Libretro_MenuVSyncChanged(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
+    SDL_SetRenderVSync(menu->lr->renderer, menu->vsyncChecked == nk_true ? 1 : 0);
+    menu->settingsDirty = true;
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
+    // Keep the capacity and interval the app configured.
+    SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true,
+                                  menu->lr->rewindCapacity, menu->lr->rewindCaptureInterval);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuRewindBufferChanged(nk_console* widget, void* user_data) {
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
-    SDL_SetRenderVSync(menu->lr->renderer, menu->vsyncChecked == nk_true ? 1 : 0);
-    if (menu->lr->ini != NULL) {
-        INI_SetBoolean(menu->lr->ini, NULL, "menuvsync", menu->vsyncChecked == nk_true);
-    }
+    SDL_Libretro_SetRewindMemoryLimit(menu->lr, (size_t)menu->rewindBufferMB << 20);
 }
 
 /**
@@ -717,9 +959,8 @@ static void SDL_Libretro_MenuVSyncChanged(nk_console* widget, void* user_data) {
  *
  * @internal
  */
-static void SDL_Libretro_MenuMuteChanged(nk_console* widget, void* user_data) {
-    (void)widget;
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuMuteChanged(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
     SDL_Libretro* lr = menu->lr;
     if (menu->muteChecked) {
         menu->preMuteVolume = SDL_Libretro_GetVolume(lr);
@@ -729,10 +970,182 @@ static void SDL_Libretro_MenuMuteChanged(nk_console* widget, void* user_data) {
         SDL_Libretro_SetVolume(lr, menu->preMuteVolume > 0.0f ? menu->preMuteVolume : 1.0f);
         menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
     }
-    if (lr->ini != NULL) {
-        INI_SetBoolean(lr->ini, NULL, "menumuted", menu->muteChecked == nk_true);
-        INI_SetFloat(lr->ini, NULL, "menumutevolume", menu->preMuteVolume);
+    menu->settingsDirty = true;
+}
+
+/**
+ * Special keys that map between SDL scancodes and NK_CONSOLE_KEY_* runes.
+ *
+ * Aliases (keypad enter, right-hand modifiers) come after their primary, so
+ * rune-to-scancode lookups resolve to the primary. Printable keys are
+ * handled by the ASCII fallbacks in the lookups below.
+ *
+ * @internal
+ */
+static const struct { SDL_Scancode scancode; nk_rune rune; } SDL_Libretro_MenuKeyRunes[] = {
+    { SDL_SCANCODE_RETURN, NK_CONSOLE_KEY_ENTER },
+    { SDL_SCANCODE_KP_ENTER, NK_CONSOLE_KEY_ENTER },
+    { SDL_SCANCODE_TAB, NK_CONSOLE_KEY_TAB },
+    { SDL_SCANCODE_BACKSPACE, NK_CONSOLE_KEY_BACKSPACE },
+    { SDL_SCANCODE_ESCAPE, NK_CONSOLE_KEY_ESCAPE },
+    { SDL_SCANCODE_DELETE, NK_CONSOLE_KEY_DELETE },
+    { SDL_SCANCODE_UP, NK_CONSOLE_KEY_UP },
+    { SDL_SCANCODE_DOWN, NK_CONSOLE_KEY_DOWN },
+    { SDL_SCANCODE_LEFT, NK_CONSOLE_KEY_LEFT },
+    { SDL_SCANCODE_RIGHT, NK_CONSOLE_KEY_RIGHT },
+    { SDL_SCANCODE_LSHIFT, NK_CONSOLE_KEY_SHIFT },
+    { SDL_SCANCODE_RSHIFT, NK_CONSOLE_KEY_SHIFT },
+    { SDL_SCANCODE_LCTRL, NK_CONSOLE_KEY_CTRL },
+    { SDL_SCANCODE_RCTRL, NK_CONSOLE_KEY_CTRL },
+    { SDL_SCANCODE_LALT, NK_CONSOLE_KEY_ALT },
+    { SDL_SCANCODE_RALT, NK_CONSOLE_KEY_ALT },
+    { SDL_SCANCODE_F1, NK_CONSOLE_KEY_F1 },
+    { SDL_SCANCODE_F2, NK_CONSOLE_KEY_F2 },
+    { SDL_SCANCODE_F3, NK_CONSOLE_KEY_F3 },
+    { SDL_SCANCODE_F4, NK_CONSOLE_KEY_F4 },
+    { SDL_SCANCODE_F5, NK_CONSOLE_KEY_F5 },
+    { SDL_SCANCODE_F6, NK_CONSOLE_KEY_F6 },
+    { SDL_SCANCODE_F7, NK_CONSOLE_KEY_F7 },
+    { SDL_SCANCODE_F8, NK_CONSOLE_KEY_F8 },
+    { SDL_SCANCODE_F9, NK_CONSOLE_KEY_F9 },
+    { SDL_SCANCODE_F10, NK_CONSOLE_KEY_F10 },
+    { SDL_SCANCODE_F11, NK_CONSOLE_KEY_F11 },
+    { SDL_SCANCODE_F12, NK_CONSOLE_KEY_F12 },
+};
+
+/**
+ * The NK_CONSOLE_KEY_* rune for an SDL scancode, to show the current binding
+ * in a key-capture widget. NK_CONSOLE_KEY_NONE when the key has no rune; it
+ * can still be rebound, just not displayed.
+ *
+ * @internal
+ */
+static nk_rune SDL_Libretro_MenuRuneFromScancode(SDL_Scancode scancode) {
+    for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
+        if (SDL_Libretro_MenuKeyRunes[i].scancode == scancode) {
+            return SDL_Libretro_MenuKeyRunes[i].rune;
+        }
     }
+    SDL_Keycode key = SDL_GetKeyFromScancode(scancode, SDL_KMOD_NONE, false);
+    if (key >= 32 && key < 127) {
+        return (nk_rune)key;
+    }
+    return NK_CONSOLE_KEY_NONE;
+}
+
+/**
+ * The SDL scancode for a captured NK_CONSOLE_KEY_* rune, or
+ * SDL_SCANCODE_UNKNOWN when it has no equivalent.
+ *
+ * @internal
+ */
+static SDL_Scancode SDL_Libretro_MenuScancodeFromRune(nk_rune rune) {
+    for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
+        if (SDL_Libretro_MenuKeyRunes[i].rune == rune) {
+            return SDL_Libretro_MenuKeyRunes[i].scancode;
+        }
+    }
+    if (rune >= 'A' && rune <= 'Z') {
+        rune += 'a' - 'A';
+    }
+    if (rune >= 32 && rune < 127) {
+        return SDL_GetScancodeFromKey((SDL_Keycode)rune, NULL);
+    }
+    return SDL_SCANCODE_UNKNOWN;
+}
+
+/**
+ * Refresh the Keyboard page's captured runes from the live mapping.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSyncKeyBinds(SDL_LibretroMenu* menu) {
+    for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
+        menu->keyBinds[i].rune = SDL_Libretro_MenuRuneFromScancode(menu->lr->keyboardPlayer1[i]);
+    }
+}
+
+/**
+ * Apply a captured key to the player 1 keyboard mapping. Captures without an
+ * SDL equivalent (including a timed-out prompt) revert to the current
+ * binding.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuKeyBindChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuKeyBind* bind = (SDL_LibretroMenuKeyBind*)user_data;
+    SDL_LibretroMenu* menu = bind->menu;
+    SDL_Scancode scancode = SDL_Libretro_MenuScancodeFromRune(bind->rune);
+    if (scancode == SDL_SCANCODE_UNKNOWN) {
+        bind->rune = SDL_Libretro_MenuRuneFromScancode(menu->lr->keyboardPlayer1[bind->button]);
+        return;
+    }
+    SDL_Libretro_SetKeyboardMapping(menu->lr, bind->button, scancode);
+}
+
+/**
+ * Read the menu's own persisted state from the config, applying it to the
+ * window, renderer and volume before the widgets snapshot them.
+ *
+ * The counterpart of SDL_Libretro_MenuSaveState(); menu-owned config keys
+ * live in these two functions only.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuLoadState(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    SDL_LibretroMenuStyle style = SDL_LIBRETRO_MENU_DEFAULT_STYLE;
+    // Default the UI scale to 2x; a saved choice (including an explicit Auto)
+    // overrides it below.
+    menu->uiScaleIndex = 2;
+    if (lr->ini != NULL) {
+        Sint64 savedStyle = INI_GetInt(lr->ini, NULL, "menutheme", (Sint64)style);
+        if (savedStyle >= 0 && savedStyle < (Sint64)SDL_LIBRETRO_MENU_STYLE_COUNT) {
+            style = (SDL_LibretroMenuStyle)savedStyle;
+        }
+        if (INI_HasValue(lr->ini, NULL, "menuuiscale")) {
+            Sint64 savedScale = INI_GetInt(lr->ini, NULL, "menuuiscale", 2);
+            if (savedScale >= 0 && savedScale <= 4) {
+                menu->uiScaleIndex = (int)savedScale;
+            }
+        }
+        if (INI_HasValue(lr->ini, NULL, "menufullscreen")) {
+            SDL_SetWindowFullscreen(lr->window, INI_GetBoolean(lr->ini, NULL, "menufullscreen", false));
+        }
+        if (INI_HasValue(lr->ini, NULL, "menuvsync")) {
+            SDL_SetRenderVSync(lr->renderer, INI_GetBoolean(lr->ini, NULL, "menuvsync", false) ? 1 : 0);
+        }
+        if (INI_GetBoolean(lr->ini, NULL, "menumuted", false)) {
+            menu->muteChecked = nk_true;
+            menu->preMuteVolume = INI_GetFloat(lr->ini, NULL, "menumutevolume", 1.0f);
+            SDL_Libretro_SetVolume(lr, 0.0f);
+        }
+    }
+    SDL_Libretro_SetMenuStyle(menu, style);
+}
+
+/**
+ * Write every menu-owned config value; the file itself is saved when the
+ * context closes.
+ *
+ * One choke point, flushed on settingsDirty, so the change handlers stay
+ * free of persistence code.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSaveState(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    menu->settingsDirty = false;
+    if (lr->ini == NULL) {
+        return;
+    }
+    INI_SetInt(lr->ini, NULL, "menutheme", (Sint64)menu->style);
+    INI_SetInt(lr->ini, NULL, "menuuiscale", (Sint64)menu->uiScaleIndex);
+    INI_SetBoolean(lr->ini, NULL, "menufullscreen", menu->fullscreenChecked == nk_true);
+    INI_SetBoolean(lr->ini, NULL, "menuvsync", menu->vsyncChecked == nk_true);
+    INI_SetBoolean(lr->ini, NULL, "menumuted", menu->muteChecked == nk_true);
+    INI_SetFloat(lr->ini, NULL, "menumutevolume", menu->preMuteVolume);
 }
 
 /**
@@ -807,10 +1220,8 @@ static void SDL_Libretro_MenuOptionChanged(nk_console* widget, void* user_data) 
 /**
  * @internal
  */
-static void SDL_Libretro_MenuOptionCheckboxChanged(nk_console* widget, void* user_data) {
-    (void)widget;
-    SDL_LibretroMenuOptionState* state = (SDL_LibretroMenuOptionState*)user_data;
-    SDL_LibretroMenu* menu = state->menu;
+static void SDL_Libretro_MenuOptionCheckboxChanged(SDL_LibretroMenu* menu, void* userdata) {
+    SDL_LibretroMenuOptionState* state = (SDL_LibretroMenuOptionState*)userdata;
     const SDL_LibretroOption* option = SDL_Libretro_GetOptionByIndex(menu->lr, state->index);
     if (option == NULL || option->valuesCount != 2) {
         return;
@@ -826,12 +1237,12 @@ static void SDL_Libretro_MenuOptionCheckboxChanged(nk_console* widget, void* use
 /**
  * @internal
  */
-static void SDL_Libretro_MenuResetOptionsClicked(nk_console* widget, void* user_data) {
-    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+static void SDL_Libretro_MenuResetOptionsClicked(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
     SDL_Libretro_ResetAllOptions(menu->lr);
     SDL_Libretro_MenuOptionWritten(menu);
     menu->optionsStale = true;
-    nk_console_show_message(nk_console_get_top(widget), "Core options reset to defaults");
+    nk_console_show_message(menu->console, "Core options reset to defaults");
 }
 
 /**
@@ -849,12 +1260,51 @@ static void SDL_Libretro_MenuFreeOptionStates(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * Join count items into a freshly allocated "a|b|c" string for a combobox.
+ *
+ * @param item Returns the text for an index; must never return NULL.
+ *
+ * @internal
+ */
+static char* SDL_Libretro_MenuJoinPipeList(unsigned count, const char* (*item)(void* userdata, unsigned index), void* userdata) {
+    size_t length = 0;
+    for (unsigned i = 0; i < count; i++) {
+        length += SDL_strlen(item(userdata, i)) + 1;
+    }
+    char* list = (char*)SDL_malloc(length + 1);
+    if (list == NULL) {
+        return NULL;
+    }
+    list[0] = '\0';
+    size_t offset = 0;
+    for (unsigned i = 0; i < count; i++) {
+        if (i > 0) {
+            list[offset++] = '|';
+        }
+        offset += SDL_strlcpy(list + offset, item(userdata, i), length + 1 - offset);
+    }
+    return list;
+}
+
+/**
  * Whether the option should appear in the Core Options submenu.
  *
  * @internal
  */
 static bool SDL_Libretro_MenuOptionShown(const SDL_LibretroOption* option) {
     return option != NULL && option->visible && option->valuesCount > 0;
+}
+
+/**
+ * The display text for one core option value: its label, or the raw value.
+ *
+ * @internal
+ * @see SDL_Libretro_MenuJoinPipeList()
+ */
+static const char* SDL_Libretro_MenuOptionValueText(void* userdata, unsigned index) {
+    const SDL_LibretroOption* option = (const SDL_LibretroOption*)userdata;
+    const char* label = option->values[index].label;
+    return (label != NULL && label[0] != '\0') ? label : option->values[index].value;
 }
 
 /**
@@ -873,44 +1323,28 @@ static void SDL_Libretro_MenuBuildOptionWidget(SDL_LibretroMenu* menu, nk_consol
 
     if (SDL_Libretro_MenuOptionIsBoolean(option)) {
         state->checked = (nk_bool)SDL_Libretro_MenuValueTruthy(option->value);
-        widget = nk_console_checkbox(parent, label, &state->checked);
-        nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuOptionCheckboxChanged, state, NULL);
+        widget = SDL_Libretro_MenuAddCheckbox(menu, parent, label, &state->checked, NULL,
+                                              &SDL_Libretro_MenuOptionCheckboxChanged, state);
     }
     else {
         // The combobox reads the pipe-separated list lazily, so keep it alive in the state.
-        size_t length = 0;
-        for (unsigned v = 0; v < option->valuesCount; v++) {
-            const char* item = (option->values[v].label != NULL && option->values[v].label[0] != '\0')
-                                   ? option->values[v].label
-                                   : option->values[v].value;
-            length += SDL_strlen(item) + 1;
-        }
-        state->displayList = (char*)SDL_malloc(length + 1);
+        state->displayList = SDL_Libretro_MenuJoinPipeList(option->valuesCount, &SDL_Libretro_MenuOptionValueText, (void*)option);
         if (state->displayList == NULL) {
             return;
         }
-        state->displayList[0] = '\0';
         state->selected = 0;
-        size_t offset = 0;
         for (unsigned v = 0; v < option->valuesCount; v++) {
-            const char* item = (option->values[v].label != NULL && option->values[v].label[0] != '\0')
-                                   ? option->values[v].label
-                                   : option->values[v].value;
-            if (v > 0) {
-                state->displayList[offset++] = '|';
-            }
-            offset += SDL_strlcpy(state->displayList + offset, item, length + 1 - offset);
             if (option->value != NULL && SDL_strcmp(option->values[v].value, option->value) == 0) {
                 state->selected = (int)v;
             }
         }
 
-        widget = nk_console_combobox(parent, label, state->displayList, '|', &state->selected);
-        nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuOptionChanged, state, NULL);
+        widget = SDL_Libretro_MenuOnChanged(nk_console_combobox(parent, label, state->displayList, '|', &state->selected),
+                                            &SDL_Libretro_MenuOptionChanged, state);
     }
 
     if (option->info != NULL && option->info[0] != '\0') {
-        widget->tooltip = option->info;
+        nk_console_set_tooltip(widget, option->info);
     }
 }
 
@@ -946,6 +1380,7 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
 
     // Drop the previous widgets before the option states they point into.
+    SDL_Libretro_MenuGuardActiveParent(menu, menu->optionsButton);
     nk_console_free_children(menu->optionsButton);
     SDL_Libretro_MenuFreeOptionStates(menu);
 
@@ -969,9 +1404,7 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
     }
     menu->optionStateCount = count;
 
-    nk_console_button_set_symbol(
-        nk_console_button_onclick(menu->optionsButton, "Core Options", &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_UP);
+    SDL_Libretro_MenuAddBackButton(menu->optionsButton, "Core Options");
 
     // Uncategorized options first, directly under Core Options.
     for (unsigned i = 0; i < count; i++) {
@@ -999,11 +1432,10 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
         }
 
         const char* categoryLabel = (category->desc != NULL && category->desc[0] != '\0') ? category->desc : category->key;
-        nk_console* categoryButton = nk_console_button(menu->optionsButton, categoryLabel);
-        nk_console_button_set_symbol(categoryButton, NK_SYMBOL_TRIANGLE_RIGHT);
-        nk_console_button_set_symbol(
-            nk_console_button_onclick(categoryButton, categoryLabel, &nk_console_button_back),
-            NK_SYMBOL_TRIANGLE_UP);
+        nk_console* categoryButton = SDL_Libretro_MenuAddSubmenu(menu->optionsButton, categoryLabel, NK_SYMBOL_TRIANGLE_RIGHT);
+        if (category->info != NULL && category->info[0] != '\0') {
+            nk_console_set_tooltip(categoryButton, category->info);
+        }
 
         for (unsigned i = 0; i < count; i++) {
             const SDL_LibretroOption* option = SDL_Libretro_GetOptionByIndex(lr, i);
@@ -1013,9 +1445,7 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
         }
     }
 
-    nk_console_button_set_symbol(
-        nk_console_button_onclick_handler(menu->optionsButton, "Reset to Defaults", &SDL_Libretro_MenuResetOptionsClicked, menu, NULL),
-        NK_SYMBOL_TRIANGLE_LEFT);
+    SDL_Libretro_MenuAddButton(menu, menu->optionsButton, "Reset to Defaults", NK_SYMBOL_TRIANGLE_LEFT, &SDL_Libretro_MenuResetOptionsClicked, NULL);
 }
 
 #ifndef __EMSCRIPTEN__
@@ -1114,10 +1544,85 @@ static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * Refresh the Settings textedit buffers from the current context values.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSyncSettingsBuffers(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    const char* value = SDL_Libretro_GetCoreDirectory(lr);
+    SDL_strlcpy(menu->coreDirBuffer, value != NULL ? value : "", sizeof(menu->coreDirBuffer));
+    value = SDL_Libretro_GetSaveDirectory(lr);
+    SDL_strlcpy(menu->saveDirBuffer, value != NULL ? value : "", sizeof(menu->saveDirBuffer));
+    value = SDL_Libretro_GetSystemDirectory(lr);
+    SDL_strlcpy(menu->systemDirBuffer, value != NULL ? value : "", sizeof(menu->systemDirBuffer));
+    SDL_strlcpy(menu->browseDirBuffer, lr->fileBrowserStartDirectory, sizeof(menu->browseDirBuffer));
+    value = SDL_Libretro_GetUsername(lr);
+    SDL_strlcpy(menu->usernameBuffer, value != NULL ? value : "", sizeof(menu->usernameBuffer));
+}
+
+/**
+ * Consolidated callback for all Settings textedits (directories + username).
+ *
+ * Applies every settings buffer at once, so a single handler serves all the
+ * textedits without per-field state.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSettingChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetCoreDirectory(menu->lr, menu->coreDirBuffer);
+    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+    SDL_Libretro_SetSaveDirectory(menu->lr, menu->saveDirBuffer);
+    SDL_Libretro_SetSystemDirectory(menu->lr, menu->systemDirBuffer);
+    SDL_strlcpy(menu->lr->fileBrowserStartDirectory, menu->browseDirBuffer, sizeof(menu->lr->fileBrowserStartDirectory));
+#ifndef __EMSCRIPTEN__
+    if (menu->loadGameButton != NULL && menu->browseDirBuffer[0] != '\0') {
+        nk_console_file_set_directory(menu->loadGameButton, menu->browseDirBuffer);
+    }
+#endif
+    SDL_Libretro_SetUsername(menu->lr, menu->usernameBuffer);
+}
+
+/**
+ * Create a textedit widget under @p parent and wire it to the consolidated
+ * Settings callback.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const char* label,
+                                                       SDL_LibretroMenu* menu,
+                                                       char* buffer, size_t bufferSize) {
+    return SDL_Libretro_MenuOnChanged(nk_console_textedit(parent, label, buffer, bufferSize),
+                                      &SDL_Libretro_MenuSettingChanged, menu);
+}
+
+/**
+ * Create a directory-picker widget under @p parent and wire it to the
+ * consolidated Settings callback.
+ *
+ * @internal
+ */
+static nk_console* SDL_Libretro_MenuAddSettingDir(nk_console* parent, const char* label,
+                                                  SDL_LibretroMenu* menu,
+                                                  char* buffer, size_t bufferSize) {
+#ifdef __EMSCRIPTEN__
+    // The web build's virtual file system isn't worth browsing.
+    return SDL_Libretro_MenuAddSettingTextedit(parent, label, menu, buffer, bufferSize);
+#else
+    // nk_console_dir (not dir_action) keeps the label in its own column, so
+    // the directory type stays visible next to the picked path.
+    return SDL_Libretro_MenuOnChanged(nk_console_dir(parent, label, buffer, (int)bufferSize),
+                                      &SDL_Libretro_MenuSettingChanged, menu);
+#endif
+}
+
+/**
  * @internal
  */
 static void SDL_Libretro_MenuFreePortStates(SDL_LibretroMenu* menu) {
-    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_GAMEPADS; i++) {
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
         SDL_free(menu->portStates[i].deviceList);
         menu->portStates[i].deviceList = NULL;
     }
@@ -1141,6 +1646,15 @@ static void SDL_Libretro_MenuPortDeviceChanged(nk_console* widget, void* user_da
 }
 
 /**
+ * @internal
+ * @see SDL_Libretro_MenuJoinPipeList()
+ */
+static const char* SDL_Libretro_MenuPortDeviceText(void* userdata, unsigned index) {
+    const struct retro_controller_info* info = (const struct retro_controller_info*)userdata;
+    return info->types[index].desc != NULL ? info->types[index].desc : "Unknown";
+}
+
+/**
  * Populate the "Controllers" submenu with a device combobox per port that
  * offers more than one controller type.
  *
@@ -1153,16 +1667,15 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
 
     // Drop the previous widgets before the port states they point into.
+    SDL_Libretro_MenuGuardActiveParent(menu, menu->controllersButton);
     nk_console_free_children(menu->controllersButton);
     SDL_Libretro_MenuFreePortStates(menu);
 
-    nk_console_button_set_symbol(
-        nk_console_button_onclick(menu->controllersButton, "Controllers", &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_UP);
+    SDL_Libretro_MenuAddBackButton(menu->controllersButton, "Controllers");
 
     unsigned count = lr->core.controllerInfoCount;
-    if (count > SDL_LIBRETRO_MAX_GAMEPADS) {
-        count = SDL_LIBRETRO_MAX_GAMEPADS;
+    if (count > SDL_LIBRETRO_MAX_USERS) {
+        count = SDL_LIBRETRO_MAX_USERS;
     }
 
     bool anyWidget = false;
@@ -1173,39 +1686,223 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
         }
 
         // The combobox reads the pipe-separated list lazily, so keep it alive in the state.
-        size_t length = 0;
-        for (unsigned i = 0; i < info->num_types; i++) {
-            length += SDL_strlen(info->types[i].desc != NULL ? info->types[i].desc : "Unknown") + 1;
-        }
         SDL_LibretroMenuPortState* state = &menu->portStates[port];
-        state->deviceList = (char*)SDL_malloc(length + 1);
+        state->deviceList = SDL_Libretro_MenuJoinPipeList(info->num_types, &SDL_Libretro_MenuPortDeviceText, (void*)info);
         if (state->deviceList == NULL) {
             continue;
         }
         state->menu = menu;
         state->port = port;
         state->selected = 0;
-        state->deviceList[0] = '\0';
 
         unsigned currentDevice = SDL_Libretro_GetPortDevice(lr, port);
-        size_t offset = 0;
         for (unsigned i = 0; i < info->num_types; i++) {
-            if (i > 0) {
-                state->deviceList[offset++] = '|';
-            }
-            offset += SDL_strlcpy(state->deviceList + offset, info->types[i].desc != NULL ? info->types[i].desc : "Unknown", length + 1 - offset);
             if (info->types[i].id == currentDevice) {
                 state->selected = (int)i;
             }
         }
 
         SDL_snprintf(state->label, sizeof(state->label), "Port %u", port + 1);
-        nk_console* combobox = nk_console_combobox(menu->controllersButton, state->label, state->deviceList, '|', &state->selected);
-        nk_console_add_event_handler(combobox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuPortDeviceChanged, state, NULL);
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(menu->controllersButton, state->label, state->deviceList, '|', &state->selected),
+                                   &SDL_Libretro_MenuPortDeviceChanged, state);
         anyWidget = true;
     }
 
     menu->controllersButton->visible = (nk_bool)anyWidget;
+}
+
+/**
+ * A menu color theme, expressed as the distinct colors the themes vary on.
+ *
+ * SDL_Libretro_MenuApplyPalette() fans these out over the full Nuklear color
+ * table, so adding a theme is ~20 colors instead of ~30 table assignments.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuPalette {
+    struct nk_color text;
+    struct nk_color window; /** Window background. */
+    struct nk_color frame; /** Header and border. */
+    struct nk_color widget; /** Buttons, selects, properties, edits, combos, charts, tab headers. */
+    struct nk_color widgetHover;
+    struct nk_color widgetActive;
+    struct nk_color selectActive;
+    struct nk_color toggle; /** Checkbox/toggle track. */
+    struct nk_color toggleHover;
+    struct nk_color toggleCursor;
+    struct nk_color slider; /** Slider and knob track. */
+    struct nk_color sliderCursor;
+    struct nk_color sliderCursorHover;
+    struct nk_color sliderCursorActive;
+    struct nk_color editCursor;
+    struct nk_color chartColor;
+    struct nk_color chartHighlight;
+    struct nk_color scrollbar; /** Scrollbar track. */
+    struct nk_color scrollbarCursor;
+    struct nk_color scrollbarCursorHover;
+    struct nk_color scrollbarCursorActive;
+    struct nk_color knobCursor;
+    struct nk_color knobCursorHover;
+    struct nk_color knobCursorActive;
+} SDL_LibretroMenuPalette;
+
+// Catppuccin Mocha: text/base/mantle/surface/overlay neutrals with lavender,
+// green and pink accents. https://catppuccin.com/palette/
+static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteMocha = {
+    .text = {205, 214, 244, 255},
+    .window = {30, 30, 46, 235},
+    .frame = {24, 24, 37, 255},
+    .widget = {49, 50, 68, 255},
+    .widgetHover = {127, 132, 156, 255},
+    .widgetActive = {108, 112, 134, 255},
+    .selectActive = {108, 112, 134, 255},
+    .toggle = {88, 91, 112, 255},
+    .toggleHover = {147, 153, 178, 255},
+    .toggleCursor = {180, 190, 254, 255},
+    .slider = {69, 71, 90, 255},
+    .sliderCursor = {166, 227, 161, 255},
+    .sliderCursorHover = {166, 227, 161, 255},
+    .sliderCursorActive = {166, 227, 161, 255},
+    .editCursor = {180, 190, 254, 255},
+    .chartColor = {180, 190, 254, 255},
+    .chartHighlight = {245, 194, 231, 255},
+    .scrollbar = {49, 50, 68, 255},
+    .scrollbarCursor = {108, 112, 134, 255},
+    .scrollbarCursorHover = {180, 190, 254, 255},
+    .scrollbarCursorActive = {245, 194, 231, 255},
+    .knobCursor = {245, 194, 231, 255},
+    .knobCursorHover = {245, 194, 231, 255},
+    .knobCursorActive = {245, 194, 231, 255},
+};
+
+// Catppuccin Latte: the light variant, with teal, mauve and pink accents.
+static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteLatte = {
+    .text = {76, 79, 105, 255},
+    .window = {239, 241, 245, 235},
+    .frame = {230, 233, 239, 255},
+    .widget = {204, 208, 218, 255},
+    .widgetHover = {124, 127, 147, 55},
+    .widgetActive = {156, 160, 176, 255},
+    .selectActive = {156, 160, 176, 255},
+    .toggle = {172, 176, 190, 255},
+    .toggleHover = {124, 127, 147, 55},
+    .toggleCursor = {223, 142, 29, 255},
+    .slider = {188, 192, 204, 255},
+    .sliderCursor = {23, 146, 153, 255},
+    .sliderCursorHover = {23, 146, 153, 255},
+    .sliderCursorActive = {23, 146, 153, 255},
+    .editCursor = {136, 57, 239, 255},
+    .chartColor = {23, 146, 153, 255},
+    .chartHighlight = {136, 57, 239, 255},
+    .scrollbar = {204, 208, 218, 255},
+    .scrollbarCursor = {156, 160, 176, 255},
+    .scrollbarCursorHover = {136, 57, 239, 255},
+    .scrollbarCursorActive = {136, 57, 239, 255},
+    .knobCursor = {234, 118, 203, 255},
+    .knobCursorHover = {234, 118, 203, 255},
+    .knobCursorActive = {234, 118, 203, 255},
+};
+
+// Catppuccin Frappe, with green, lavender and pink accents.
+static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteFrappe = {
+    .text = {198, 208, 245, 255},
+    .window = {48, 52, 70, 235},
+    .frame = {41, 44, 60, 255},
+    .widget = {65, 69, 89, 255},
+    .widgetHover = {131, 139, 167, 255},
+    .widgetActive = {115, 121, 148, 255},
+    .selectActive = {115, 121, 148, 255},
+    .toggle = {98, 104, 128, 255},
+    .toggleHover = {148, 156, 187, 255},
+    .toggleCursor = {244, 184, 228, 255},
+    .slider = {81, 87, 109, 255},
+    .sliderCursor = {166, 209, 137, 255},
+    .sliderCursorHover = {166, 209, 137, 255},
+    .sliderCursorActive = {166, 209, 137, 255},
+    .editCursor = {244, 184, 228, 255},
+    .chartColor = {186, 187, 241, 255},
+    .chartHighlight = {244, 184, 228, 255},
+    .scrollbar = {65, 69, 89, 255},
+    .scrollbarCursor = {115, 121, 148, 255},
+    .scrollbarCursorHover = {186, 187, 241, 255},
+    .scrollbarCursorActive = {186, 187, 241, 255},
+    .knobCursor = {244, 184, 228, 255},
+    .knobCursorHover = {244, 184, 228, 255},
+    .knobCursorActive = {244, 184, 228, 255},
+};
+
+// Catppuccin Macchiato, with yellow, green, lavender and pink accents.
+static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteMacchiato = {
+    .text = {202, 211, 245, 255},
+    .window = {36, 39, 58, 235},
+    .frame = {30, 32, 48, 255},
+    .widget = {54, 58, 79, 255},
+    .widgetHover = {128, 135, 162, 255},
+    .widgetActive = {110, 115, 141, 255},
+    .selectActive = {110, 115, 141, 255},
+    .toggle = {91, 96, 120, 255},
+    .toggleHover = {147, 154, 183, 255},
+    .toggleCursor = {238, 212, 159, 255},
+    .slider = {73, 77, 100, 255},
+    .sliderCursor = {166, 218, 149, 255},
+    .sliderCursorHover = {166, 218, 149, 255},
+    .sliderCursorActive = {166, 218, 149, 255},
+    .editCursor = {245, 189, 230, 255},
+    .chartColor = {183, 189, 248, 255},
+    .chartHighlight = {238, 212, 159, 255},
+    .scrollbar = {54, 58, 79, 255},
+    .scrollbarCursor = {110, 115, 141, 255},
+    .scrollbarCursorHover = {183, 189, 248, 255},
+    .scrollbarCursorActive = {183, 189, 248, 255},
+    .knobCursor = {245, 189, 230, 255},
+    .knobCursorHover = {245, 189, 230, 255},
+    .knobCursorActive = {245, 189, 230, 255},
+};
+
+// Dracula: background/current-line/comment neutrals with pink and purple
+// accents. https://draculatheme.com/contribute
+static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteDracula = {
+    .text = {248, 248, 242, 255},
+    .window = {40, 42, 54, 235},
+    .frame = {68, 71, 90, 255},
+    .widget = {68, 71, 90, 255},
+    .widgetHover = {98, 114, 164, 255},
+    .widgetActive = {189, 147, 249, 255},
+    .selectActive = {98, 114, 164, 255},
+    .toggle = {68, 71, 90, 255},
+    .toggleHover = {98, 114, 164, 255},
+    .toggleCursor = {255, 121, 198, 255},
+    .slider = {40, 42, 54, 235},
+    .sliderCursor = {68, 71, 90, 255},
+    .sliderCursorHover = {98, 114, 164, 255},
+    .sliderCursorActive = {98, 114, 164, 255},
+    .editCursor = {248, 248, 242, 255},
+    .chartColor = {98, 114, 164, 255},
+    .chartHighlight = {189, 147, 249, 255},
+    .scrollbar = {40, 42, 54, 235},
+    .scrollbarCursor = {68, 71, 90, 255},
+    .scrollbarCursorHover = {98, 114, 164, 255},
+    .scrollbarCursorActive = {189, 147, 249, 255},
+    .knobCursor = {68, 71, 90, 255},
+    .knobCursorHover = {98, 114, 164, 255},
+    .knobCursorActive = {98, 114, 164, 255},
+};
+
+/**
+ * The palette backing a built-in style, or NULL for the Nuklear default.
+ *
+ * @internal
+ */
+static const SDL_LibretroMenuPalette* SDL_Libretro_MenuGetPalette(SDL_LibretroMenuStyle style) {
+    static const SDL_LibretroMenuPalette* const palettes[SDL_LIBRETRO_MENU_STYLE_COUNT] = {
+        &SDL_Libretro_menuPaletteMocha,
+        &SDL_Libretro_menuPaletteLatte,
+        &SDL_Libretro_menuPaletteFrappe,
+        &SDL_Libretro_menuPaletteMacchiato,
+        &SDL_Libretro_menuPaletteDracula,
+        NULL, // SDL_LIBRETRO_MENU_STYLE_DARK is the Nuklear default.
+    };
+    return ((int)style >= 0 && style < SDL_LIBRETRO_MENU_STYLE_COUNT) ? palettes[style] : NULL;
 }
 
 /**
@@ -1292,336 +1989,71 @@ static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * Fan the palette out over the Nuklear color table.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuApplyPalette(struct nk_context* ctx, const SDL_LibretroMenuPalette* palette) {
+    struct nk_color table[NK_COLOR_COUNT];
+    table[NK_COLOR_TEXT] = palette->text;
+    table[NK_COLOR_WINDOW] = palette->window;
+    table[NK_COLOR_HEADER] = palette->frame;
+    table[NK_COLOR_BORDER] = palette->frame;
+    table[NK_COLOR_BUTTON] = palette->widget;
+    table[NK_COLOR_BUTTON_HOVER] = palette->widgetHover;
+    table[NK_COLOR_BUTTON_ACTIVE] = palette->widgetActive;
+    table[NK_COLOR_TOGGLE] = palette->toggle;
+    table[NK_COLOR_TOGGLE_HOVER] = palette->toggleHover;
+    table[NK_COLOR_TOGGLE_CURSOR] = palette->toggleCursor;
+    table[NK_COLOR_SELECT] = palette->widget;
+    table[NK_COLOR_SELECT_ACTIVE] = palette->selectActive;
+    table[NK_COLOR_SLIDER] = palette->slider;
+    table[NK_COLOR_SLIDER_CURSOR] = palette->sliderCursor;
+    table[NK_COLOR_SLIDER_CURSOR_HOVER] = palette->sliderCursorHover;
+    table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = palette->sliderCursorActive;
+    table[NK_COLOR_PROPERTY] = palette->widget;
+    table[NK_COLOR_EDIT] = palette->widget;
+    table[NK_COLOR_EDIT_CURSOR] = palette->editCursor;
+    table[NK_COLOR_COMBO] = palette->widget;
+    table[NK_COLOR_CHART] = palette->widget;
+    table[NK_COLOR_CHART_COLOR] = palette->chartColor;
+    table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = palette->chartHighlight;
+    table[NK_COLOR_SCROLLBAR] = palette->scrollbar;
+    table[NK_COLOR_SCROLLBAR_CURSOR] = palette->scrollbarCursor;
+    table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = palette->scrollbarCursorHover;
+    table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = palette->scrollbarCursorActive;
+    table[NK_COLOR_TAB_HEADER] = palette->widget;
+    table[NK_COLOR_KNOB] = palette->slider;
+    table[NK_COLOR_KNOB_CURSOR] = palette->knobCursor;
+    table[NK_COLOR_KNOB_CURSOR_HOVER] = palette->knobCursorHover;
+    table[NK_COLOR_KNOB_CURSOR_ACTIVE] = palette->knobCursorActive;
+    nk_style_from_table(ctx, table);
+}
+
+/**
  * @internal
  */
 static void SDL_Libretro_MenuUIScaleChanged(nk_console* widget, void* user_data) {
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
-    if (menu->lr != NULL && menu->lr->ini != NULL) {
-        INI_SetInt(menu->lr->ini, NULL, "menuuiscale", (Sint64)menu->uiScaleIndex);
-    }
+    menu->settingsDirty = true;
 }
 
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style) {
     if (menu == NULL || menu->ctx == NULL || (int)style < 0 || style >= SDL_LIBRETRO_MENU_STYLE_COUNT) {
         return false;
     }
-    struct nk_context* ctx = menu->ctx;
-    struct nk_color table[NK_COLOR_COUNT];
 
-    // Reset the styles to default first.
-    nk_style_default(ctx);
-
-    switch (style) {
-        case SDL_LIBRETRO_MENU_STYLE_DRACULA: {
-            struct nk_color background = nk_rgba(40, 42, 54, 235);
-            struct nk_color currentline = nk_rgba(68, 71, 90, 255);
-            struct nk_color foreground = nk_rgba(248, 248, 242, 255);
-            struct nk_color comment = nk_rgba(98, 114, 164, 255);
-            /* struct nk_color cyan = nk_rgba(139, 233, 253, 255); */
-            /* struct nk_color green = nk_rgba(80, 250, 123, 255); */
-            /* struct nk_color orange = nk_rgba(255, 184, 108, 255); */
-            struct nk_color pink = nk_rgba(255, 121, 198, 255);
-            struct nk_color purple = nk_rgba(189, 147, 249, 255);
-            /* struct nk_color red = nk_rgba(255, 85, 85, 255); */
-            /* struct nk_color yellow = nk_rgba(241, 250, 140, 255); */
-            table[NK_COLOR_TEXT] = foreground;
-            table[NK_COLOR_WINDOW] = background;
-            table[NK_COLOR_HEADER] = currentline;
-            table[NK_COLOR_BORDER] = currentline;
-            table[NK_COLOR_BUTTON] = currentline;
-            table[NK_COLOR_BUTTON_HOVER] = comment;
-            table[NK_COLOR_BUTTON_ACTIVE] = purple;
-            table[NK_COLOR_TOGGLE] = currentline;
-            table[NK_COLOR_TOGGLE_HOVER] = comment;
-            table[NK_COLOR_TOGGLE_CURSOR] = pink;
-            table[NK_COLOR_SELECT] = currentline;
-            table[NK_COLOR_SELECT_ACTIVE] = comment;
-            table[NK_COLOR_SLIDER] = background;
-            table[NK_COLOR_SLIDER_CURSOR] = currentline;
-            table[NK_COLOR_SLIDER_CURSOR_HOVER] = comment;
-            table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = comment;
-            table[NK_COLOR_PROPERTY] = currentline;
-            table[NK_COLOR_EDIT] = currentline;
-            table[NK_COLOR_EDIT_CURSOR] = foreground;
-            table[NK_COLOR_COMBO] = currentline;
-            table[NK_COLOR_CHART] = currentline;
-            table[NK_COLOR_CHART_COLOR] = comment;
-            table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = purple;
-            table[NK_COLOR_SCROLLBAR] = background;
-            table[NK_COLOR_SCROLLBAR_CURSOR] = currentline;
-            table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = comment;
-            table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = purple;
-            table[NK_COLOR_TAB_HEADER] = currentline;
-            table[NK_COLOR_KNOB] = table[NK_COLOR_SLIDER];
-            table[NK_COLOR_KNOB_CURSOR] = table[NK_COLOR_SLIDER_CURSOR];
-            table[NK_COLOR_KNOB_CURSOR_HOVER] = table[NK_COLOR_SLIDER_CURSOR_HOVER];
-            table[NK_COLOR_KNOB_CURSOR_ACTIVE] = table[NK_COLOR_SLIDER_CURSOR_ACTIVE];
-            nk_style_from_table(ctx, table);
-            break;
-        }
-        case SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE: {
-            /* struct nk_color rosewater = nk_rgba(220, 138, 120, 255); */
-            /* struct nk_color flamingo = nk_rgba(221, 120, 120, 255); */
-            struct nk_color pink = nk_rgba(234, 118, 203, 255);
-            struct nk_color mauve = nk_rgba(136, 57, 239, 255);
-            /* struct nk_color red = nk_rgba(210, 15, 57, 255); */
-            /* struct nk_color maroon = nk_rgba(230, 69, 83, 255); */
-            /* struct nk_color peach = nk_rgba(254, 100, 11, 255); */
-            struct nk_color yellow = nk_rgba(223, 142, 29, 255);
-            /* struct nk_color green = nk_rgba(64, 160, 43, 255); */
-            struct nk_color teal = nk_rgba(23, 146, 153, 255);
-            /* struct nk_color sky = nk_rgba(4, 165, 229, 255); */
-            /* struct nk_color sapphire = nk_rgba(32, 159, 181, 255); */
-            /* struct nk_color blue = nk_rgba(30, 102, 245, 255); */
-            /* struct nk_color lavender = nk_rgba(114, 135, 253, 255); */
-            struct nk_color text = nk_rgba(76, 79, 105, 255);
-            /* struct nk_color subtext1 = nk_rgba(92, 95, 119, 255); */
-            /* struct nk_color subtext0 = nk_rgba(108, 111, 133, 255); */
-            struct nk_color overlay2 = nk_rgba(124, 127, 147, 55);
-            /* struct nk_color overlay1 = nk_rgba(140, 143, 161, 255); */
-            struct nk_color overlay0 = nk_rgba(156, 160, 176, 255);
-            struct nk_color surface2 = nk_rgba(172, 176, 190, 255);
-            struct nk_color surface1 = nk_rgba(188, 192, 204, 255);
-            struct nk_color surface0 = nk_rgba(204, 208, 218, 255);
-            struct nk_color base = nk_rgba(239, 241, 245, 235);
-            struct nk_color mantle = nk_rgba(230, 233, 239, 255);
-            /* struct nk_color crust = nk_rgba(220, 224, 232, 255); */
-            table[NK_COLOR_TEXT] = text;
-            table[NK_COLOR_WINDOW] = base;
-            table[NK_COLOR_HEADER] = mantle;
-            table[NK_COLOR_BORDER] = mantle;
-            table[NK_COLOR_BUTTON] = surface0;
-            table[NK_COLOR_BUTTON_HOVER] = overlay2;
-            table[NK_COLOR_BUTTON_ACTIVE] = overlay0;
-            table[NK_COLOR_TOGGLE] = surface2;
-            table[NK_COLOR_TOGGLE_HOVER] = overlay2;
-            table[NK_COLOR_TOGGLE_CURSOR] = yellow;
-            table[NK_COLOR_SELECT] = surface0;
-            table[NK_COLOR_SELECT_ACTIVE] = overlay0;
-            table[NK_COLOR_SLIDER] = surface1;
-            table[NK_COLOR_SLIDER_CURSOR] = teal;
-            table[NK_COLOR_SLIDER_CURSOR_HOVER] = teal;
-            table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = teal;
-            table[NK_COLOR_PROPERTY] = surface0;
-            table[NK_COLOR_EDIT] = surface0;
-            table[NK_COLOR_EDIT_CURSOR] = mauve;
-            table[NK_COLOR_COMBO] = surface0;
-            table[NK_COLOR_CHART] = surface0;
-            table[NK_COLOR_CHART_COLOR] = teal;
-            table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = mauve;
-            table[NK_COLOR_SCROLLBAR] = surface0;
-            table[NK_COLOR_SCROLLBAR_CURSOR] = overlay0;
-            table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = mauve;
-            table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = mauve;
-            table[NK_COLOR_TAB_HEADER] = surface0;
-            table[NK_COLOR_KNOB] = table[NK_COLOR_SLIDER];
-            table[NK_COLOR_KNOB_CURSOR] = pink;
-            table[NK_COLOR_KNOB_CURSOR_HOVER] = pink;
-            table[NK_COLOR_KNOB_CURSOR_ACTIVE] = pink;
-            nk_style_from_table(ctx, table);
-            break;
-        }
-        case SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE: {
-            /* struct nk_color rosewater = nk_rgba(242, 213, 207, 255); */
-            /* struct nk_color flamingo = nk_rgba(238, 190, 190, 255); */
-            struct nk_color pink = nk_rgba(244, 184, 228, 255);
-            /* struct nk_color mauve = nk_rgba(202, 158, 230, 255); */
-            /* struct nk_color red = nk_rgba(231, 130, 132, 255); */
-            /* struct nk_color maroon = nk_rgba(234, 153, 156, 255); */
-            /* struct nk_color peach = nk_rgba(239, 159, 118, 255); */
-            /* struct nk_color yellow = nk_rgba(229, 200, 144, 255); */
-            struct nk_color green = nk_rgba(166, 209, 137, 255);
-            /* struct nk_color teal = nk_rgba(129, 200, 190, 255); */
-            /* struct nk_color sky = nk_rgba(153, 209, 219, 255); */
-            /* struct nk_color sapphire = nk_rgba(133, 193, 220, 255); */
-            /* struct nk_color blue = nk_rgba(140, 170, 238, 255); */
-            struct nk_color lavender = nk_rgba(186, 187, 241, 255);
-            struct nk_color text = nk_rgba(198, 208, 245, 255);
-            /* struct nk_color subtext1 = nk_rgba(181, 191, 226, 255); */
-            /* struct nk_color subtext0 = nk_rgba(165, 173, 206, 255); */
-            struct nk_color overlay2 = nk_rgba(148, 156, 187, 255);
-            struct nk_color overlay1 = nk_rgba(131, 139, 167, 255);
-            struct nk_color overlay0 = nk_rgba(115, 121, 148, 255);
-            struct nk_color surface2 = nk_rgba(98, 104, 128, 255);
-            struct nk_color surface1 = nk_rgba(81, 87, 109, 255);
-            struct nk_color surface0 = nk_rgba(65, 69, 89, 255);
-            struct nk_color base = nk_rgba(48, 52, 70, 235);
-            struct nk_color mantle = nk_rgba(41, 44, 60, 255);
-            /* struct nk_color crust = nk_rgba(35, 38, 52, 255); */
-            table[NK_COLOR_TEXT] = text;
-            table[NK_COLOR_WINDOW] = base;
-            table[NK_COLOR_HEADER] = mantle;
-            table[NK_COLOR_BORDER] = mantle;
-            table[NK_COLOR_BUTTON] = surface0;
-            table[NK_COLOR_BUTTON_HOVER] = overlay1;
-            table[NK_COLOR_BUTTON_ACTIVE] = overlay0;
-            table[NK_COLOR_TOGGLE] = surface2;
-            table[NK_COLOR_TOGGLE_HOVER] = overlay2;
-            table[NK_COLOR_TOGGLE_CURSOR] = pink;
-            table[NK_COLOR_SELECT] = surface0;
-            table[NK_COLOR_SELECT_ACTIVE] = overlay0;
-            table[NK_COLOR_SLIDER] = surface1;
-            table[NK_COLOR_SLIDER_CURSOR] = green;
-            table[NK_COLOR_SLIDER_CURSOR_HOVER] = green;
-            table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = green;
-            table[NK_COLOR_PROPERTY] = surface0;
-            table[NK_COLOR_EDIT] = surface0;
-            table[NK_COLOR_EDIT_CURSOR] = pink;
-            table[NK_COLOR_COMBO] = surface0;
-            table[NK_COLOR_CHART] = surface0;
-            table[NK_COLOR_CHART_COLOR] = lavender;
-            table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = pink;
-            table[NK_COLOR_SCROLLBAR] = surface0;
-            table[NK_COLOR_SCROLLBAR_CURSOR] = overlay0;
-            table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = lavender;
-            table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = lavender;
-            table[NK_COLOR_TAB_HEADER] = surface0;
-            table[NK_COLOR_KNOB] = table[NK_COLOR_SLIDER];
-            table[NK_COLOR_KNOB_CURSOR] = pink;
-            table[NK_COLOR_KNOB_CURSOR_HOVER] = pink;
-            table[NK_COLOR_KNOB_CURSOR_ACTIVE] = pink;
-            nk_style_from_table(ctx, table);
-            break;
-        }
-        case SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO: {
-            /* struct nk_color rosewater = nk_rgba(244, 219, 214, 255); */
-            /* struct nk_color flamingo = nk_rgba(240, 198, 198, 255); */
-            struct nk_color pink = nk_rgba(245, 189, 230, 255);
-            /* struct nk_color mauve = nk_rgba(198, 160, 246, 255); */
-            /* struct nk_color red = nk_rgba(237, 135, 150, 255); */
-            /* struct nk_color maroon = nk_rgba(238, 153, 160, 255); */
-            /* struct nk_color peach = nk_rgba(245, 169, 127, 255); */
-            struct nk_color yellow = nk_rgba(238, 212, 159, 255);
-            struct nk_color green = nk_rgba(166, 218, 149, 255);
-            /* struct nk_color teal = nk_rgba(139, 213, 202, 255); */
-            /* struct nk_color sky = nk_rgba(145, 215, 227, 255); */
-            /* struct nk_color sapphire = nk_rgba(125, 196, 228, 255); */
-            /* struct nk_color blue = nk_rgba(138, 173, 244, 255); */
-            struct nk_color lavender = nk_rgba(183, 189, 248, 255);
-            struct nk_color text = nk_rgba(202, 211, 245, 255);
-            /* struct nk_color subtext1 = nk_rgba(184, 192, 224, 255); */
-            /* struct nk_color subtext0 = nk_rgba(165, 173, 203, 255); */
-            struct nk_color overlay2 = nk_rgba(147, 154, 183, 255);
-            struct nk_color overlay1 = nk_rgba(128, 135, 162, 255);
-            struct nk_color overlay0 = nk_rgba(110, 115, 141, 255);
-            struct nk_color surface2 = nk_rgba(91, 96, 120, 255);
-            struct nk_color surface1 = nk_rgba(73, 77, 100, 255);
-            struct nk_color surface0 = nk_rgba(54, 58, 79, 255);
-            struct nk_color base = nk_rgba(36, 39, 58, 235);
-            struct nk_color mantle = nk_rgba(30, 32, 48, 255);
-            /* struct nk_color crust = nk_rgba(24, 25, 38, 255); */
-            table[NK_COLOR_TEXT] = text;
-            table[NK_COLOR_WINDOW] = base;
-            table[NK_COLOR_HEADER] = mantle;
-            table[NK_COLOR_BORDER] = mantle;
-            table[NK_COLOR_BUTTON] = surface0;
-            table[NK_COLOR_BUTTON_HOVER] = overlay1;
-            table[NK_COLOR_BUTTON_ACTIVE] = overlay0;
-            table[NK_COLOR_TOGGLE] = surface2;
-            table[NK_COLOR_TOGGLE_HOVER] = overlay2;
-            table[NK_COLOR_TOGGLE_CURSOR] = yellow;
-            table[NK_COLOR_SELECT] = surface0;
-            table[NK_COLOR_SELECT_ACTIVE] = overlay0;
-            table[NK_COLOR_SLIDER] = surface1;
-            table[NK_COLOR_SLIDER_CURSOR] = green;
-            table[NK_COLOR_SLIDER_CURSOR_HOVER] = green;
-            table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = green;
-            table[NK_COLOR_PROPERTY] = surface0;
-            table[NK_COLOR_EDIT] = surface0;
-            table[NK_COLOR_EDIT_CURSOR] = pink;
-            table[NK_COLOR_COMBO] = surface0;
-            table[NK_COLOR_CHART] = surface0;
-            table[NK_COLOR_CHART_COLOR] = lavender;
-            table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = yellow;
-            table[NK_COLOR_SCROLLBAR] = surface0;
-            table[NK_COLOR_SCROLLBAR_CURSOR] = overlay0;
-            table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = lavender;
-            table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = lavender;
-            table[NK_COLOR_TAB_HEADER] = surface0;
-            table[NK_COLOR_KNOB] = table[NK_COLOR_SLIDER];
-            table[NK_COLOR_KNOB_CURSOR] = pink;
-            table[NK_COLOR_KNOB_CURSOR_HOVER] = pink;
-            table[NK_COLOR_KNOB_CURSOR_ACTIVE] = pink;
-            nk_style_from_table(ctx, table);
-            break;
-        }
-        case SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA: {
-            /* struct nk_color rosewater = nk_rgba(245, 224, 220, 255); */
-            /* struct nk_color flamingo = nk_rgba(242, 205, 205, 255); */
-            struct nk_color pink = nk_rgba(245, 194, 231, 255);
-            /* struct nk_color mauve = nk_rgba(203, 166, 247, 255); */
-            /* struct nk_color red = nk_rgba(243, 139, 168, 255); */
-            /* struct nk_color maroon = nk_rgba(235, 160, 172, 255); */
-            /* struct nk_color peach = nk_rgba(250, 179, 135, 255); */
-            /* struct nk_color yellow = nk_rgba(249, 226, 175, 255); */
-            struct nk_color green = nk_rgba(166, 227, 161, 255);
-            /* struct nk_color teal = nk_rgba(148, 226, 213, 255); */
-            /* struct nk_color sky = nk_rgba(137, 220, 235, 255); */
-            /* struct nk_color sapphire = nk_rgba(116, 199, 236, 255); */
-            /* struct nk_color blue = nk_rgba(137, 180, 250, 255); */
-            struct nk_color lavender = nk_rgba(180, 190, 254, 255);
-            struct nk_color text = nk_rgba(205, 214, 244, 255);
-            /* struct nk_color subtext1 = nk_rgba(186, 194, 222, 255); */
-            /* struct nk_color subtext0 = nk_rgba(166, 173, 200, 255); */
-            struct nk_color overlay2 = nk_rgba(147, 153, 178, 255);
-            struct nk_color overlay1 = nk_rgba(127, 132, 156, 255);
-            struct nk_color overlay0 = nk_rgba(108, 112, 134, 255);
-            struct nk_color surface2 = nk_rgba(88, 91, 112, 255);
-            struct nk_color surface1 = nk_rgba(69, 71, 90, 255);
-            struct nk_color surface0 = nk_rgba(49, 50, 68, 255);
-            struct nk_color base = nk_rgba(30, 30, 46, 235);
-            struct nk_color mantle = nk_rgba(24, 24, 37, 255);
-            /* struct nk_color crust = nk_rgba(17, 17, 27, 255); */
-            table[NK_COLOR_TEXT] = text;
-            table[NK_COLOR_WINDOW] = base;
-            table[NK_COLOR_HEADER] = mantle;
-            table[NK_COLOR_BORDER] = mantle;
-            table[NK_COLOR_BUTTON] = surface0;
-            table[NK_COLOR_BUTTON_HOVER] = overlay1;
-            table[NK_COLOR_BUTTON_ACTIVE] = overlay0;
-            table[NK_COLOR_TOGGLE] = surface2;
-            table[NK_COLOR_TOGGLE_HOVER] = overlay2;
-            table[NK_COLOR_TOGGLE_CURSOR] = lavender;
-            table[NK_COLOR_SELECT] = surface0;
-            table[NK_COLOR_SELECT_ACTIVE] = overlay0;
-            table[NK_COLOR_SLIDER] = surface1;
-            table[NK_COLOR_SLIDER_CURSOR] = green;
-            table[NK_COLOR_SLIDER_CURSOR_HOVER] = green;
-            table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = green;
-            table[NK_COLOR_PROPERTY] = surface0;
-            table[NK_COLOR_EDIT] = surface0;
-            table[NK_COLOR_EDIT_CURSOR] = lavender;
-            table[NK_COLOR_COMBO] = surface0;
-            table[NK_COLOR_CHART] = surface0;
-            table[NK_COLOR_CHART_COLOR] = lavender;
-            table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = pink;
-            table[NK_COLOR_SCROLLBAR] = surface0;
-            table[NK_COLOR_SCROLLBAR_CURSOR] = overlay0;
-            table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = lavender;
-            table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = pink;
-            table[NK_COLOR_TAB_HEADER] = surface0;
-            table[NK_COLOR_KNOB] = table[NK_COLOR_SLIDER];
-            table[NK_COLOR_KNOB_CURSOR] = pink;
-            table[NK_COLOR_KNOB_CURSOR_HOVER] = pink;
-            table[NK_COLOR_KNOB_CURSOR_ACTIVE] = pink;
-            nk_style_from_table(ctx, table);
-            break;
-        }
-        case SDL_LIBRETRO_MENU_STYLE_DARK:
-        default: {
-            // The Nuklear default style.
-            break;
-        }
+    // Reset to the Nuklear default first; the Dark style is exactly that.
+    nk_style_default(menu->ctx);
+    const SDL_LibretroMenuPalette* palette = SDL_Libretro_MenuGetPalette(style);
+    if (palette != NULL) {
+        SDL_Libretro_MenuApplyPalette(menu->ctx, palette);
     }
 
     menu->style = style;
     menu->styleIndex = (int)style;
-
-    // Persist the theme; the config is written to disk when the context closes.
-    if (menu->lr != NULL && menu->lr->ini != NULL) {
-        INI_SetInt(menu->lr->ini, NULL, "menutheme", (Sint64)style);
-    }
+    menu->settingsDirty = true;
     return true;
 }
 
@@ -1636,6 +2068,273 @@ static void SDL_Libretro_MenuStyleChanged(nk_console* widget, void* user_data) {
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetMenuStyle(menu, (SDL_LibretroMenuStyle)menu->styleIndex);
+}
+
+/**
+ * Refresh the Settings widget state from the current context values.
+ *
+ * Runs at creation and every time the menu opens, so changes made outside
+ * the menu (a hotkey volume change, an app fullscreen toggle) show up.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
+    menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
+    menu->filterIndex = SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
+    menu->fullscreenChecked = (nk_bool)((SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0);
+    int vsync = 0;
+    SDL_GetRenderVSync(lr->renderer, &vsync);
+    menu->vsyncChecked = (nk_bool)(vsync != 0);
+    menu->rewindChecked = (nk_bool)SDL_Libretro_GetRewindEnabled(lr);
+    // Clamped to the widget's range: nk_property clamps the bound value while
+    // rendering, and the CHANGED writeback would shrink a larger app budget.
+    size_t rewindLimitMB = SDL_Libretro_GetRewindMemoryLimit(lr) >> 20;
+    menu->rewindBufferMB = rewindLimitMB > 1024 ? 1024 : (int)rewindLimitMB;
+}
+
+/**
+ * Swap to the radio-selected disk: eject, change the index, insert.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuDiskClicked(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro* lr = menu->lr;
+    if (menu->diskSelected < 0 || (unsigned)menu->diskSelected == SDL_Libretro_GetDiskIndex(lr)) {
+        return;
+    }
+    bool changed = false;
+    if (SDL_Libretro_EjectDisk(lr)) {
+        changed = SDL_Libretro_SetDiskIndex(lr, (unsigned)menu->diskSelected);
+        // Close the tray even when the index change failed.
+        changed = SDL_Libretro_InsertDisk(lr) && changed;
+    }
+    if (changed) {
+        nk_console_show_message(menu->console, "Disk changed");
+    }
+    else {
+        nk_console_show_message(menu->console, "Disk change failed");
+        menu->diskSelected = (int)SDL_Libretro_GetDiskIndex(lr);
+    }
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuFreeDiskLabels(SDL_LibretroMenu* menu) {
+    if (menu->diskLabels == NULL) {
+        return;
+    }
+    for (unsigned i = 0; i < menu->builtDiskCount; i++) {
+        SDL_free(menu->diskLabels[i]);
+    }
+    SDL_free(menu->diskLabels);
+    menu->diskLabels = NULL;
+}
+
+/**
+ * Rebuild the Disks submenu: one radio per disk in the core's disk control,
+ * hidden unless the running game has disks to swap.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
+    if (menu->disksButton == NULL) {
+        return;
+    }
+    SDL_Libretro* lr = menu->lr;
+
+    // Drop the previous widgets before the labels they point into.
+    SDL_Libretro_MenuGuardActiveParent(menu, menu->disksButton);
+    nk_console_free_children(menu->disksButton);
+    SDL_Libretro_MenuFreeDiskLabels(menu);
+
+    unsigned count = SDL_Libretro_GetDiskCount(lr);
+    menu->builtDiskCount = count;
+    if (count < 2) {
+        // The page is going away; don't strand the user on an empty parent.
+        if (nk_console_active_parent(menu->console) == menu->disksButton) {
+            nk_console_set_active_parent(menu->console);
+        }
+        menu->disksButton->visible = nk_false;
+        return;
+    }
+
+    menu->diskLabels = (char**)SDL_calloc(count, sizeof(char*));
+    if (menu->diskLabels == NULL) {
+        menu->disksButton->visible = nk_false;
+        return;
+    }
+
+    menu->disksButton->visible = nk_true;
+    SDL_Libretro_MenuAddBackButton(menu->disksButton, "Disks");
+    menu->diskSelected = (int)SDL_Libretro_GetDiskIndex(lr);
+    for (unsigned i = 0; i < count; i++) {
+        char label[128];
+        if (!SDL_Libretro_GetDiskLabel(lr, i, label, sizeof(label)) || label[0] == '\0') {
+            SDL_snprintf(label, sizeof(label), "Disk %u", i + 1);
+        }
+        menu->diskLabels[i] = SDL_strdup(label);
+        nk_console* radio = nk_console_radio(menu->disksButton, menu->diskLabels[i] != NULL ? menu->diskLabels[i] : "Disk", &menu->diskSelected);
+        // Radios report a pick as CLICKED.
+        nk_console_add_event_handler(radio, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuDiskClicked, menu, NULL);
+    }
+}
+
+/**
+ * Build the Settings submenu; the widgets write into the fields that
+ * SDL_Libretro_MenuSyncSettings() keeps current.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
+    nk_console* settings = SDL_Libretro_MenuAddSubmenu(menu->console, "Settings", NK_SYMBOL_HAMBURGER);
+
+    // General
+    nk_console* general = SDL_Libretro_MenuAddSubmenu(settings, "General", NK_SYMBOL_TRIANGLE_RIGHT);
+    SDL_Libretro_MenuSyncSettingsBuffers(menu);
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuAddSettingTextedit(general, "Username", menu,
+                                            menu->usernameBuffer, sizeof(menu->usernameBuffer)),
+        "Reported to cores that ask for a username");
+
+    // Rewind toggle, with its memory budget below it.
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuAddCheckbox(menu, general, "Rewind", &menu->rewindChecked, NULL, &SDL_Libretro_MenuRewindChanged, NULL),
+        "Capture state snapshots so gameplay can rewind");
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_property_int(general, "Rewind Buffer (MB)", 0, &menu->rewindBufferMB, 1024, 8, 1.0f),
+                                   &SDL_Libretro_MenuRewindBufferChanged, menu),
+        "Memory the rewind buffer may use; 0 for no limit");
+
+    // Audio & Video
+    nk_console* audioVideo = SDL_Libretro_MenuAddSubmenu(settings, "Audio & Video", NK_SYMBOL_TRIANGLE_RIGHT);
+
+    SDL_Libretro_MenuOnChanged(nk_console_knob_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f),
+                               &SDL_Libretro_MenuVolumeChanged, menu);
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuAddCheckbox(menu, audioVideo, "Mute", &menu->muteChecked, NULL, &SDL_Libretro_MenuMuteChanged, NULL),
+        "Silence the audio; unmuting restores the volume");
+    SDL_Libretro_MenuAddCheckbox(menu, audioVideo, "Fullscreen", &menu->fullscreenChecked, NULL, &SDL_Libretro_MenuFullscreenChanged, NULL);
+    SDL_Libretro_MenuAddCheckbox(menu, audioVideo, "VSync", &menu->vsyncChecked, NULL, &SDL_Libretro_MenuVSyncChanged, NULL);
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Filter", "Nearest|Linear", '|', &menu->filterIndex),
+                                   &SDL_Libretro_MenuFilterChanged, menu),
+        "Nearest keeps pixels sharp; Linear smooths the scaling");
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex),
+                                   &SDL_Libretro_MenuFitModeChanged, menu),
+        "Aspect keeps the ratio; Integer locks whole-number scales; Stretch fills the window");
+    SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex),
+                               &SDL_Libretro_MenuStyleChanged, menu);
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex),
+                                   &SDL_Libretro_MenuUIScaleChanged, menu),
+        "Menu size; Auto picks one from the resolution");
+
+    // Core Options, populated lazily once a core registers options.
+    menu->optionsButton = nk_console_button(settings, "Core Options");
+    nk_console_button_set_symbol(menu->optionsButton, NK_SYMBOL_TRIANGLE_RIGHT);
+    menu->optionsButton->visible = nk_false;
+
+    // Controllers, populated lazily once a core registers controller info.
+    menu->controllersButton = nk_console_button(settings, "Controllers");
+    nk_console_button_set_symbol(menu->controllersButton, NK_SYMBOL_TRIANGLE_RIGHT);
+    menu->controllersButton->visible = nk_false;
+
+    // Keyboard bindings for player 1's virtual controller.
+    nk_console* keyboard = SDL_Libretro_MenuAddSubmenu(settings, "Keyboard", NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_set_tooltip(keyboard, "Keyboard keys for Player 1's controller");
+    SDL_Libretro_MenuSyncKeyBinds(menu);
+    for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
+        menu->keyBinds[i].menu = menu;
+        menu->keyBinds[i].button = i;
+        SDL_Libretro_MenuOnChanged(
+            nk_console_input_key(keyboard, SDL_Libretro_JoypadButtonNames[i], &menu->keyBinds[i].rune),
+            &SDL_Libretro_MenuKeyBindChanged, &menu->keyBinds[i]);
+    }
+
+    // Directories
+    nk_console* directories = SDL_Libretro_MenuAddSubmenu(settings, "Directories", NK_SYMBOL_TRIANGLE_RIGHT);
+
+    SDL_Libretro_MenuAddSettingDir(directories, "Cores", menu,
+                                   menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Saves", menu,
+                                   menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "System", menu,
+                                   menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Content", menu,
+                                   menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
+}
+
+/**
+ * Build the top-level menu tree.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
+    SDL_Libretro* lr = menu->lr;
+    (void)lr;
+
+    // Backing out of the top level acts like Resume.
+    nk_console_add_event_handler(menu->console, NK_CONSOLE_EVENT_BACK, &SDL_Libretro_MenuBackClicked, menu, NULL);
+
+    // Progress reported by the core through a progress-type OSD message.
+    menu->osdProgressWidget = nk_console_progress(menu->console, "Progress", &menu->osdProgressValue, 100);
+    menu->osdProgressWidget->visible = nk_false;
+
+    // Resume
+    menu->resumeButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Resume", NK_SYMBOL_TRIANGLE_RIGHT, &SDL_Libretro_MenuResumeClicked, NULL);
+
+    // Load Game
+#ifdef __EMSCRIPTEN__
+    // Browsing the virtual file system isn't useful on the web; a JS file
+    // picker brings the user's own files in instead.
+    menu->loadGameButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Load Game", NK_SYMBOL_NONE, &SDL_Libretro_MenuWebLoadGameClicked, NULL);
+#else
+    menu->loadGameButton = SDL_Libretro_MenuOnChanged(
+        nk_console_file_action(menu->console, "Load Game", menu->loadGamePath, sizeof(menu->loadGamePath)),
+        &SDL_Libretro_MenuGameFileChanged, menu);
+    if (lr->fileBrowserStartDirectory[0] != '\0') {
+        nk_console_file_set_directory(menu->loadGameButton, lr->fileBrowserStartDirectory);
+    }
+    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+#endif
+
+    // Save State / Load State
+    menu->stateRow = nk_console_row_begin(menu->console);
+    {
+        SDL_Libretro_MenuAddButton(menu, menu->stateRow, "Save State", NK_SYMBOL_RECT_SOLID, &SDL_Libretro_MenuSaveStateClicked, NULL);
+        SDL_Libretro_MenuAddButton(menu, menu->stateRow, "Load State", NK_SYMBOL_RECT_OUTLINE, &SDL_Libretro_MenuLoadStateClicked, NULL);
+    }
+    nk_console_row_end(menu->stateRow);
+
+    // Screenshot
+    menu->screenshotButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Screenshot", NK_SYMBOL_CIRCLE_OUTLINE, &SDL_Libretro_MenuScreenshotClicked, NULL);
+
+    // Reset
+    menu->resetButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Reset", NK_SYMBOL_CIRCLE_SOLID, &SDL_Libretro_MenuResetClicked, NULL);
+
+    // Disks, populated lazily for cores with multi-disk games.
+    menu->disksButton = SDL_Libretro_MenuAddSubmenu(menu->console, "Disks", NK_SYMBOL_CIRCLE_OUTLINE);
+    nk_console_set_tooltip(menu->disksButton, "Swap disks for multi-disk games");
+    menu->disksButton->visible = nk_false;
+
+    // Select Core picker; never listed at the top level, only navigated into
+    // when a Load Game pick matches several cores.
+    menu->corePickerButton = nk_console_button(menu->console, "Select Core");
+    menu->corePickerButton->visible = nk_false;
+
+    SDL_Libretro_MenuBuildSettings(menu);
+
+    // About, rebuilt by the CLICKED handler whenever the page opens.
+    menu->aboutButton = SDL_Libretro_MenuAddButton(menu, menu->console, "About", NK_SYMBOL_TRIANGLE_RIGHT, &SDL_Libretro_MenuAboutOpened, NULL);
+
+    // Quit, kept as the last top-level entry when the app adds its own.
+    menu->quitButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Quit", NK_SYMBOL_X, &SDL_Libretro_MenuQuitClicked, NULL);
 }
 
 SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
@@ -1661,18 +2360,9 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         return NULL;
     }
 
-    // Default the UI scale to 2x, apply the saved choice when the config has
-    // one (including an explicit Auto), then bake the default font for the
-    // current resolution and display scale.
-    menu->uiScaleIndex = 2;
-    if (lr->ini != NULL && INI_HasValue(lr->ini, NULL, "menuuiscale")) {
-        Sint64 savedScale = INI_GetInt(lr->ini, NULL, "menuuiscale", 2);
-        if (savedScale >= 0 && savedScale <= 4) {
-            menu->uiScaleIndex = (int)savedScale;
-        }
-    }
+    // Bake the default font once at the base height; UI scaling happens
+    // through SDL_SetRenderScale in the render path.
     SDL_Libretro_MenuBakeFont(menu);
-    menu->renderScale = SDL_Libretro_MenuRenderScale(menu);
 
     menu->console = nk_console_init(menu->ctx);
     if (menu->console == NULL) {
@@ -1688,141 +2378,10 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     // the application-facing SDL_Libretro_SetMenuUserData().
     nk_console_set_user_data(menu->console, menu);
 
-    // Apply the saved theme when the config has one, the default otherwise.
-    SDL_LibretroMenuStyle initialStyle = SDL_LIBRETRO_MENU_DEFAULT_STYLE;
-    if (lr->ini != NULL && INI_HasValue(lr->ini, NULL, "menutheme")) {
-        Sint64 savedStyle = INI_GetInt(lr->ini, NULL, "menutheme", (Sint64)initialStyle);
-        if (savedStyle >= 0 && savedStyle < (Sint64)SDL_LIBRETRO_MENU_STYLE_COUNT) {
-            initialStyle = (SDL_LibretroMenuStyle)savedStyle;
-        }
-    }
-    SDL_Libretro_SetMenuStyle(menu, initialStyle);
-
-    // Backing out of the top level acts like Resume.
-    nk_console_add_event_handler(menu->console, NK_CONSOLE_EVENT_BACK, &SDL_Libretro_MenuResumeClicked, menu, NULL);
-
-    // Resume
-    menu->resumeButton = nk_console_button_onclick_handler(menu->console, "Resume", &SDL_Libretro_MenuResumeClicked, menu, NULL);
-    nk_console_button_set_symbol(menu->resumeButton, NK_SYMBOL_TRIANGLE_RIGHT);
-
-    // Load Game
-#ifdef __EMSCRIPTEN__
-    // Browsing the virtual file system isn't useful on the web; a JS file
-    // picker brings the user's own files in instead.
-    menu->loadGameButton = nk_console_button_onclick_handler(menu->console, "Load Game", &SDL_Libretro_MenuWebLoadGameClicked, menu, NULL);
-#else
-    menu->loadGameButton = nk_console_file_action(menu->console, "Load Game", menu->loadGamePath, sizeof(menu->loadGamePath));
-    nk_console_add_event_handler(menu->loadGameButton, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuGameFileChanged, menu, NULL);
-    if (lr->fileBrowserStartDirectory[0] != '\0') {
-        nk_console_file_set_directory(menu->loadGameButton, lr->fileBrowserStartDirectory);
-    }
-    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
-#endif
-
-    // Save State / Load State
-    menu->stateRow = nk_console_row_begin(menu->console);
-    {
-        nk_console* saveState = nk_console_button(menu->stateRow, "Save State");
-        nk_console_add_event_handler(saveState, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuSaveStateClicked, menu, NULL);
-        nk_console_button_set_symbol(saveState, NK_SYMBOL_RECT_SOLID);
-
-        nk_console* loadState = nk_console_button(menu->stateRow, "Load State");
-        nk_console_add_event_handler(loadState, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuLoadStateClicked, menu, NULL);
-        nk_console_button_set_symbol(loadState, NK_SYMBOL_RECT_OUTLINE);
-    }
-    nk_console_row_end(menu->stateRow);
-
-    // Reset
-    menu->resetButton = nk_console_button_onclick_handler(menu->console, "Reset", &SDL_Libretro_MenuResetClicked, menu, NULL);
-    nk_console_button_set_symbol(menu->resetButton, NK_SYMBOL_CIRCLE_SOLID);
-
-    // Core Options, populated lazily once a core registers options.
-    menu->optionsButton = nk_console_button(menu->console, "Core Options");
-    nk_console_button_set_symbol(menu->optionsButton, NK_SYMBOL_TRIANGLE_RIGHT);
-    menu->optionsButton->visible = nk_false;
-
-    // Controllers, populated lazily once a core registers controller info.
-    menu->controllersButton = nk_console_button(menu->console, "Controllers");
-    nk_console_button_set_symbol(menu->controllersButton, NK_SYMBOL_TRIANGLE_RIGHT);
-    menu->controllersButton->visible = nk_false;
-
-    // Select Core picker; never listed at the top level, only navigated into
-    // when a Load Game pick matches several cores.
-    menu->corePickerButton = nk_console_button(menu->console, "Select Core");
-    menu->corePickerButton->visible = nk_false;
-
-    // Settings
-    nk_console* settings = nk_console_button(menu->console, "Settings");
-    nk_console_button_set_symbol(settings, NK_SYMBOL_HAMBURGER);
-    {
-        nk_console_button_set_symbol(
-            nk_console_button_onclick(settings, "Settings", &nk_console_button_back),
-            NK_SYMBOL_TRIANGLE_UP);
-
-        // Apply the saved window/audio state before the widgets snapshot it.
-        if (lr->ini != NULL) {
-            if (INI_HasValue(lr->ini, NULL, "menufullscreen")) {
-                SDL_SetWindowFullscreen(lr->window, INI_GetBoolean(lr->ini, NULL, "menufullscreen", false));
-            }
-            if (INI_HasValue(lr->ini, NULL, "menuvsync")) {
-                SDL_SetRenderVSync(lr->renderer, INI_GetBoolean(lr->ini, NULL, "menuvsync", false) ? 1 : 0);
-            }
-            if (INI_GetBoolean(lr->ini, NULL, "menumuted", false)) {
-                menu->muteChecked = nk_true;
-                menu->preMuteVolume = INI_GetFloat(lr->ini, NULL, "menumutevolume", 1.0f);
-                SDL_Libretro_SetVolume(lr, 0.0f);
-            }
-        }
-
-        // Audio & Video
-        nk_console* audioVideo = nk_console_button(settings, "Audio & Video");
-        nk_console_button_set_symbol(audioVideo, NK_SYMBOL_TRIANGLE_RIGHT);
-        {
-            nk_console_button_set_symbol(
-                nk_console_button_onclick(audioVideo, "Audio & Video", &nk_console_button_back),
-                NK_SYMBOL_TRIANGLE_UP);
-
-            menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
-            nk_console* volume = nk_console_property_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f);
-            nk_console_add_event_handler(volume, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVolumeChanged, menu, NULL);
-
-            nk_console* mute = nk_console_checkbox(audioVideo, "Mute", &menu->muteChecked);
-            nk_console_add_event_handler(mute, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuMuteChanged, menu, NULL);
-
-            menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
-            nk_console* fullscreen = nk_console_checkbox(audioVideo, "Fullscreen", &menu->fullscreenChecked);
-            nk_console_add_event_handler(fullscreen, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFullscreenChanged, menu, NULL);
-
-            int vsync = 0;
-            SDL_GetRenderVSync(lr->renderer, &vsync);
-            menu->vsyncChecked = vsync != 0;
-            nk_console* vsyncBox = nk_console_checkbox(audioVideo, "VSync", &menu->vsyncChecked);
-            nk_console_add_event_handler(vsyncBox, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuVSyncChanged, menu, NULL);
-
-            menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
-            nk_console* filter = nk_console_combobox(audioVideo, "Filter", "Nearest|Linear", '|', &menu->filterIndex);
-            nk_console_add_event_handler(filter, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFilterChanged, menu, NULL);
-
-            menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
-            nk_console* fitMode = nk_console_combobox(audioVideo, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex);
-            nk_console_add_event_handler(fitMode, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuFitModeChanged, menu, NULL);
-
-            nk_console* theme = nk_console_combobox(audioVideo, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex);
-            nk_console_add_event_handler(theme, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuStyleChanged, menu, NULL);
-
-            nk_console* uiScale = nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex);
-            nk_console_add_event_handler(uiScale, NK_CONSOLE_EVENT_CHANGED, &SDL_Libretro_MenuUIScaleChanged, menu, NULL);
-        }
-    }
-
-    // About, rebuilt by the CLICKED handler whenever the page opens.
-    menu->aboutButton = nk_console_button(menu->console, "About");
-    nk_console_button_set_symbol(menu->aboutButton, NK_SYMBOL_TRIANGLE_RIGHT);
-    nk_console_add_event_handler(menu->aboutButton, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuAboutOpened, menu, NULL);
-
-    // Quit
-    nk_console* quit = nk_console_button_onclick_handler(menu->console, "Quit", &SDL_Libretro_MenuQuitClicked, menu, NULL);
-    nk_console_button_set_symbol(quit, NK_SYMBOL_X);
+    SDL_Libretro_MenuLoadState(menu);
+    menu->renderScale = SDL_Libretro_MenuRenderScale(menu);
+    SDL_Libretro_MenuSyncSettings(menu);
+    SDL_Libretro_MenuBuildWidgets(menu);
 
     nk_input_begin(menu->ctx);
 
@@ -1833,6 +2392,12 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
     if (menu == NULL) {
         return;
     }
+    // Queued menu events carry this menu in data2; drop them before it goes away.
+    SDL_FlushEvent(SDL_EVENT_LIBRETRO_MENU_OPENED);
+    SDL_FlushEvent(SDL_EVENT_LIBRETRO_MENU_CLOSED);
+    if (menu->settingsDirty) {
+        SDL_Libretro_MenuSaveState(menu);
+    }
     if (menu->ctx != NULL) {
         nk_input_end(menu->ctx);
     }
@@ -1841,6 +2406,7 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
     }
     SDL_Libretro_MenuFreeOptionStates(menu);
     SDL_Libretro_MenuFreePortStates(menu);
+    SDL_Libretro_MenuFreeDiskLabels(menu);
     SDL_free((void*)menu->coreChoices);
     nk_gamepad_free(&menu->gamepads);
     if (menu->ctx != NULL) {
@@ -1875,6 +2441,7 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
     }
+    SDL_Libretro_PushEvent(menu->lr, open ? SDL_EVENT_LIBRETRO_MENU_OPENED : SDL_EVENT_LIBRETRO_MENU_CLOSED, menu);
 }
 
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
@@ -1905,6 +2472,13 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
         return false;
     }
 
+    // Application events, including the menu's own notifications, are never
+    // swallowed and mean nothing to the UI.
+    if (event->type >= SDL_EVENT_USER) {
+        return false;
+    }
+
+    // Feed a copy so coordinate conversion doesn't mutate the caller's event.
     SDL_SetRenderScale(menu->lr->renderer, menu->renderScale, menu->renderScale);
     SDL_Event converted = *event;
     SDL_ConvertEventToRenderCoordinates(menu->lr->renderer, &converted);
@@ -1930,6 +2504,57 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
     return true;
 }
 
+/**
+ * Rebuild the core-derived submenus (Core Options, Controllers, and the file
+ * filter) when they no longer match the loaded core:
+ *
+ *  * an option changed outside the menu (the app-side dirty flag),
+ *  * the loaded core changed (library name) or its option set changed size,
+ *  * the menu just opened; visibility may have shifted while it was closed,
+ *    so the core's display callback is re-run first.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justOpened) {
+    SDL_Libretro* lr = menu->lr;
+    if (SDL_Libretro_AreOptionsDirty(lr)) {
+        menu->optionsStale = true;
+    }
+    bool coreChanged = SDL_strcmp(menu->builtCoreName, lr->core.libraryName) != 0;
+    bool countChanged = menu->builtOptionCount != lr->core.optionCount;
+    if (!justOpened && !coreChanged && !countChanged && !menu->optionsStale) {
+        return;
+    }
+
+    if (justOpened && SDL_Libretro_UpdateOptionVisibility(lr)) {
+        SDL_Libretro_AreOptionsDirty(lr);
+    }
+    SDL_Libretro_MenuBuildOptions(menu);
+    SDL_Libretro_MenuBuildControllers(menu);
+    SDL_Libretro_MenuBuildDisks(menu);
+    SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+    menu->optionsStale = false;
+    menu->builtOptionCount = lr->core.optionCount;
+    SDL_strlcpy(menu->builtCoreName, lr->core.libraryName, sizeof(menu->builtCoreName));
+}
+
+bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path) {
+    if (menu == NULL || menu->console == NULL || path == NULL) {
+        return SDL_InvalidParamError("menu");
+    }
+    SDL_Libretro_SetMenuOpen(menu, true);
+    // Do the just-opened work here so the next SDL_Libretro_UpdateMenu()
+    // doesn't rebuild the lazy pages again underneath the navigation, and so
+    // their paths resolve before the first frame.
+    SDL_Libretro_MenuRebuildCoreMenus(menu, true);
+    SDL_Libretro_MenuSyncSettings(menu);
+    SDL_Libretro_MenuSyncSettingsBuffers(menu);
+    SDL_Libretro_MenuSyncKeyBinds(menu);
+    menu->wasOpen = true;
+
+    return nk_console_navigate_to_path(menu->console, path) == nk_true;
+}
+
 void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     if (menu == NULL || menu->ctx == NULL) {
         return;
@@ -1950,25 +2575,7 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         return;
     }
 
-    // Rebuild the Core Options submenu when it went stale: an option changed
-    // outside the menu, the core changed, the option set changed size, or the
-    // menu just opened (visibility may have shifted while it was closed).
-    if (SDL_Libretro_AreOptionsDirty(lr)) {
-        menu->optionsStale = true;
-    }
-    bool coreChanged = SDL_strcmp(menu->builtCoreName, lr->core.libraryName) != 0;
-    bool countChanged = menu->builtOptionCount != lr->core.optionCount;
-    if (justOpened || coreChanged || countChanged || menu->optionsStale) {
-        if (justOpened && SDL_Libretro_UpdateOptionVisibility(lr)) {
-            SDL_Libretro_AreOptionsDirty(lr);
-        }
-        SDL_Libretro_MenuBuildOptions(menu);
-        SDL_Libretro_MenuBuildControllers(menu);
-        SDL_Libretro_MenuUpdateLoadGameFilter(menu);
-        menu->optionsStale = false;
-        menu->builtOptionCount = lr->core.optionCount;
-        SDL_strlcpy(menu->builtCoreName, lr->core.libraryName, sizeof(menu->builtCoreName));
-    }
+    SDL_Libretro_MenuRebuildCoreMenus(menu, justOpened);
 
     // A Load Game pick that matched several cores queued the picker.
     if (menu->corePickerPending) {
@@ -1980,14 +2587,32 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     bool gameReady = SDL_Libretro_IsGameReady(lr);
     menu->resumeButton->visible = (nk_bool)gameReady;
     menu->stateRow->visible = (nk_bool)gameReady;
+    menu->screenshotButton->visible = (nk_bool)gameReady;
     menu->resetButton->visible = (nk_bool)gameReady;
+
+    // Progress-type OSD messages get a live bar at the top of the menu.
+    int osdProgress = SDL_Libretro_GetMessageProgress(lr);
+    if (osdProgress >= 0) {
+        const char* osdMessage = SDL_Libretro_GetMessage(lr);
+        SDL_strlcpy(menu->osdProgressLabel, osdMessage != NULL ? osdMessage : "", sizeof(menu->osdProgressLabel));
+        menu->osdProgressValue = (nk_size)(osdProgress > 100 ? 100 : osdProgress);
+        nk_console_progress_update(menu->osdProgressWidget, menu->osdProgressLabel, &menu->osdProgressValue, 100);
+        menu->osdProgressWidget->visible = nk_true;
+    }
+    else {
+        menu->osdProgressWidget->visible = nk_false;
+    }
 
     // Settings that can change outside the menu.
     if (justOpened) {
-        menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
-        menu->fitModeIndex = (int)SDL_Libretro_GetFitMode(lr);
-        menu->filterIndex = SDL_Libretro_GetTextureScaleMode(lr) == SDL_SCALEMODE_LINEAR ? 1 : 0;
-        menu->fullscreenChecked = (SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) != 0;
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDL_Libretro_MenuSyncSettingsBuffers(menu);
+        SDL_Libretro_MenuSyncKeyBinds(menu);
+    }
+
+    // Flush changed menu settings into the config.
+    if (menu->settingsDirty) {
+        SDL_Libretro_MenuSaveState(menu);
     }
 
     menu->renderScale = SDL_Libretro_MenuRenderScale(menu);
@@ -2018,6 +2643,39 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
         menu->uiBuilt = false;
     }
     nk_input_begin(menu->ctx);
+}
+
+/**
+ * New entries append after Quit; swap them so Quit stays the last entry.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuKeepQuitLast(SDL_LibretroMenu* menu) {
+    nk_console** children = menu->console->children;
+    size_t count = cvector_size(children);
+    if (menu->quitButton == NULL || count < 2 || children[count - 2] != menu->quitButton) {
+        return;
+    }
+    children[count - 2] = children[count - 1];
+    children[count - 1] = menu->quitButton;
+}
+
+bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata) {
+    if (menu == NULL || menu->console == NULL || label == NULL) {
+        return SDL_InvalidParamError("menu");
+    }
+    nk_console* button = SDL_Libretro_MenuAddButton(menu, menu->console, label, NK_SYMBOL_NONE, callback, userdata);
+    SDL_Libretro_MenuKeepQuitLast(menu);
+    return button != NULL;
+}
+
+bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata) {
+    if (menu == NULL || menu->console == NULL || label == NULL) {
+        return SDL_InvalidParamError("menu");
+    }
+    nk_console* checkbox = SDL_Libretro_MenuAddCheckbox(menu, menu->console, label, NULL, value, callback, userdata);
+    SDL_Libretro_MenuKeepQuitLast(menu);
+    return checkbox != NULL;
 }
 
 #endif /* SDL_LIBRETRO_MENU_IMPL_ONCE */
