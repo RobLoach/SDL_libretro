@@ -12,25 +12,57 @@
  * @see RETRO_DEVICE_ID_JOYPAD_B
  * @see SDL_GAMEPAD_BUTTON_SOUTH
  */
-static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button) {
-    switch (button) {
-        case RETRO_DEVICE_ID_JOYPAD_B: return SDL_GAMEPAD_BUTTON_SOUTH;
-        case RETRO_DEVICE_ID_JOYPAD_Y: return SDL_GAMEPAD_BUTTON_WEST;
-        case RETRO_DEVICE_ID_JOYPAD_SELECT: return SDL_GAMEPAD_BUTTON_BACK;
-        case RETRO_DEVICE_ID_JOYPAD_START: return SDL_GAMEPAD_BUTTON_START;
-        case RETRO_DEVICE_ID_JOYPAD_UP: return SDL_GAMEPAD_BUTTON_DPAD_UP;
-        case RETRO_DEVICE_ID_JOYPAD_DOWN: return SDL_GAMEPAD_BUTTON_DPAD_DOWN;
-        case RETRO_DEVICE_ID_JOYPAD_LEFT: return SDL_GAMEPAD_BUTTON_DPAD_LEFT;
-        case RETRO_DEVICE_ID_JOYPAD_RIGHT: return SDL_GAMEPAD_BUTTON_DPAD_RIGHT;
-        case RETRO_DEVICE_ID_JOYPAD_A: return SDL_GAMEPAD_BUTTON_EAST;
-        case RETRO_DEVICE_ID_JOYPAD_X: return SDL_GAMEPAD_BUTTON_NORTH;
-        case RETRO_DEVICE_ID_JOYPAD_L: return SDL_GAMEPAD_BUTTON_LEFT_SHOULDER;
-        case RETRO_DEVICE_ID_JOYPAD_R: return SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER;
-        case RETRO_DEVICE_ID_JOYPAD_L2: return SDL_GAMEPAD_BUTTON_LEFT_PADDLE1;
-        case RETRO_DEVICE_ID_JOYPAD_R2: return SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1;
-        case RETRO_DEVICE_ID_JOYPAD_L3: return SDL_GAMEPAD_BUTTON_LEFT_STICK;
-        case RETRO_DEVICE_ID_JOYPAD_R3: return SDL_GAMEPAD_BUTTON_RIGHT_STICK;
-        default: return SDL_GAMEPAD_BUTTON_INVALID;
+/**
+ * The default SDL button for each RETRO_DEVICE_ID_JOYPAD_* id; seeds
+ * SDL_Libretro::gamepadButtons at creation.
+ *
+ * @internal
+ */
+static const SDL_GamepadButton SDL_Libretro_DefaultGamepadButtons[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
+    SDL_GAMEPAD_BUTTON_SOUTH, // B
+    SDL_GAMEPAD_BUTTON_WEST, // Y
+    SDL_GAMEPAD_BUTTON_BACK, // Select
+    SDL_GAMEPAD_BUTTON_START, // Start
+    SDL_GAMEPAD_BUTTON_DPAD_UP, // Up
+    SDL_GAMEPAD_BUTTON_DPAD_DOWN, // Down
+    SDL_GAMEPAD_BUTTON_DPAD_LEFT, // Left
+    SDL_GAMEPAD_BUTTON_DPAD_RIGHT, // Right
+    SDL_GAMEPAD_BUTTON_EAST, // A
+    SDL_GAMEPAD_BUTTON_NORTH, // X
+    SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, // L
+    SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, // R
+    SDL_GAMEPAD_BUTTON_LEFT_PADDLE1, // L2, normally driven by the trigger axis
+    SDL_GAMEPAD_BUTTON_RIGHT_PADDLE1, // R2, normally driven by the trigger axis
+    SDL_GAMEPAD_BUTTON_LEFT_STICK, // L3
+    SDL_GAMEPAD_BUTTON_RIGHT_STICK, // R3
+};
+
+static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(const SDL_Libretro* lr, unsigned port, unsigned button) {
+    return port < SDL_LIBRETRO_MAX_USERS && button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS
+        ? lr->gamepadButtons[port][button] : SDL_GAMEPAD_BUTTON_INVALID;
+}
+
+/**
+ * Whether the port's analog-to-digital stick currently pushes the given
+ * D-Pad direction, using the same threshold as the L2/R2 trigger axes.
+ *
+ * @internal
+ * @see SDL_Libretro_SetAnalogToDigital()
+ */
+static bool SDL_Libretro_AnalogToDigitalPressed(const SDL_Libretro* lr, unsigned port, unsigned id) {
+    SDL_LibretroAnalogToDigital stick = lr->analogToDigital[port];
+    if (stick == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE) {
+        return false;
+    }
+    bool right = stick == SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT;
+    SDL_GamepadAxis axisX = right ? SDL_GAMEPAD_AXIS_RIGHTX : SDL_GAMEPAD_AXIS_LEFTX;
+    SDL_GamepadAxis axisY = right ? SDL_GAMEPAD_AXIS_RIGHTY : SDL_GAMEPAD_AXIS_LEFTY;
+    switch (id) {
+        case RETRO_DEVICE_ID_JOYPAD_UP: return SDL_GetGamepadAxis(lr->gamepads[port], axisY) < -8192;
+        case RETRO_DEVICE_ID_JOYPAD_DOWN: return SDL_GetGamepadAxis(lr->gamepads[port], axisY) > 8192;
+        case RETRO_DEVICE_ID_JOYPAD_LEFT: return SDL_GetGamepadAxis(lr->gamepads[port], axisX) < -8192;
+        case RETRO_DEVICE_ID_JOYPAD_RIGHT: return SDL_GetGamepadAxis(lr->gamepads[port], axisX) > 8192;
+        default: return false;
     }
 }
 
@@ -412,17 +444,22 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
 
             // Gamepad
             if (port < SDL_LIBRETRO_MAX_USERS && lr->gamepads[port]) {
-                // L2/R2 are axes, not buttons
-                if (id == RETRO_DEVICE_ID_JOYPAD_L2) {
-                    Sint16 val = SDL_GetGamepadAxis(lr->gamepads[port], SDL_GAMEPAD_AXIS_LEFT_TRIGGER);
-                    return val > 8192 ? 1 : 0;
+                // L2/R2 are axes first; a bound button can also drive them.
+                if (id == RETRO_DEVICE_ID_JOYPAD_L2 &&
+                    SDL_GetGamepadAxis(lr->gamepads[port], SDL_GAMEPAD_AXIS_LEFT_TRIGGER) > 8192) {
+                    return 1;
                 }
-                if (id == RETRO_DEVICE_ID_JOYPAD_R2) {
-                    Sint16 val = SDL_GetGamepadAxis(lr->gamepads[port], SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
-                    return val > 8192 ? 1 : 0;
+                if (id == RETRO_DEVICE_ID_JOYPAD_R2 &&
+                    SDL_GetGamepadAxis(lr->gamepads[port], SDL_GAMEPAD_AXIS_RIGHT_TRIGGER) > 8192) {
+                    return 1;
                 }
 
-                SDL_GamepadButton btn = SDL_Libretro_RetroJoypadToGamepadButton(id);
+                // The port's analog-to-digital stick can also push the D-Pad.
+                if (SDL_Libretro_AnalogToDigitalPressed(lr, port, id)) {
+                    return 1;
+                }
+
+                SDL_GamepadButton btn = SDL_Libretro_RetroJoypadToGamepadButton(lr, port, id);
                 if (btn != SDL_GAMEPAD_BUTTON_INVALID) {
                     return SDL_GetGamepadButton(lr->gamepads[port], btn) ? 1 : 0;
                 }
@@ -453,7 +490,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
                     if (id == RETRO_DEVICE_ID_JOYPAD_R2) {
                         return SDL_GetGamepadAxis(gp, SDL_GAMEPAD_AXIS_RIGHT_TRIGGER);
                     }
-                    SDL_GamepadButton btn = SDL_Libretro_RetroJoypadToGamepadButton(id);
+                    SDL_GamepadButton btn = SDL_Libretro_RetroJoypadToGamepadButton(lr, port, id);
                     if (btn != SDL_GAMEPAD_BUTTON_INVALID && SDL_GetGamepadButton(gp, btn)) {
                         return 0x7FFF;
                     }
@@ -696,6 +733,54 @@ unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port) {
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode) {
     if (!lr || retroButton < 0 || retroButton > RETRO_DEVICE_ID_JOYPAD_R3) return;
     lr->keyboardPlayer1[retroButton] = scancode;
+}
+
+/**
+ * Maps an SDL gamepad button to a RETRO_DEVICE_ID_JOYPAD_* button on the
+ * given controller port. The L2/R2 trigger axes keep working alongside any
+ * button bound to them.
+ *
+ * @param lr the libretro context.
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_USERS.
+ * @param retroButton the RETRO_DEVICE_ID_JOYPAD_* button to rebind.
+ * @param button the SDL button that presses it.
+ */
+void SDL_Libretro_SetGamepadMapping(SDL_Libretro* lr, unsigned port, int retroButton, SDL_GamepadButton button) {
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS ||
+        retroButton < 0 || retroButton > RETRO_DEVICE_ID_JOYPAD_R3) {
+        return;
+    }
+    lr->gamepadButtons[port][retroButton] = button;
+}
+
+/**
+ * Selects which analog stick, if any, also registers D-Pad presses on the
+ * given controller port, alongside the physical D-Pad.
+ *
+ * @param lr the libretro context.
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_USERS.
+ * @param stick the stick that drives the D-Pad, or
+ *              SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE for the D-Pad alone.
+ *
+ * @see SDL_Libretro_GetAnalogToDigital()
+ */
+void SDL_Libretro_SetAnalogToDigital(SDL_Libretro* lr, unsigned port, SDL_LibretroAnalogToDigital stick) {
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS ||
+        (int)stick < 0 || (int)stick >= SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT) {
+        return;
+    }
+    lr->analogToDigital[port] = stick;
+}
+
+/**
+ * Get the analog stick that also registers D-Pad presses on a controller
+ * port. Invalid arguments return SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE.
+ *
+ * @see SDL_Libretro_SetAnalogToDigital()
+ */
+SDL_LibretroAnalogToDigital SDL_Libretro_GetAnalogToDigital(const SDL_Libretro* lr, unsigned port) {
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE;
+    return lr->analogToDigital[port];
 }
 
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed) {

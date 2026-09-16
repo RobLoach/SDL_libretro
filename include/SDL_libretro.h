@@ -90,6 +90,18 @@ typedef enum SDL_LibretroFitMode {
     SDL_LIBRETRO_FIT_COUNT = 3 /** The number of possible fit modes. */
 } SDL_LibretroFitMode;
 
+/**
+ * Which analog stick, if any, also registers D-Pad presses for a controller port.
+ *
+ * @see SDL_Libretro_SetAnalogToDigital()
+ */
+typedef enum SDL_LibretroAnalogToDigital {
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE = 0, /** Only the D-Pad drives the retro joypad's directions. */
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT = 1, /** The left analog stick also registers D-Pad presses. */
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT = 2, /** The right analog stick also registers D-Pad presses. */
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT = 3 /** The number of possible modes. */
+} SDL_LibretroAnalogToDigital;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -169,6 +181,9 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event);
 bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device);
 unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port);
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode);
+void SDL_Libretro_SetGamepadMapping(SDL_Libretro* lr, unsigned port, int retroButton, SDL_GamepadButton button);
+void SDL_Libretro_SetAnalogToDigital(SDL_Libretro* lr, unsigned port, SDL_LibretroAnalogToDigital stick);
+SDL_LibretroAnalogToDigital SDL_Libretro_GetAnalogToDigital(const SDL_Libretro* lr, unsigned port);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr);
 bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, unsigned* port, unsigned* device, unsigned* id, const char** description);
@@ -525,6 +540,16 @@ static const char* SDL_Libretro_JoypadButtonNames[SDL_LIBRETRO_MAX_JOYPAD_BUTTON
     "A", "X", "L", "R", "L2", "R2", "L3", "R3",
 };
 
+/**
+ * Display names for the SDL_LibretroAnalogToDigital modes, indexed by mode.
+ * Doubles as the config values for the per-port analog-to-digital setting.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_AnalogToDigitalNames[SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT] = {
+    "None", "Left", "Right",
+};
+
 typedef struct SDL_Libretro_CoreInfo {
     char* corename;
     char* supported_extensions;
@@ -727,6 +752,8 @@ struct SDL_Libretro {
     SDL_LibretroFitMode fitMode; /** How the libretro context should fit into its destination when rendering. */
     SDL_ScaleMode scaleMode; /** The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+    SDL_GamepadButton gamepadButtons[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS]; /** SDL button per port and RETRO_DEVICE_ID_JOYPAD_*. @see SDL_Libretro_SetGamepadMapping() */
+    SDL_LibretroAnalogToDigital analogToDigital[SDL_LIBRETRO_MAX_USERS]; /** Which stick, if any, also drives each port's D-Pad. @see SDL_Libretro_SetAnalogToDigital() */
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
     char systemDirectory[SDL_LIBRETRO_MAX_PATH];
@@ -823,7 +850,7 @@ static void SDL_Libretro_ClearRewind(SDL_Libretro* lr);
 static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key);
 static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode);
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod);
-static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(unsigned button);
+static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(const SDL_Libretro* lr, unsigned port, unsigned button);
 
 // Sensors
 

@@ -170,6 +170,31 @@ typedef struct SDL_LibretroMenuKeyBind {
     nk_rune rune; /** The captured key, as an NK_CONSOLE_KEY_* value. */
 } SDL_LibretroMenuKeyBind;
 
+/**
+ * Per-button UI state for a player's page of the "Gamepad" submenu.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuPadBind {
+    SDL_LibretroMenu* menu;
+    unsigned port; /** The controller port the binding applies to. */
+    int button; /** The RETRO_DEVICE_ID_JOYPAD_* index. */
+    enum nk_gamepad_button captured; /** The captured gamepad button. */
+} SDL_LibretroMenuPadBind;
+
+/**
+ * Per-player UI state for the "Gamepad" submenu.
+ *
+ * @internal
+ */
+typedef struct SDL_LibretroMenuPadPort {
+    SDL_LibretroMenu* menu;
+    unsigned port;
+    int analogIndex; /** Selected Analog to Digital entry, in SDL_LibretroAnalogToDigital order. */
+    char label[64]; /** The player submenu label, holding the gamepad name; must outlive the widget. */
+    SDL_LibretroMenuPadBind binds[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+} SDL_LibretroMenuPadPort;
+
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
     struct nk_context* ctx;
@@ -222,6 +247,11 @@ struct SDL_LibretroMenu {
 
     // Keyboard bindings for player 1 (Settings > Keyboard).
     SDL_LibretroMenuKeyBind keyBinds[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
+
+    // Per-player gamepad bindings and analog-to-digital (Settings > Gamepad),
+    // rebuilt when the menu opens so the gamepad names stay current.
+    nk_console* gamepadButton;
+    SDL_LibretroMenuPadPort padPorts[SDL_LIBRETRO_MAX_USERS];
 
     // Disks, rebuilt when the menu opens.
     nk_console* disksButton;
@@ -914,6 +944,113 @@ static void SDL_Libretro_MenuKeyBindChanged(nk_console* widget, void* user_data)
         return;
     }
     SDL_Libretro_SetKeyboardMapping(menu->lr, bind->button, scancode);
+}
+
+/**
+ * The nk_gamepad button whose SDL equivalent is the given button, for
+ * showing the current binding in a capture widget. NK_GAMEPAD_BUTTON_INVALID
+ * when nk_gamepad has no equivalent (e.g. the trigger paddle defaults).
+ *
+ * @internal
+ */
+static enum nk_gamepad_button SDL_Libretro_MenuNkButtonFromSDL(SDL_GamepadButton button) {
+    for (int i = NK_GAMEPAD_BUTTON_FIRST; i <= NK_GAMEPAD_BUTTON_R3; i++) {
+        if (nk_gamepad_sdl3_map_button(i) == button) {
+            return (enum nk_gamepad_button)i;
+        }
+    }
+    return NK_GAMEPAD_BUTTON_INVALID;
+}
+
+/**
+ * Refresh every Gamepad page's captured buttons and analog-to-digital
+ * choices from the live per-port state.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuSyncPadBinds(SDL_LibretroMenu* menu) {
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        SDL_LibretroMenuPadPort* padPort = &menu->padPorts[port];
+        padPort->analogIndex = (int)menu->lr->analogToDigital[port];
+        for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
+            padPort->binds[i].captured = SDL_Libretro_MenuNkButtonFromSDL(menu->lr->gamepadButtons[port][i]);
+        }
+    }
+}
+
+/**
+ * Apply a captured gamepad button to its port's mapping; captures without an
+ * SDL equivalent (including a timed-out prompt) revert to the current
+ * binding.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuPadBindChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuPadBind* bind = (SDL_LibretroMenuPadBind*)user_data;
+    SDL_LibretroMenu* menu = bind->menu;
+    SDL_GamepadButton button = nk_gamepad_sdl3_map_button((int)bind->captured);
+    if (button == SDL_GAMEPAD_BUTTON_INVALID) {
+        bind->captured = SDL_Libretro_MenuNkButtonFromSDL(menu->lr->gamepadButtons[bind->port][bind->button]);
+        return;
+    }
+    SDL_Libretro_SetGamepadMapping(menu->lr, bind->port, bind->button, button);
+}
+
+/**
+ * Apply the Analog to Digital combobox choice to its port.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuAnalogToDigitalChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuPadPort* padPort = (SDL_LibretroMenuPadPort*)user_data;
+    SDL_Libretro_SetAnalogToDigital(padPort->menu->lr, padPort->port, (SDL_LibretroAnalogToDigital)padPort->analogIndex);
+}
+
+/**
+ * Populate the "Gamepad" submenu with one page per player, titled with the
+ * connected gamepad's name, holding that port's button bindings and its
+ * Analog to Digital stick choice. Rebuilt when the menu opens so the names
+ * stay current.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
+    if (menu->gamepadButton == NULL) {
+        return;
+    }
+    SDL_Libretro* lr = menu->lr;
+
+    SDL_Libretro_MenuGuardActiveParent(menu, menu->gamepadButton);
+    nk_console_free_children(menu->gamepadButton);
+    SDL_Libretro_MenuAddBackButton(menu->gamepadButton, "Gamepad");
+
+    SDL_Libretro_MenuSyncPadBinds(menu);
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        SDL_LibretroMenuPadPort* padPort = &menu->padPorts[port];
+        padPort->menu = menu;
+        padPort->port = port;
+
+        const char* name = lr->gamepads[port] != NULL ? SDL_GetGamepadName(lr->gamepads[port]) : NULL;
+        SDL_snprintf(padPort->label, sizeof(padPort->label), "%u. %s", port + 1, name != NULL ? name : "No Gamepad");
+        nk_console* player = SDL_Libretro_MenuAddSubmenu(menu->gamepadButton, padPort->label, NK_SYMBOL_TRIANGLE_RIGHT);
+        nk_console_set_tooltip(player, "Gamepad buttons for this player's retro controller; the triggers stay analog");
+
+        nk_console_set_tooltip(
+            SDL_Libretro_MenuOnChanged(nk_console_combobox(player, "Analog to Digital", "None|Left|Right", '|', &padPort->analogIndex),
+                                       &SDL_Libretro_MenuAnalogToDigitalChanged, padPort),
+            "The chosen analog stick also presses the D-Pad directions");
+
+        for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
+            padPort->binds[i].menu = menu;
+            padPort->binds[i].port = port;
+            padPort->binds[i].button = i;
+            SDL_Libretro_MenuOnChanged(
+                nk_console_input_gamepad(player, SDL_Libretro_JoypadButtonNames[i], -1, NULL, &padPort->binds[i].captured),
+                &SDL_Libretro_MenuPadBindChanged, &padPort->binds[i]);
+        }
+    }
 }
 
 /**
@@ -2089,6 +2226,12 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
             &SDL_Libretro_MenuKeyBindChanged, &menu->keyBinds[i]);
     }
 
+    // Gamepad bindings and analog-to-digital, one page per player.
+    menu->gamepadButton = nk_console_button(settings, "Gamepad");
+    nk_console_button_set_symbol(menu->gamepadButton, NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_set_tooltip(menu->gamepadButton, "Per-player gamepad buttons for the retro controllers");
+    SDL_Libretro_MenuBuildGamepads(menu);
+
     // Directories
     nk_console* directories = SDL_Libretro_MenuAddSubmenu(settings, "Directories", NK_SYMBOL_TRIANGLE_RIGHT);
 
@@ -2355,6 +2498,9 @@ static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justO
     SDL_Libretro_MenuBuildOptions(menu);
     SDL_Libretro_MenuBuildControllers(menu);
     SDL_Libretro_MenuBuildDisks(menu);
+    // Not core-derived, but gamepads can come and go while the menu is
+    // closed, and the player pages are titled with their names.
+    SDL_Libretro_MenuBuildGamepads(menu);
     SDL_Libretro_MenuUpdateLoadGameFilter(menu);
     menu->optionsStale = false;
     menu->builtOptionCount = lr->core.optionCount;
@@ -2373,6 +2519,7 @@ bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path) {
     SDL_Libretro_MenuSyncSettings(menu);
     SDL_Libretro_MenuSyncSettingsBuffers(menu);
     SDL_Libretro_MenuSyncKeyBinds(menu);
+    SDL_Libretro_MenuSyncPadBinds(menu);
     menu->wasOpen = true;
 
     return nk_console_navigate_to_path(menu->console, path) == nk_true;
@@ -2425,6 +2572,7 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuSyncSettings(menu);
         SDL_Libretro_MenuSyncSettingsBuffers(menu);
         SDL_Libretro_MenuSyncKeyBinds(menu);
+        SDL_Libretro_MenuSyncPadBinds(menu);
     }
 
     // Flush changed menu settings into the config.
