@@ -2137,13 +2137,55 @@ static int SDLCALL test_Events(void *arg) {
         "A claimed env command is consumed by the watch, not queued");
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
-    // Real loads push the lifecycle events, with the loaded name in data2.
+    // Real loads push the lifecycle events, with the loaded name in data2;
+    // registering the core's options coalesces into one OPTIONS_CHANGED.
     SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
-    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_CORE_LOADED, &received) == 1,
-        "CORE_LOADED is pushed after a core loads");
+    int coreLoadedCount = 0, optionsChangedCount = 0;
+    SDL_Event pumped;
+    while (SDL_PollEvent(&pumped)) {
+        if (pumped.type == SDL_EVENT_LIBRETRO_CORE_LOADED) {
+            coreLoadedCount++;
+            received = pumped;
+        } else if (pumped.type == SDL_EVENT_LIBRETRO_OPTIONS_CHANGED) {
+            optionsChangedCount++;
+        }
+    }
+    SDLTest_AssertCheck(coreLoadedCount == 1, "CORE_LOADED is pushed after a core loads");
+    SDLTest_AssertCheck(optionsChangedCount == 1, "Option registration coalesces into one OPTIONS_CHANGED");
     SDLTest_AssertCheck(received.user.data1 == lr, "CORE_LOADED carries the context");
     SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetCoreName(lr),
         "CORE_LOADED data2 is the core name");
+
+    // Value changes coalesce too.
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "SetOptionValue succeeds");
+    SDL_Libretro_ResetAllOptions(lr);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED, NULL) == 1,
+        "Value changes coalesce into one OPTIONS_CHANGED");
+
+    // Saving on OPTIONS_CHANGED persists the new value, as the demo does.
+    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(lr) == false, "SaveConfig fails without a config file");
+    SDL_RemovePath("events_test.cfg");
+    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, "events_test.cfg") == true, "InitConfigFile succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "SetOptionValue succeeds with a config");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED, NULL) == 1,
+        "The value change pushes OPTIONS_CHANGED");
+    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(lr) == true, "SaveConfig succeeds from the event");
+    char section[128];
+    SDL_Libretro_SanitizeSectionName(section, sizeof(section), lr->core.libraryName);
+    SDL_ini* savedIni = INI_Load("events_test.cfg");
+    SDLTest_AssertCheck(savedIni != NULL, "The saved config loads back");
+    SDLTest_AssertCheck(savedIni != NULL && SDL_strcmp(INI_GetString(savedIni, section, "test_option_a", ""), "off") == 0,
+        "The saved config carries the changed option value");
+    INI_Destroy(savedIni);
+
+    // New OSD messages push MESSAGE with the queued text; refreshes don't.
+    SDL_Libretro_SetMessage(lr, "Hello", 5.0);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_MESSAGE, &received) == 1, "A new message pushes MESSAGE");
+    SDLTest_AssertCheck(received.user.data2 != NULL && SDL_strcmp((const char*)received.user.data2, "Hello") == 0,
+        "MESSAGE data2 carries the text");
+    SDL_Libretro_SetMessage(lr, "Hello", 9.0);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_MESSAGE, NULL) == 0, "A refreshed message pushes nothing");
+    SDL_Libretro_SetMessage(lr, "", 0.0);
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GAME_LOADED, &received) == 1,
         "GAME_LOADED is pushed after a game loads");
@@ -2185,6 +2227,7 @@ static int SDLCALL test_Events(void *arg) {
 #endif
 
     SDL_Libretro_Destroy(lr);
+    SDL_RemovePath("events_test.cfg"); // Destroy re-saved the config.
     return TEST_COMPLETED;
 }
 

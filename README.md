@@ -114,6 +114,8 @@ SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent
 - `SDL_EVENT_LIBRETRO_CORE_UNLOADED` / `SDL_EVENT_LIBRETRO_GAME_UNLOADED`: The core or game was unloaded; unloading a core reports the game first.
 - `SDL_EVENT_LIBRETRO_SHUTDOWN`: The core requested shutdown, mirroring `SDL_Libretro_ShouldQuit()`.
 - `SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED`: The video size, aspect ratio, or timing changed mid-game; query `SDL_Libretro_GetSize()` and friends for the new values.
+- `SDL_EVENT_LIBRETRO_OPTIONS_CHANGED`: The core options, their values, or their visibility changed; bursts coalesce into one queued event. Call `SDL_Libretro_SaveConfig()` here to persist the changes right away instead of waiting for shutdown.
+- `SDL_EVENT_LIBRETRO_MESSAGE`: The core queued an on-screen message; `data2` is the text, valid until the message expires.
 - `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). `data2` is the `SDL_LibretroMenu*`.
 
 ```c

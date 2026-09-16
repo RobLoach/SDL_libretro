@@ -6,6 +6,19 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_OPTIONS_IMPL_ONCE)
 #define SDL_LIBRETRO_OPTIONS_IMPL_ONCE
 
+/**
+ * Reports SDL_EVENT_LIBRETRO_OPTIONS_CHANGED. At most one such event sits in
+ * the queue at a time, so change bursts (option registration, a config load)
+ * coalesce.
+ *
+ * @internal
+ */
+static void SDL_Libretro_PushOptionsChanged(SDL_Libretro* lr) {
+    if (!SDL_HasEvent(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED)) {
+        SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_OPTIONS_CHANGED, NULL);
+    }
+}
+
 static char* SDL_Libretro_Strdup(const char* s) {
     if (!s) return SDL_strdup("");
     return SDL_strdup(s);
@@ -71,6 +84,8 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     }
 
     lr->core.optionCount++;
+
+    SDL_Libretro_PushOptionsChanged(lr);
 }
 
 static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key, const char* desc, const char* info) {
@@ -206,6 +221,7 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
     opt->value = dup;
     lr->core.optionsDirtyCore = true;
     lr->core.optionsDirtyApp = true;
+    SDL_Libretro_PushOptionsChanged(lr);
     return true;
 }
 
@@ -284,6 +300,7 @@ bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
     opt->value = dupicateValue;
     lr->core.optionsDirtyCore = true;
     lr->core.optionsDirtyApp = true;
+    SDL_Libretro_PushOptionsChanged(lr);
     return true;
 }
 
@@ -301,6 +318,7 @@ void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
     }
     lr->core.optionsDirtyCore = true;
     lr->core.optionsDirtyApp = true;
+    SDL_Libretro_PushOptionsChanged(lr);
 }
 
 /**
