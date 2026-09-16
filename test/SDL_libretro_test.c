@@ -21,16 +21,41 @@ static int SDLCALL test_CreateDestroy(void *arg) {
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_START] == SDL_SCANCODE_RETURN, "Start mapped to Return");
     SDLTest_AssertCheck(lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_UP] == SDL_SCANCODE_UP, "Up mapped to Up");
 
-    // Default Gamepad Mappings
-    SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_SOUTH, "B mapped to South");
-    SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_L3] == SDL_GAMEPAD_BUTTON_LEFT_STICK, "L3 mapped to Left Stick");
+    // Default Gamepad Mappings, seeded on every port.
+    SDLTest_AssertCheck(lr->gamepadButtons[0][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_SOUTH, "B mapped to South");
+    SDLTest_AssertCheck(lr->gamepadButtons[0][RETRO_DEVICE_ID_JOYPAD_L3] == SDL_GAMEPAD_BUTTON_LEFT_STICK, "L3 mapped to Left Stick");
+    SDLTest_AssertCheck(lr->gamepadButtons[SDL_LIBRETRO_MAX_USERS - 1][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_SOUTH,
+        "B mapped to South on the last port");
 
-    // SetGamepadMapping bounds and application.
-    SDL_Libretro_SetGamepadMapping(NULL, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
-    SDL_Libretro_SetGamepadMapping(lr, -1, SDL_GAMEPAD_BUTTON_NORTH);
-    SDL_Libretro_SetGamepadMapping(lr, SDL_LIBRETRO_MAX_JOYPAD_BUTTONS, SDL_GAMEPAD_BUTTON_NORTH);
-    SDL_Libretro_SetGamepadMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
-    SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH, "SetGamepadMapping applies");
+    // SetGamepadMapping bounds and per-port application.
+    SDL_Libretro_SetGamepadMapping(NULL, 0, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lr, SDL_LIBRETRO_MAX_USERS, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lr, 0, -1, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lr, 0, SDL_LIBRETRO_MAX_JOYPAD_BUTTONS, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lr, 1, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
+    SDLTest_AssertCheck(lr->gamepadButtons[1][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH, "SetGamepadMapping applies to its port");
+    SDLTest_AssertCheck(lr->gamepadButtons[0][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_SOUTH, "Other ports keep their binding");
+
+    // Analog to Digital defaults, bounds, and per-port application.
+    SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lr, 0) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE, "Analog to Digital defaults to None");
+    SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(NULL, 0) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE, "GetAnalogToDigital(NULL) reports None");
+    SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lr, SDL_LIBRETRO_MAX_USERS) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
+        "GetAnalogToDigital rejects out-of-range ports");
+    SDL_Libretro_SetAnalogToDigital(NULL, 0, SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT);
+    SDL_Libretro_SetAnalogToDigital(lr, SDL_LIBRETRO_MAX_USERS, SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT);
+    SDL_Libretro_SetAnalogToDigital(lr, 1, (SDL_LibretroAnalogToDigital)SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT);
+    SDL_Libretro_SetAnalogToDigital(lr, 1, SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT);
+    SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lr, 1) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT, "SetAnalogToDigital applies to its port");
+    SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lr, 0) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE, "Other ports keep None");
+
+    // With no gamepad the axes read neutral, so nothing presses; None
+    // short-circuits, and non-direction ids never press.
+    SDLTest_AssertCheck(SDL_Libretro_AnalogToDigitalPressed(lr, 0, RETRO_DEVICE_ID_JOYPAD_UP) == false,
+        "Analog to Digital None never presses");
+    SDLTest_AssertCheck(SDL_Libretro_AnalogToDigitalPressed(lr, 1, RETRO_DEVICE_ID_JOYPAD_UP) == false,
+        "A centered stick doesn't press");
+    SDLTest_AssertCheck(SDL_Libretro_AnalogToDigitalPressed(lr, 1, RETRO_DEVICE_ID_JOYPAD_B) == false,
+        "Non-direction buttons never press");
 
     SDL_Libretro_Destroy(lr);
     SDL_Libretro_Destroy(NULL);
@@ -2409,23 +2434,45 @@ static int SDLCALL test_Menu(void *arg) {
             "An empty capture reverts to the current binding");
         SDL_Libretro_SetKeyboardMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_Z);
 
-        // Gamepad captures translate through nk_gamepad and revert when
-        // there's no SDL equivalent.
+        // Gamepad captures translate through nk_gamepad, apply to their own
+        // port, and revert when there's no SDL equivalent.
         SDLTest_AssertCheck(SDL_Libretro_MenuNkButtonFromSDL(SDL_GAMEPAD_BUTTON_SOUTH) == NK_GAMEPAD_BUTTON_A,
             "South maps to nk_gamepad A");
         SDLTest_AssertCheck(nk_gamepad_sdl3_map_button(NK_GAMEPAD_BUTTON_A) == SDL_GAMEPAD_BUTTON_SOUTH,
             "nk_gamepad A maps back to South");
-        menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B].captured = NK_GAMEPAD_BUTTON_Y;
-        SDL_Libretro_MenuPadBindChanged(NULL, &menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B]);
-        SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
+        menu->padPorts[0].binds[RETRO_DEVICE_ID_JOYPAD_B].captured = NK_GAMEPAD_BUTTON_Y;
+        SDL_Libretro_MenuPadBindChanged(NULL, &menu->padPorts[0].binds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->gamepadButtons[0][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
             "A captured pad button applies to the mapping");
-        menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B].captured = NK_GAMEPAD_BUTTON_INVALID;
-        SDL_Libretro_MenuPadBindChanged(NULL, &menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B]);
-        SDLTest_AssertCheck(lr->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
+        SDLTest_AssertCheck(lr->gamepadButtons[1][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_SOUTH,
+            "A captured pad button leaves other ports alone");
+        menu->padPorts[0].binds[RETRO_DEVICE_ID_JOYPAD_B].captured = NK_GAMEPAD_BUTTON_INVALID;
+        SDL_Libretro_MenuPadBindChanged(NULL, &menu->padPorts[0].binds[RETRO_DEVICE_ID_JOYPAD_B]);
+        SDLTest_AssertCheck(lr->gamepadButtons[0][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
             "An empty pad capture keeps the mapping");
-        SDLTest_AssertCheck(menu->padBinds[RETRO_DEVICE_ID_JOYPAD_B].captured == NK_GAMEPAD_BUTTON_Y,
+        SDLTest_AssertCheck(menu->padPorts[0].binds[RETRO_DEVICE_ID_JOYPAD_B].captured == NK_GAMEPAD_BUTTON_Y,
             "An empty pad capture reverts to the current binding");
-        SDL_Libretro_SetGamepadMapping(lr, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_SOUTH);
+        SDL_Libretro_SetGamepadMapping(lr, 0, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_SOUTH);
+
+        // The Analog to Digital combobox applies to its own port.
+        SDLTest_AssertCheck(menu->padPorts[1].analogIndex == (int)SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
+            "Analog to Digital starts on None");
+        menu->padPorts[1].analogIndex = (int)SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT;
+        SDL_Libretro_MenuAnalogToDigitalChanged(NULL, &menu->padPorts[1]);
+        SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lr, 1) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT,
+            "The Analog to Digital choice applies to its port");
+        SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lr, 0) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
+            "The Analog to Digital choice leaves other ports alone");
+        SDL_Libretro_SetAnalogToDigital(lr, 1, SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE);
+        SDL_Libretro_MenuSyncPadBinds(menu);
+        SDLTest_AssertCheck(menu->padPorts[1].analogIndex == (int)SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
+            "SyncPadBinds refreshes the Analog to Digital choice");
+
+        // The Gamepad page holds one sub-page per player.
+        SDLTest_AssertCheck(cvector_size(menu->gamepadButton->children) == (size_t)(SDL_LIBRETRO_MAX_USERS + 1),
+            "The Gamepad page lists a sub-page per player after the back button");
+        SDLTest_AssertCheck(SDL_strncmp(menu->padPorts[0].label, "1. ", 3) == 0,
+            "Player pages are numbered by port");
 
         // Without disk control the Disks page stays hidden.
         SDLTest_AssertCheck(menu->disksButton->visible == nk_false, "Disks page hidden without disk control");
@@ -2536,7 +2583,8 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
     // A rebound key persists through the config file alongside the menu state.
     SDL_Libretro_SetKeyboardMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_K);
-    SDL_Libretro_SetGamepadMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetGamepadMapping(lrSave, 1, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
+    SDL_Libretro_SetAnalogToDigital(lrSave, 1, SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT);
     SDL_Libretro_SetRewindMemoryLimit(lrSave, (size_t)48 << 20);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
@@ -2552,8 +2600,14 @@ static int SDLCALL test_Menu(void *arg) {
         "Keyboard bindings persist through the config file");
     SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X,
         "Untouched bindings keep their defaults");
-    SDLTest_AssertCheck(lrLoad->gamepadButtons[RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
-        "Gamepad bindings persist through the config file");
+    SDLTest_AssertCheck(lrLoad->gamepadButtons[1][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_NORTH,
+        "Gamepad bindings persist through the config file per port");
+    SDLTest_AssertCheck(lrLoad->gamepadButtons[0][RETRO_DEVICE_ID_JOYPAD_B] == SDL_GAMEPAD_BUTTON_SOUTH,
+        "Untouched gamepad ports keep their defaults");
+    SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lrLoad, 1) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT,
+        "Analog to Digital persists through the config file per port");
+    SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lrLoad, 0) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
+        "Analog to Digital elsewhere stays None");
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lrLoad) == (size_t)48 << 20,
         "Rewind memory limit persists through the config file");
     if (menuLoad != NULL) {
