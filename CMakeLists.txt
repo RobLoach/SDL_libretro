@@ -57,6 +57,7 @@ if(SDL_LIBRETRO_PHYSFS)
     find_package(SDL_PhysFS REQUIRED) # SDL_PhysFS header-only interface
 
     add_library(SDL_libretro_physfs INTERFACE)
+    target_compile_definitions(SDL_libretro_physfs INTERFACE SDL_LIBRETRO_ENABLE_PHYSFS)
     target_link_libraries(SDL_libretro_physfs INTERFACE
         SDL_libretro
         SDL_PhysFS
@@ -102,7 +103,10 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     if(SDL_LIBRETRO_MENU)
         # The demo assumes the menu; SDL_libretro_basic is the menu-less example.
         add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
-        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs SDL_libretro_menu)
+        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_menu)
+        if(SDL_LIBRETRO_PHYSFS)
+            target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro_physfs)
+        endif()
     endif()
 endif()
 
