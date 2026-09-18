@@ -221,6 +221,8 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
 #define SDL_EVENT_LIBRETRO_GAME_UNLOADED (SDL_EVENT_LIBRETRO | 0xF05) /** The game was unloaded, whether directly or through the core unloading. */
 #define SDL_EVENT_LIBRETRO_SHUTDOWN (SDL_EVENT_LIBRETRO | 0xF06) /** The core requested shutdown. @see SDL_Libretro_ShouldQuit() */
 #define SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED (SDL_EVENT_LIBRETRO | 0xF07) /** The video size, aspect ratio, or timing changed mid-game. @see SDL_Libretro_GetSize() */
+#define SDL_EVENT_LIBRETRO_OPTIONS_CHANGED (SDL_EVENT_LIBRETRO | 0xF08) /** The core options, their values, or their visibility changed; bursts coalesce into one queued event. @see SDL_Libretro_GetOptionCount() */
+#define SDL_EVENT_LIBRETRO_MESSAGE (SDL_EVENT_LIBRETRO | 0xF09) /** A new on-screen message was queued; data2 is the message text, valid until it expires or the queue clears. @see SDL_Libretro_GetMessage() */
 
 // Save States
 
@@ -407,6 +409,10 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu);
  *
  * The toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button
  * flip the menu open or closed, and are always consumed.
+ *
+ * SDL_EVENT_LIBRETRO_OPTIONS_CHANGED marks the Core Options page for a
+ * rebuild, so options changed outside the menu show up; it always passes
+ * through to the application.
  *
  * @return true when the menu consumed the event: do not forward it to
  *         SDL_Libretro_HandleEvent(). This happens for the toggle inputs

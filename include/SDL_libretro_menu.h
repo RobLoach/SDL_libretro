@@ -2424,6 +2424,16 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
     // Gamepad connection bookkeeping runs even while the menu is closed.
     nk_gamepad_sdl3_handle_event(&menu->gamepads, (SDL_Event*)event);
 
+    // An option changed: mark the core pages for a rebuild. The menu's own
+    // writes consume the dirty flag as they happen, so only outside changes
+    // go stale here. Never swallowed; the application still sees the event.
+    if (event->type == SDL_EVENT_LIBRETRO_OPTIONS_CHANGED) {
+        if (SDL_Libretro_AreOptionsDirty(menu->lr)) {
+            menu->optionsStale = true;
+        }
+        return false;
+    }
+
     // Toggle on the menu key or the gamepad Guide button.
     if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDL_LIBRETRO_MENU_TOGGLE_KEY) {
         SDL_Libretro_ToggleMenu(menu);
@@ -2474,7 +2484,8 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
  * Rebuild the core-derived submenus (Core Options, Controllers, and the file
  * filter) when they no longer match the loaded core:
  *
- *  * an option changed outside the menu (the app-side dirty flag),
+ *  * an option changed outside the menu (SDL_EVENT_LIBRETRO_OPTIONS_CHANGED
+ *    marked the pages stale in SDL_Libretro_HandleMenuEvent()),
  *  * the loaded core changed (library name) or its option set changed size,
  *  * the menu just opened; visibility may have shifted while it was closed,
  *    so the core's display callback is re-run first.
@@ -2483,9 +2494,6 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
  */
 static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justOpened) {
     SDL_Libretro* lr = menu->lr;
-    if (SDL_Libretro_AreOptionsDirty(lr)) {
-        menu->optionsStale = true;
-    }
     bool coreChanged = SDL_strcmp(menu->builtCoreName, lr->core.libraryName) != 0;
     bool countChanged = menu->builtOptionCount != lr->core.optionCount;
     if (!justOpened && !coreChanged && !countChanged && !menu->optionsStale) {

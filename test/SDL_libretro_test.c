@@ -2173,13 +2173,39 @@ static int SDLCALL test_Events(void *arg) {
         "A claimed env command is consumed by the watch, not queued");
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
-    // Real loads push the lifecycle events, with the loaded name in data2.
+    // Real loads push the lifecycle events, with the loaded name in data2;
+    // registering the core's options coalesces into one OPTIONS_CHANGED.
     SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
-    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_CORE_LOADED, &received) == 1,
-        "CORE_LOADED is pushed after a core loads");
+    int coreLoadedCount = 0, optionsChangedCount = 0;
+    SDL_Event pumped;
+    while (SDL_PollEvent(&pumped)) {
+        if (pumped.type == SDL_EVENT_LIBRETRO_CORE_LOADED) {
+            coreLoadedCount++;
+            received = pumped;
+        } else if (pumped.type == SDL_EVENT_LIBRETRO_OPTIONS_CHANGED) {
+            optionsChangedCount++;
+        }
+    }
+    SDLTest_AssertCheck(coreLoadedCount == 1, "CORE_LOADED is pushed after a core loads");
+    SDLTest_AssertCheck(optionsChangedCount == 1, "Option registration coalesces into one OPTIONS_CHANGED");
     SDLTest_AssertCheck(received.user.data1 == lr, "CORE_LOADED carries the context");
     SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetCoreName(lr),
         "CORE_LOADED data2 is the core name");
+
+    // Value changes coalesce too.
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "SetOptionValue succeeds");
+    SDL_Libretro_ResetAllOptions(lr);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED, NULL) == 1,
+        "Value changes coalesce into one OPTIONS_CHANGED");
+
+    // New OSD messages push MESSAGE with the queued text; refreshes don't.
+    SDL_Libretro_SetMessage(lr, "Hello", 5.0);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_MESSAGE, &received) == 1, "A new message pushes MESSAGE");
+    SDLTest_AssertCheck(received.user.data2 != NULL && SDL_strcmp((const char*)received.user.data2, "Hello") == 0,
+        "MESSAGE data2 carries the text");
+    SDL_Libretro_SetMessage(lr, "Hello", 9.0);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_MESSAGE, NULL) == 0, "A refreshed message pushes nothing");
+    SDL_Libretro_SetMessage(lr, "", 0.0);
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GAME_LOADED, &received) == 1,
         "GAME_LOADED is pushed after a game loads");
@@ -2386,6 +2412,26 @@ static int SDLCALL test_Menu(void *arg) {
         event.type = SDL_EVENT_LIBRETRO_MENU_OPENED;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
             "Libretro events pass through the menu");
+
+        // An OPTIONS_CHANGED event from outside the menu marks the core
+        // pages stale for the next rebuild, and is never swallowed.
+        SDL_Libretro_ResetAllOptions(lr);
+        menu->optionsStale = false;
+        SDL_zero(event);
+        event.type = SDL_EVENT_LIBRETRO_OPTIONS_CHANGED;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
+            "OPTIONS_CHANGED passes through the menu");
+        SDLTest_AssertCheck(menu->optionsStale == true, "An outside option change marks the core pages stale");
+
+        // The menu's own writes consume the dirty flag as they happen, so
+        // the event they queue doesn't churn the pages under the cursor.
+        SDL_Libretro_ResetAllOptions(lr);
+        SDL_Libretro_AreOptionsDirty(lr); // consumed, as SDL_Libretro_MenuOptionWritten() does
+        menu->optionsStale = false;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
+            "OPTIONS_CHANGED still passes through after a menu write");
+        SDLTest_AssertCheck(menu->optionsStale == false, "The menu's own writes don't re-stale the pages");
+        SDL_FlushEvent(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED);
 
         // Application-added entries fire their callbacks and keep Quit last.
         int customClicks = 0;

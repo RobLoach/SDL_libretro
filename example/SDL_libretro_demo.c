@@ -89,6 +89,14 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
             return true;
         }
 
+        case SDL_EVENT_LIBRETRO_OPTIONS_CHANGED:
+            SDL_Log("Core options changed");
+            return true;
+
+        case SDL_EVENT_LIBRETRO_MESSAGE:
+            SDL_Log("Core message: %s", (const char*)event->user.data2);
+            return true;
+
         case SDL_EVENT_LIBRETRO_MENU_OPENED:
             SDL_Log("Menu opened");
             return true;
@@ -246,13 +254,15 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_SUCCESS;
     }
 
-    // Events SDL_libretro pushed onto the queue.
-    if (SDL_Libretro_DemoHandleLibretroEvent(app, event)) {
+    // The menu goes first so it also sees SDL_libretro's notifications, like
+    // OPTIONS_CHANGED; it consumes input while it is open, and handles its
+    // toggle keys.
+    if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
 
-    // The menu consumes input while it is open, and handles its toggle keys.
-    if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
+    // Events SDL_libretro pushed onto the queue.
+    if (SDL_Libretro_DemoHandleLibretroEvent(app, event)) {
         return SDL_APP_CONTINUE;
     }
 

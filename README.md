@@ -78,7 +78,7 @@ SDL_Libretro_LoadGame(lr, "game.zip");
 
 To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
 
-The menu reports what it does through SDL events (see [Events](#events)). Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`, and jump straight to a page with `SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video")`.
+The menu reports what it does through SDL events (see [Events](#events)), and reacts to `SDL_EVENT_LIBRETRO_OPTIONS_CHANGED` in `SDL_Libretro_HandleMenuEvent()` to keep the Core Options page current. Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`, and jump straight to a page with `SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video")`.
 
 Besides loading games and core options, the menu rebinds Player 1's keyboard (Settings > Keyboard) and each player's gamepad buttons and analog-to-digital D-Pad (Settings > Gamepad, or `SDL_Libretro_SetGamepadMapping()` and `SDL_Libretro_SetAnalogToDigital()` from code), swaps disks for multi-disk games (Disks), and shows core-reported progress messages.
 
@@ -114,6 +114,8 @@ SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent
 - `SDL_EVENT_LIBRETRO_CORE_UNLOADED` / `SDL_EVENT_LIBRETRO_GAME_UNLOADED`: The core or game was unloaded; unloading a core reports the game first.
 - `SDL_EVENT_LIBRETRO_SHUTDOWN`: The core requested shutdown, mirroring `SDL_Libretro_ShouldQuit()`.
 - `SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED`: The video size, aspect ratio, or timing changed mid-game; query `SDL_Libretro_GetSize()` and friends for the new values.
+- `SDL_EVENT_LIBRETRO_OPTIONS_CHANGED`: The core options, their values, or their visibility changed; bursts coalesce into one queued event.
+- `SDL_EVENT_LIBRETRO_MESSAGE`: The core queued an on-screen message; `data2` is the text, valid until the message expires.
 - `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). `data2` is the `SDL_LibretroMenu*`.
 
 ```c

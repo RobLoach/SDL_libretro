@@ -48,6 +48,9 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
     lr->osdQueue[slot].priority = priority;
     lr->osdQueue[slot].type = type;
     lr->osdQueue[slot].progress = progress;
+
+    // Report the new message; data2 stays valid until it expires.
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_MESSAGE, lr->osdQueue[slot].msg);
 }
 
 /**
