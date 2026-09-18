@@ -7,10 +7,19 @@ add_library(test_core SHARED test_core.c)
 target_include_directories(test_core PRIVATE ${LIBRETRO_COMMON_INCLUDE})
 set_target_properties(test_core PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
 
+# A test-core build that skips the early GET_VFS_INTERFACE probe. Used by the
+# PhysFS extract-to-disk fallback test, and as the second scanned core for the
+# menu's Select Core picker test.
+add_library(test_core_novfs SHARED test_core.c)
+target_include_directories(test_core_novfs PRIVATE ${LIBRETRO_COMMON_INCLUDE})
+target_compile_definitions(test_core_novfs PRIVATE TEST_CORE_NO_EARLY_VFS)
+set_target_properties(test_core_novfs PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
+
 add_executable(SDL_libretro_test SDL_libretro_test.c)
 target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro SDL3::SDL3_test)
 target_compile_definitions(SDL_libretro_test PRIVATE
     TEST_CORE_PATH="$<TARGET_FILE:test_core>"
+    TEST_CORE_NOVFS_PATH="$<TARGET_FILE:test_core_novfs>"
     TEST_CONTENT_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test_content.txt")
 
 if(SDL_LIBRETRO_MENU)
@@ -19,14 +28,6 @@ endif()
 
 if(SDL_LIBRETRO_PHYSFS)
     target_link_libraries(SDL_libretro_test PRIVATE SDL_libretro_physfs)
-
-    # A test-core build that skips the early GET_VFS_INTERFACE probe, for
-    # testing the extract-to-disk fallback taken for full-path cores that
-    # read files directly from the OS.
-    add_library(test_core_novfs SHARED test_core.c)
-    target_include_directories(test_core_novfs PRIVATE ${LIBRETRO_COMMON_INCLUDE})
-    target_compile_definitions(test_core_novfs PRIVATE TEST_CORE_NO_EARLY_VFS)
-    set_target_properties(test_core_novfs PROPERTIES PREFIX "" SUFFIX ${CMAKE_SHARED_LIBRARY_SUFFIX})
 
     # Zip fixtures for the PhysFS loader tests:
     #   test_content.zip  - base name matches the .txt inside
@@ -60,7 +61,6 @@ if(SDL_LIBRETRO_PHYSFS)
         ${CMAKE_CURRENT_BINARY_DIR}/test_nested.zip --format=zip sub/dir/nested.txt
         WORKING_DIRECTORY ${TEST_ZIP_STAGING})
     target_compile_definitions(SDL_libretro_test PRIVATE
-        TEST_CORE_NOVFS_PATH="$<TARGET_FILE:test_core_novfs>"
         TEST_CONTENT_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_content.zip"
         TEST_FULLPATH_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_fullpath.zip"
         TEST_PRIORITY_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_priority.zip"
