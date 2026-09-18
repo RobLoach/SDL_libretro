@@ -254,13 +254,15 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_SUCCESS;
     }
 
-    // Events SDL_libretro pushed onto the queue.
-    if (SDL_Libretro_DemoHandleLibretroEvent(app, event)) {
+    // The menu goes first so it also sees SDL_libretro's notifications, like
+    // OPTIONS_CHANGED; it consumes input while it is open, and handles its
+    // toggle keys.
+    if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
 
-    // The menu consumes input while it is open, and handles its toggle keys.
-    if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
+    // Events SDL_libretro pushed onto the queue.
+    if (SDL_Libretro_DemoHandleLibretroEvent(app, event)) {
         return SDL_APP_CONTINUE;
     }
 

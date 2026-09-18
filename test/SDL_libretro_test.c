@@ -2370,6 +2370,26 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
             "Libretro events pass through the menu");
 
+        // An OPTIONS_CHANGED event from outside the menu marks the core
+        // pages stale for the next rebuild, and is never swallowed.
+        SDL_Libretro_ResetAllOptions(lr);
+        menu->optionsStale = false;
+        SDL_zero(event);
+        event.type = SDL_EVENT_LIBRETRO_OPTIONS_CHANGED;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
+            "OPTIONS_CHANGED passes through the menu");
+        SDLTest_AssertCheck(menu->optionsStale == true, "An outside option change marks the core pages stale");
+
+        // The menu's own writes consume the dirty flag as they happen, so
+        // the event they queue doesn't churn the pages under the cursor.
+        SDL_Libretro_ResetAllOptions(lr);
+        SDL_Libretro_AreOptionsDirty(lr); // consumed, as SDL_Libretro_MenuOptionWritten() does
+        menu->optionsStale = false;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false,
+            "OPTIONS_CHANGED still passes through after a menu write");
+        SDLTest_AssertCheck(menu->optionsStale == false, "The menu's own writes don't re-stale the pages");
+        SDL_FlushEvent(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED);
+
         // Application-added entries fire their callbacks and keep Quit last.
         int customClicks = 0;
         bool checkValue = true;

@@ -394,6 +394,10 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu);
  * The toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button
  * flip the menu open or closed, and are always consumed.
  *
+ * SDL_EVENT_LIBRETRO_OPTIONS_CHANGED marks the Core Options page for a
+ * rebuild, so options changed outside the menu show up; it always passes
+ * through to the application.
+ *
  * @return true when the menu consumed the event: do not forward it to
  *         SDL_Libretro_HandleEvent(). This happens for the toggle inputs
  *         above, and for gameplay input swallowed while the menu is open.
