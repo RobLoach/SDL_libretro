@@ -2155,22 +2155,6 @@ static int SDLCALL test_Events(void *arg) {
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED, NULL) == 1,
         "Value changes coalesce into one OPTIONS_CHANGED");
 
-    // Saving on OPTIONS_CHANGED persists the new value, as the demo does.
-    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(lr) == false, "SaveConfig fails without a config file");
-    SDL_RemovePath("events_test.cfg");
-    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, "events_test.cfg") == true, "InitConfigFile succeeds");
-    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "test_option_a", "off") == true, "SetOptionValue succeeds with a config");
-    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED, NULL) == 1,
-        "The value change pushes OPTIONS_CHANGED");
-    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(lr) == true, "SaveConfig succeeds from the event");
-    char section[128];
-    SDL_Libretro_SanitizeSectionName(section, sizeof(section), lr->core.libraryName);
-    SDL_ini* savedIni = INI_Load("events_test.cfg");
-    SDLTest_AssertCheck(savedIni != NULL, "The saved config loads back");
-    SDLTest_AssertCheck(savedIni != NULL && SDL_strcmp(INI_GetString(savedIni, section, "test_option_a", ""), "off") == 0,
-        "The saved config carries the changed option value");
-    INI_Destroy(savedIni);
-
     // New OSD messages push MESSAGE with the queued text; refreshes don't.
     SDL_Libretro_SetMessage(lr, "Hello", 5.0);
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_MESSAGE, &received) == 1, "A new message pushes MESSAGE");
@@ -2220,7 +2204,6 @@ static int SDLCALL test_Events(void *arg) {
 #endif
 
     SDL_Libretro_Destroy(lr);
-    SDL_RemovePath("events_test.cfg"); // Destroy re-saved the config.
     return TEST_COMPLETED;
 }
 

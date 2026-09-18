@@ -89,11 +89,8 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
             return true;
         }
 
-        // Persist option changes as they happen instead of waiting for
-        // shutdown; a no-op when no config file was initialized.
         case SDL_EVENT_LIBRETRO_OPTIONS_CHANGED:
-            SDL_Log("Core options changed%s",
-                SDL_Libretro_SaveConfig(app->lr) ? "; config saved" : "");
+            SDL_Log("Core options changed");
             return true;
 
         case SDL_EVENT_LIBRETRO_MESSAGE:

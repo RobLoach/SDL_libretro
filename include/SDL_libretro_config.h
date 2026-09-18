@@ -163,16 +163,8 @@ static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
 
 /**
  * Save the configuration to the file system.
- *
- * Happens automatically when the context is destroyed. Call it earlier to
- * persist changes as they happen — for example from an
- * SDL_EVENT_LIBRETRO_OPTIONS_CHANGED handler, so edited core options survive
- * a crash or power loss. Fails without writing when no config file was
- * initialized.
- *
- * @see SDL_Libretro_InitConfigFile()
  */
-bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
+static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     if (!lr || !lr->ini || !lr->iniFile) return false;
 
     // Save the core options if needed.
