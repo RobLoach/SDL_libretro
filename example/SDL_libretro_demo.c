@@ -9,8 +9,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
+// SDL_LIBRETRO_ENABLE_PHYSFS comes from the SDL_libretro_physfs CMake target
+// when the SDL_LIBRETRO_PHYSFS option is enabled.
 #define SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
 #ifdef __EMSCRIPTEN__
@@ -120,12 +121,11 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
  * Called when dragging and dropping a game onto the window.
  */
 static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
-    SDL_Libretro_UnloadCore(app->lr);
-    // On success the queued GAME_LOADED event closes the menu and retitles
-    // the window.
-    if (!SDL_Libretro_LoadGame(app->lr, path)) {
-        SDL_Log("Failed to load game: %s", SDL_GetError());
-    }
+    // Route through the menu so an extension claimed by several cores shows the
+    // "Select Core" picker instead of silently loading the first match. The
+    // menu unloads the current core, loads the game, and closes on success;
+    // the queued GAME_LOADED event retitles the window.
+    SDL_Libretro_MenuLoadGame(app->menu, path);
 }
 
 #ifdef __EMSCRIPTEN__
