@@ -456,6 +456,7 @@ bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index, const char** ms
 bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr);
 void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr);
 bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
+bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, char* dst, size_t dstSize);
 
 // Menu
 
@@ -498,6 +499,13 @@ bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
 bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path);
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style);
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
+
+/**
+ * Loads a game through the menu, showing the "Select Core" picker when more
+ * than one scanned core claims the content's extension. Use for external
+ * triggers like drag & drop.
+ */
+void SDL_Libretro_MenuLoadGame(SDL_LibretroMenu* menu, const char* path);
 
 /**
  * A callback for menu entries added by the application.
