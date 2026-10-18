@@ -480,6 +480,22 @@ void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
     lr->vfs_interface.stat_64 = vfs->stat_64 != NULL ? vfs->stat_64 : &SDL_Libretro_VFS_Stat64;
 }
 
+#else /* SDL_LIBRETRO_DISABLE_VFS */
+
+/*
+ * Without the SDL VFS there are no defaults to fall back on: the given
+ * interface is used as-is, and NULL leaves the core without a VFS.
+ */
+void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
+    if (!lr) return;
+    if (vfs_interface) {
+        lr->vfs_interface = *(struct retro_vfs_interface*)vfs_interface;
+    }
+    else {
+        SDL_zero(lr->vfs_interface);
+    }
+}
+
 #endif /* !SDL_LIBRETRO_DISABLE_VFS */
 
 #endif /* SDL_LIBRETRO_VFS_IMPL_ONCE */

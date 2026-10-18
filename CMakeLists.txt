@@ -102,7 +102,13 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     if(SDL_LIBRETRO_MENU)
         # The demo assumes the menu; SDL_libretro_basic is the menu-less example.
         add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
-        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_physfs SDL_libretro_menu)
+        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_menu)
+        if(SDL_LIBRETRO_PHYSFS)
+            target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro_physfs)
+        else()
+            # The demo opts into PhysFS in source; turn it back off.
+            target_compile_definitions(SDL_libretro_demo PRIVATE SDL_LIBRETRO_DISABLE_PHYSFS)
+        endif()
     endif()
 endif()
 

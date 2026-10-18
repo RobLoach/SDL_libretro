@@ -1085,12 +1085,14 @@ static int SDLCALL test_LoadGameIOFullpath(void *arg) {
         SDLTest_AssertCheck(SDL_strcmp((const char*)probe, "vfs") == 0, "Core saw ext 'vfs', got '%s'", (const char*)probe);
         SDLTest_AssertCheck(probe[17] == 0, "Core received a path, not a data buffer");
     }
+#ifndef SDL_LIBRETRO_DISABLE_VFS
     size_t sramSize = 0;
     const unsigned char* sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
     SDLTest_AssertCheck(sram != NULL && sramSize >= sizeof(bytes), "SAVE_RAM available");
     if (sram && sramSize >= sizeof(bytes)) {
         SDLTest_AssertCheck(SDL_memcmp(sram, bytes, sizeof(bytes)) == 0, "Core read the spilled file via the VFS");
     }
+#endif
 
     SDL_Libretro_UnloadGame(lr);
     SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, &info) == false, "Spilled file removed on unload");

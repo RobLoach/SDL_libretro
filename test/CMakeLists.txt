@@ -66,6 +66,9 @@ if(SDL_LIBRETRO_PHYSFS)
         TEST_PRIORITY_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_priority.zip"
         TEST_DISC_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_disc.zip"
         TEST_NESTED_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_nested.zip")
+else()
+    # The test opts into PhysFS in source; turn it back off.
+    target_compile_definitions(SDL_libretro_test PRIVATE SDL_LIBRETRO_DISABLE_PHYSFS)
 endif()
 
 add_test(NAME SDL_libretro_test COMMAND SDL_libretro_test)

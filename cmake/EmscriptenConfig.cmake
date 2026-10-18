@@ -6,6 +6,11 @@ set(CMAKE_EXECUTABLE_SUFFIX ".html")
 configure_file("${CMAKE_SOURCE_DIR}/example/SDL_libretro.js" "${CMAKE_BINARY_DIR}/SDL_libretro.js" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/example/SDL_libretro_embed.html" "${CMAKE_BINARY_DIR}/SDL_libretro_embed.html" COPYONLY)
 
+# Everything below configures the demo, which needs the menu and examples.
+if(NOT TARGET SDL_libretro_demo)
+    return()
+endif()
+
 # Preload the Core Files
 set(PRELOAD_FLAGS "")
 foreach(CORE IN LISTS CORES)
