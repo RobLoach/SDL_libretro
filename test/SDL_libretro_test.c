@@ -342,9 +342,25 @@ static int SDLCALL test_GamepadEvents(void *arg) {
     SDLTest_AssertCheck(lr->gamepads[1] == NULL, "Slot 1 cleared after removal");
     SDLTest_AssertCheck(lr->gamepadCount == 0, "gamepadCount 0 after all removed, got %u", lr->gamepadCount);
 
+    // Once every port is full, an extra gamepad is closed rather than leaked.
+    SDL_JoystickID jids[SDL_LIBRETRO_MAX_USERS + 1];
+    SDL_zero(ev);
+    ev.type = SDL_EVENT_GAMEPAD_ADDED;
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS + 1; i++) {
+        jids[i] = SDL_AttachVirtualJoystick(&desc);
+        ev.gdevice.which = jids[i];
+        SDL_Libretro_HandleEvent(lr, &ev);
+    }
+    SDLTest_AssertCheck(lr->gamepadCount == SDL_LIBRETRO_MAX_USERS, "Every port filled, got %u", lr->gamepadCount);
+    SDLTest_AssertCheck(SDL_GetGamepadFromID(jids[SDL_LIBRETRO_MAX_USERS]) == NULL,
+        "Gamepad without a free port is closed");
+    SDL_Libretro_Destroy(lr);
+    for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS + 1; i++) {
+        SDL_DetachVirtualJoystick(jids[i]);
+    }
+
     SDL_DetachVirtualJoystick(jid1);
     SDL_DetachVirtualJoystick(jid2);
-    SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }
 

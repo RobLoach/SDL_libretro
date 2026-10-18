@@ -658,7 +658,8 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
             SDL_JoystickID jid = event->gdevice.which;
             SDL_Gamepad* gp = SDL_OpenGamepad(jid);
             if (gp) {
-                for (unsigned i = 0; i < SDL_LIBRETRO_MAX_USERS; i++) {
+                unsigned i = 0;
+                for (; i < SDL_LIBRETRO_MAX_USERS; i++) {
                     if (!lr->gamepads[i]) {
                         lr->gamepads[i] = gp;
                         const char* name = SDL_GetGamepadName(gp);
@@ -666,6 +667,13 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
                         SDL_Log("[SDL_Libretro] Gamepad added: #%u %s", i + 1, name ? name : "");
                         break;
                     }
+                }
+
+                // Every port is taken, so don't keep the gamepad open.
+                if (i == SDL_LIBRETRO_MAX_USERS) {
+                    const char* name = SDL_GetGamepadName(gp);
+                    SDL_Log("[SDL_Libretro] Gamepad ignored, no free port: %s", name ? name : "");
+                    SDL_CloseGamepad(gp);
                 }
             }
             break;
