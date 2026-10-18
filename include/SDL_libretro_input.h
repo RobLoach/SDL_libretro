@@ -695,11 +695,13 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
                 unsigned retrokey = SDL_Libretro_ScancodeToRetroKey(event->key.scancode);
                 uint16_t modmask = SDL_Libretro_KeymodToRetroMod(event->key.mod);
 
-                // Determine the character if one is available for the key event.
+                // Determine the character if one is available for the key event,
+                // applying the modifiers so Shift+1 gives '!' rather than '1'.
                 uint32_t character = 0;
-                if (event->key.key > 0x20 && event->key.key < 0x110000 &&
-                    !(event->key.key & SDLK_SCANCODE_MASK)) {
-                    character = (uint32_t)event->key.key;
+                SDL_Keycode key = SDL_GetKeyFromScancode(event->key.scancode, event->key.mod, false);
+                if (key >= 0x20 && key < 0x110000 &&
+                    !(key & SDLK_SCANCODE_MASK)) {
+                    character = (uint32_t)key;
                 }
 
                 lr->core.keyboard_event(down, retrokey, character, modmask);

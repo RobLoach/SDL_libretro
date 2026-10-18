@@ -2425,8 +2425,13 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
     nk_gamepad_sdl3_handle_event(&menu->gamepads, (SDL_Event*)event);
 
     // Toggle on the menu key or the gamepad Guide button.
-    if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDL_LIBRETRO_MENU_TOGGLE_KEY) {
-        SDL_Libretro_ToggleMenu(menu);
+    // Both edges of the toggle key are consumed so the core never sees an
+    // unmatched press; only the release toggles.
+    if ((event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) &&
+        event->key.key == SDL_LIBRETRO_MENU_TOGGLE_KEY) {
+        if (event->type == SDL_EVENT_KEY_UP) {
+            SDL_Libretro_ToggleMenu(menu);
+        }
         return true;
     }
     if (event->type == SDL_EVENT_GAMEPAD_BUTTON_UP && event->gbutton.button == SDL_GAMEPAD_BUTTON_GUIDE) {

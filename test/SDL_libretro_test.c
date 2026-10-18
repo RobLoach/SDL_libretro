@@ -212,6 +212,29 @@ static int SDLCALL test_DRCDisable(void *arg) {
 #endif
 }
 
+// Records the last keyboard callback so tests can check what the core sees.
+static bool test_keyDown;
+static unsigned test_keyCode;
+static uint32_t test_keyCharacter;
+static void RETRO_CALLCONV test_KeyboardEvent(bool down, unsigned keycode, uint32_t character, uint16_t key_modifiers) {
+    (void)key_modifiers;
+    test_keyDown = down;
+    test_keyCode = keycode;
+    test_keyCharacter = character;
+}
+
+// Push a synthetic key event through SDL_Libretro_HandleEvent().
+static void SendKey(SDL_Libretro* lr, bool down, SDL_Scancode scancode, SDL_Keymod mod) {
+    SDL_Event ev;
+    SDL_zero(ev);
+    ev.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+    ev.key.scancode = scancode;
+    ev.key.key = SDL_GetKeyFromScancode(scancode, SDL_KMOD_NONE, true);
+    ev.key.mod = mod;
+    ev.key.down = down;
+    SDL_Libretro_HandleEvent(lr, &ev);
+}
+
 static int SDLCALL test_Input(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -252,6 +275,23 @@ static int SDLCALL test_Input(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptor(lr, 0, NULL, NULL, NULL, NULL) == false, "GetInputDescriptor false without core");
     SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptorCount(NULL) == 0, "GetInputDescriptorCount(NULL) 0");
     SDLTest_AssertCheck(SDL_Libretro_GetInputDescriptor(NULL, 0, NULL, NULL, NULL, NULL) == false, "GetInputDescriptor(NULL) false");
+
+    // Keyboard callback characters: space is included and modifiers apply.
+    lr->core.keyboard_event = test_KeyboardEvent;
+    SendKey(lr, true, SDL_SCANCODE_SPACE, SDL_KMOD_NONE);
+    SDLTest_AssertCheck(test_keyDown && test_keyCode == RETROK_SPACE && test_keyCharacter == ' ',
+        "Space sends ' ', got key %u char %u", test_keyCode, (unsigned)test_keyCharacter);
+    SendKey(lr, true, SDL_SCANCODE_1, SDL_KMOD_LSHIFT);
+    SDLTest_AssertCheck(test_keyCode == RETROK_1 && test_keyCharacter == '!',
+        "Shift+1 sends '!', got char %u", (unsigned)test_keyCharacter);
+    SendKey(lr, true, SDL_SCANCODE_A, SDL_KMOD_NONE);
+    SDLTest_AssertCheck(test_keyCharacter == 'a', "A sends 'a', got char %u", (unsigned)test_keyCharacter);
+    SendKey(lr, true, SDL_SCANCODE_UP, SDL_KMOD_NONE);
+    SDLTest_AssertCheck(test_keyCode == RETROK_UP && test_keyCharacter == 0,
+        "Arrow keys send no character, got char %u", (unsigned)test_keyCharacter);
+    SendKey(lr, false, SDL_SCANCODE_UP, SDL_KMOD_NONE);
+    SDLTest_AssertCheck(!test_keyDown, "Key up reports released");
+    lr->core.keyboard_event = NULL;
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -2469,7 +2509,13 @@ static int SDLCALL test_Menu(void *arg) {
         event.type = SDL_EVENT_QUIT;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Quit passes through an open menu");
 
-        // The toggle key closes it and the event is consumed.
+        // The toggle key closes it and both its edges are consumed; the
+        // press alone doesn't toggle.
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_F1;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Toggle key press is consumed");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "Toggle key press doesn't toggle");
         SDL_zero(event);
         event.type = SDL_EVENT_KEY_UP;
         event.key.key = SDLK_F1;
