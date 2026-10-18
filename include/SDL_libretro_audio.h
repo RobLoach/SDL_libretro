@@ -316,7 +316,7 @@ unsigned SDL_Libretro_GetAudioLatency(const SDL_Libretro* lr) {
 }
 
 double SDL_Libretro_GetSampleRate(const SDL_Libretro* lr) {
-    return lr ? lr->core.sampleRate : SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE;
+    return (lr && lr->core.sampleRate > 0.0) ? lr->core.sampleRate : SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE;
 }
 
 static void SDL_Libretro_AudioSample(int16_t left, int16_t right) {

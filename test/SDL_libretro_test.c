@@ -1937,7 +1937,7 @@ static int SDLCALL test_AudioLatency(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(NULL) == 0, "GetAudioLatency(NULL) 0");
 
     // Sample rate returns the default fallback without a core.
-    SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(lr) == 0.0, "SampleRate 0.0 without core");
+    SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(lr) == 48000.0, "SampleRate falls back to default without core");
     SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(NULL) == 48000.0, "SampleRate(NULL) returns default");
 
     SDL_Libretro_Destroy(lr);
@@ -1971,6 +1971,33 @@ static int SDLCALL test_AudioInitPausedRewind(void *arg) {
     SDL_Libretro_SetSpeed(lr, -1.0f);
     SDLTest_AssertCheck(SDL_Libretro_InitAudio(lr) == true, "InitAudio succeeds while rewinding");
     SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after rewind reinit");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_AudioZeroSampleRate(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(lr) == 44100.0, "SampleRate reports the core rate");
+
+    // A core reporting no sample rate falls back to the default instead of
+    // opening the device with freq 0, which SDL rejects.
+    lr->core.sampleRate = 0.0;
+    SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(lr) == 48000.0, "SampleRate 0 falls back to 48000");
+    SDLTest_AssertCheck(SDL_Libretro_InitAudio(lr) == true, "InitAudio succeeds with sample rate 0");
+    SDL_AudioSpec spec;
+    SDL_zero(spec);
+    SDLTest_AssertCheck(lr->core.audioStream && SDL_GetAudioStreamFormat(lr->core.audioStream, &spec, NULL) && spec.freq == 48000, "Audio stream opened at 48000 Hz (%d)", spec.freq);
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -2733,6 +2760,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
     LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),
+    LIBRETRO_TEST_CASE(test_AudioZeroSampleRate, "Audio falls back to default sample rate when core reports 0"),
     LIBRETRO_TEST_CASE(test_AudioQueueOverflow, "Audio queue hard cap trims overflow"),
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
