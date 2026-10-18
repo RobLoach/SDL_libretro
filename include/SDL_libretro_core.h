@@ -283,6 +283,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     SDL_Libretro_FreeMemoryMap(lr);
     SDL_Libretro_FreeContentInfoOverrides(lr);
     SDL_Libretro_FreeSubsystems(lr);
+    SDL_Libretro_StopRumble(lr);
 
     SDL_memset(&lr->core, 0, sizeof(lr->core));
     SDL_Libretro_ResetPortDevices(lr);
@@ -1043,6 +1044,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     lr->core.symbols.retro_unload_game();
     lr->core.gameLoaded = false;
     SDL_Libretro_ResetContentState(lr);
+    SDL_Libretro_StopRumble(lr);
 
     SDL_Libretro_RewindFree(lr);
     SDL_Libretro_CloseAudio(lr);
@@ -1126,6 +1128,13 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
 
     // Paused: Do nothing when speed is zero.
     if (lr->core.speed == 0.0f) return;
+
+    // Keep any active rumble going until the core sets it back to 0.
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        if (lr->core.rumbleStrong[port] > 0.0f || lr->core.rumbleWeak[port] > 0.0f) {
+            SDL_Libretro_ApplyRumble(lr, port);
+        }
+    }
 
     // Rewind mode: step backwards when speed is negative.
     if (lr->rewindEnabled && lr->core.speed < 0.0f) {

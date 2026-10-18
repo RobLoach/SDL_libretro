@@ -810,6 +810,20 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(lr, SDL_SCALEMODE_LINEAR) == true, "SetScaleMode(LINEAR) succeeds");
     SDLTest_AssertCheck(SDL_Libretro_GetScaleMode(lr) == SDL_SCALEMODE_LINEAR, "GetScaleMode returns LINEAR");
 
+    // Rumble persists across frames until the core stops it, and is cleared on unload.
+    struct retro_rumble_interface rumble = {0};
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_RUMBLE_INTERFACE, &rumble) && rumble.set_rumble_state, "Rumble interface provided");
+    if (rumble.set_rumble_state) {
+        rumble.set_rumble_state(0, RETRO_RUMBLE_STRONG, 65535);
+        SDL_Libretro_Update(lr);
+        SDLTest_AssertCheck(lr->core.rumbleStrong[0] == 1.0f, "Rumble kept across frames");
+        rumble.set_rumble_state(0, RETRO_RUMBLE_STRONG, 0);
+        SDLTest_AssertCheck(lr->core.rumbleStrong[0] == 0.0f, "Rumble stopped by core");
+        rumble.set_rumble_state(0, RETRO_RUMBLE_WEAK, 32768);
+        SDL_Libretro_UnloadGame(lr);
+        SDLTest_AssertCheck(lr->core.rumbleWeak[0] == 0.0f, "Rumble cleared on UnloadGame");
+    }
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

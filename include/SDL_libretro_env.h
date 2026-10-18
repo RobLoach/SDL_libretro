@@ -104,6 +104,31 @@ static void SDL_Libretro_PerfLog(void) {
     }
 }
 
+/**
+ * Push a port's rumble state to its gamepad.
+ *
+ * Libretro rumble persists until the core sets it to 0, while SDL rumble expires, so this is re-applied every frame from SDL_Libretro_Update(). The duration only bounds how long it keeps going if the frontend stops updating.
+ */
+static void SDL_Libretro_ApplyRumble(SDL_Libretro* lr, unsigned port) {
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS || !lr->gamepads[port]) return;
+    Uint16 lo = (Uint16)(lr->core.rumbleWeak[port] * 65535.0f);
+    Uint16 hi = (Uint16)(lr->core.rumbleStrong[port] * 65535.0f);
+    SDL_RumbleGamepad(lr->gamepads[port], lo, hi, (lo || hi) ? 1000 : 0);
+}
+
+/**
+ * Stop rumble on every port and forget the core's rumble state.
+ */
+static void SDL_Libretro_StopRumble(SDL_Libretro* lr) {
+    if (!lr) return;
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        bool active = lr->core.rumbleStrong[port] > 0.0f || lr->core.rumbleWeak[port] > 0.0f;
+        lr->core.rumbleStrong[port] = 0.0f;
+        lr->core.rumbleWeak[port] = 0.0f;
+        if (active) SDL_Libretro_ApplyRumble(lr, port);
+    }
+}
+
 static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect effect, uint16_t strength) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return false;
@@ -116,11 +141,7 @@ static bool SDL_Libretro_SetRumbleState(unsigned port, enum retro_rumble_effect 
         lr->core.rumbleWeak[port] = normalized;
     }
 
-    if (lr->gamepads[port]) {
-        Uint16 lo = (Uint16)(lr->core.rumbleWeak[port] * 65535.0f);
-        Uint16 hi = (Uint16)(lr->core.rumbleStrong[port] * 65535.0f);
-        SDL_RumbleGamepad(lr->gamepads[port], lo, hi, 100);
-    }
+    SDL_Libretro_ApplyRumble(lr, port);
 
     return true;
 }
