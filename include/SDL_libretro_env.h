@@ -864,7 +864,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             for (unsigned i = 0; i < lr->core.optionCount; i++) {
                 if (lr->core.options[i].key && SDL_strcmp(lr->core.options[i].key, opt->key) == 0) {
                     lr->core.options[i].visible = opt->visible;
-                    lr->core.optionsDirtyCore = true;
+                    // Only the app needs to refresh; the option's value is unchanged, so don't make GET_VARIABLE_UPDATE report true to the core.
                     lr->core.optionsDirtyApp = true;
                     return true;
                 }

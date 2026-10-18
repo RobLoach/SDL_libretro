@@ -539,6 +539,16 @@ static int SDLCALL test_OptionVisibility(void *arg) {
     const SDL_LibretroOption* b = SDL_Libretro_GetOption(lr, "test_option_b");
     SDLTest_AssertCheck(b && b->visible == false, "Option B hidden via SET_CORE_OPTIONS_DISPLAY");
     SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "optionsDirty set after display change");
+    SDLTest_AssertCheck(lr->core.optionsDirtyCore == false, "Display change doesn't flag GET_VARIABLE_UPDATE");
+
+    // Toggling visibility again must not make GET_VARIABLE_UPDATE report true.
+    struct retro_core_option_display showB = {"test_option_b", true};
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_DISPLAY, &showB), "SET_CORE_OPTIONS_DISPLAY accepted");
+    bool displayUpdated = true;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &displayUpdated);
+    SDLTest_AssertCheck(displayUpdated == false, "GET_VARIABLE_UPDATE false after display change");
+    SDLTest_AssertCheck(b && b->visible == true, "Option B shown again");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "App dirty after second display change");
 
     SDLTest_AssertCheck(SDL_Libretro_GetOptionByIndex(lr, 0) == a, "GetOptionByIndex(0) == GetOption(test_option_a)");
     SDLTest_AssertCheck(SDL_Libretro_GetOption(lr, "nope") == NULL, "Unknown option NULL");
