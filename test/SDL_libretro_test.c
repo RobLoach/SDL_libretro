@@ -824,6 +824,16 @@ static int SDLCALL test_LoadGame(void *arg) {
         SDLTest_AssertCheck(lr->core.rumbleWeak[0] == 0.0f, "Rumble cleared on UnloadGame");
     }
 
+    // get_time_usec reports microseconds on the SDL_GetTicksNS() clock.
+    struct retro_perf_callback perf = {0};
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_PERF_INTERFACE, &perf) && perf.get_time_usec, "Perf interface provided");
+    if (perf.get_time_usec) {
+        retro_time_t before = (retro_time_t)(SDL_GetTicksNS() / 1000);
+        retro_time_t usec = perf.get_time_usec();
+        retro_time_t after = (retro_time_t)(SDL_GetTicksNS() / 1000);
+        SDLTest_AssertCheck(usec >= before && usec <= after, "get_time_usec matches SDL_GetTicksNS");
+    }
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

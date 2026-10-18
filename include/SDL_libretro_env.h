@@ -37,7 +37,8 @@ static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...
 }
 
 static retro_time_t SDL_Libretro_GetTimeUSEC(void) {
-    return (SDL_GetPerformanceCounter() * (Uint64)1000000) / SDL_GetPerformanceFrequency();
+    // SDL_GetTicksNS() avoids the overflow of scaling the raw performance counter by 1000000.
+    return (retro_time_t)(SDL_GetTicksNS() / SDL_NS_PER_US);
 }
 
 static uint64_t SDL_Libretro_GetCPUFeatures(void) {
