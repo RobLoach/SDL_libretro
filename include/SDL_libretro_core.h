@@ -541,9 +541,8 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     }
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
-    // Drop the disk control interface so stale callbacks from a previous
-    // game are not reused if the next game does not register its own.
-    SDL_memset(&lr->core.disk_control, 0, sizeof(lr->core.disk_control));
+    // The disk control interface is core-lifetime state (registered from
+    // retro_set_environment/retro_init), so it's kept until SDL_Libretro_UnloadCore().
 }
 
 /**

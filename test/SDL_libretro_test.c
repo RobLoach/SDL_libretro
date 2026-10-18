@@ -1866,6 +1866,18 @@ static int SDLCALL test_DiskControl(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetDiskIndex(lr, 99) == false, "SetDiskIndex(99) fails");
     SDLTest_AssertCheck(SDL_Libretro_InsertDisk(lr) == true, "InsertDisk again");
 
+    // The interface is registered once per core load, so it must survive
+    // loading another game on the same core.
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "Second LoadGame succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == 2, "Disk control kept across game reload");
+    SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == true, "EjectDisk after game reload");
+    SDLTest_AssertCheck(SDL_Libretro_InsertDisk(lr) == true, "InsertDisk after game reload");
+
+    // Unloading the core drops the interface.
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(lr->core.disk_control.get_num_images == NULL, "UnloadCore clears disk control");
+
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }
