@@ -256,27 +256,30 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_CONTINUE;
     }
 
+    // Hotkeys avoid the default keyboard bindings so they don't also press a
+    // RetroPad button.
+
     // Fast Forward
-    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_F && !event->key.repeat) {
+    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_SPACE && !event->key.repeat) {
         SDL_Libretro_SetSpeed(lr, 2.0f);
     }
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F) {
+    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_SPACE) {
         SDL_Libretro_SetSpeed(lr, 1.0f);
     }
 
     // Slow Motion
-    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_E && !event->key.repeat) {
+    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_TAB && !event->key.repeat) {
         SDL_Libretro_SetSpeed(lr, 0.5f);
     }
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_E) {
+    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_TAB) {
         SDL_Libretro_SetSpeed(lr, 1.0f);
     }
 
     // Rewind
-    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_R && !event->key.repeat) {
+    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_BACKSPACE && !event->key.repeat) {
         SDL_Libretro_SetSpeed(lr, -1.0f);
     }
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_R) {
+    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_BACKSPACE) {
         SDL_Libretro_SetSpeed(lr, 1.0f);
     }
 
