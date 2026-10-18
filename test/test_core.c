@@ -207,8 +207,15 @@ RETRO_API void retro_get_system_av_info(struct retro_system_av_info *info) {
     info->timing.sample_rate = 44100.0;
 }
 
+/* Test hook: the last device set per port, read via test_core_get_port_device(). */
+static unsigned port_devices[16];
+
+RETRO_API unsigned test_core_get_port_device(unsigned port) {
+    return port < 16 ? port_devices[port] : RETRO_DEVICE_NONE;
+}
+
 RETRO_API void retro_set_controller_port_device(unsigned port, unsigned device) {
-    (void)port;
+    if (port < 16) port_devices[port] = device;
     // Test hook: device values >= 0x1000 forward (device - 0x1000) to SET_ROTATION
     // so the frontend test can exercise rotation clamping.
     if (device >= 0x1000 && environ_cb) {
@@ -299,6 +306,9 @@ static void scribble_stack(void) {
 }
 
 RETRO_API bool retro_load_game(const struct retro_game_info *game) {
+    // Like real cores, start each game with default devices so the test can
+    // see the frontend re-apply them after the load.
+    memset(port_devices, 0, sizeof(port_devices));
     register_stack_input_info();
     scribble_stack();
 

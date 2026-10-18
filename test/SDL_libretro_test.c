@@ -1735,6 +1735,41 @@ static int SDLCALL test_Rotation(void *arg) {
 #endif
 }
 
+static int SDLCALL test_PortDeviceOnLoad(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
+
+    typedef unsigned (*GetPortDeviceFn)(unsigned);
+    GetPortDeviceFn getDevice = (GetPortDeviceFn)SDL_LoadFunction(lr->core.symbols.handle, "test_core_get_port_device");
+    SDLTest_AssertCheck(getDevice != NULL, "test_core exports test_core_get_port_device");
+    if (!getDevice) {
+        SDL_Libretro_Destroy(lr);
+        return TEST_COMPLETED;
+    }
+
+    // Chosen before the game loads; the test core resets its devices in
+    // retro_load_game(), so these only stick if the frontend re-applies them.
+    SDL_Libretro_SetPortDevice(lr, 0, RETRO_DEVICE_ANALOG);
+    SDL_Libretro_SetPortDevice(lr, 1, RETRO_DEVICE_MOUSE);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    SDLTest_AssertCheck(getDevice(0) == RETRO_DEVICE_ANALOG, "Port 0 device applied on load, got %u", getDevice(0));
+    SDLTest_AssertCheck(getDevice(1) == RETRO_DEVICE_MOUSE, "Port 1 device applied on load, got %u", getDevice(1));
+
+    // Loading another game on the same core re-applies them again.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "Second LoadGame succeeds");
+    SDLTest_AssertCheck(getDevice(0) == RETRO_DEVICE_ANALOG, "Port 0 device re-applied on reload");
+    SDLTest_AssertCheck(getDevice(1) == RETRO_DEVICE_MOUSE, "Port 1 device re-applied on reload");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_InputDescriptorCopy(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -2694,6 +2729,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
+    LIBRETRO_TEST_CASE(test_PortDeviceOnLoad, "Port devices re-applied after game load"),
     LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
     LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),

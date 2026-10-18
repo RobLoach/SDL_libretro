@@ -644,6 +644,13 @@ static void SDL_Libretro_SetCoreCallbacks(SDL_Libretro* lr) {
 static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
     lr->core.gameLoaded = true;
 
+    // Re-apply the app's port devices; cores expect them after retro_load_game().
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        if (lr->core.portDeviceMap[port] != RETRO_DEVICE_JOYPAD) {
+            lr->core.symbols.retro_set_controller_port_device(port, lr->core.portDeviceMap[port]);
+        }
+    }
+
     // Grab the Audio/Video data.
     struct retro_system_av_info avInfo = {0};
     lr->core.symbols.retro_get_system_av_info(&avInfo);
