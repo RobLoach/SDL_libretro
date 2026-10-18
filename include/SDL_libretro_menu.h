@@ -139,10 +139,10 @@
  */
 typedef struct SDL_LibretroMenuOptionState {
     SDL_LibretroMenu* menu;
-    unsigned index; /** The option's index within the core's option list. */
-    int selected; /** Selected combobox entry. */
-    nk_bool checked; /** Checkbox state for boolean options. */
-    char* displayList; /** Pipe-separated labels backing the combobox; owned. */
+    unsigned index; /**< The option's index within the core's option list. */
+    int selected; /**< Selected combobox entry. */
+    nk_bool checked; /**< Checkbox state for boolean options. */
+    char* displayList; /**< Pipe-separated labels backing the combobox; owned. */
 } SDL_LibretroMenuOptionState;
 
 /**
@@ -154,9 +154,9 @@ typedef struct SDL_LibretroMenuOptionState {
 typedef struct SDL_LibretroMenuPortState {
     SDL_LibretroMenu* menu;
     unsigned port;
-    int selected; /** Selected combobox entry. */
-    char* deviceList; /** Pipe-separated device names backing the combobox; owned. */
-    char label[16]; /** The "Port N" combobox label; must outlive the widget. */
+    int selected; /**< Selected combobox entry. */
+    char* deviceList; /**< Pipe-separated device names backing the combobox; owned. */
+    char label[16]; /**< The "Port N" combobox label; must outlive the widget. */
 } SDL_LibretroMenuPortState;
 
 /**
@@ -166,8 +166,8 @@ typedef struct SDL_LibretroMenuPortState {
  */
 typedef struct SDL_LibretroMenuKeyBind {
     SDL_LibretroMenu* menu;
-    int button; /** The RETRO_DEVICE_ID_JOYPAD_* index. */
-    nk_rune rune; /** The captured key, as an NK_CONSOLE_KEY_* value. */
+    int button; /**< The RETRO_DEVICE_ID_JOYPAD_* index. */
+    nk_rune rune; /**< The captured key, as an NK_CONSOLE_KEY_* value. */
 } SDL_LibretroMenuKeyBind;
 
 /**
@@ -177,9 +177,9 @@ typedef struct SDL_LibretroMenuKeyBind {
  */
 typedef struct SDL_LibretroMenuPadBind {
     SDL_LibretroMenu* menu;
-    unsigned port; /** The controller port the binding applies to. */
-    int button; /** The RETRO_DEVICE_ID_JOYPAD_* index. */
-    enum nk_gamepad_button captured; /** The captured gamepad button. */
+    unsigned port; /**< The controller port the binding applies to. */
+    int button; /**< The RETRO_DEVICE_ID_JOYPAD_* index. */
+    enum nk_gamepad_button captured; /**< The captured gamepad button. */
 } SDL_LibretroMenuPadBind;
 
 /**
@@ -190,8 +190,8 @@ typedef struct SDL_LibretroMenuPadBind {
 typedef struct SDL_LibretroMenuPadPort {
     SDL_LibretroMenu* menu;
     unsigned port;
-    int analogIndex; /** Selected Analog to Digital entry, in SDL_LibretroAnalogToDigital order. */
-    char label[64]; /** The player submenu label, holding the gamepad name; must outlive the widget. */
+    int analogIndex; /**< Selected Analog to Digital entry, in SDL_LibretroAnalogToDigital order. */
+    char label[64]; /**< The player submenu label, holding the gamepad name; must outlive the widget. */
     SDL_LibretroMenuPadBind binds[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
 } SDL_LibretroMenuPadPort;
 
@@ -200,13 +200,13 @@ struct SDL_LibretroMenu {
     struct nk_context* ctx;
     nk_console* console;
     struct nk_gamepads gamepads;
-    struct nk_font_atlas* atlas; /** The backend's font atlas. */
-    float renderScale; /** The current UI render scale applied via SDL_SetRenderScale. */
-    void* userData; /** Generic data available to the application. */
+    struct nk_font_atlas* atlas; /**< The backend's font atlas. */
+    float renderScale; /**< The current UI render scale applied via SDL_SetRenderScale. */
+    void* userData; /**< Generic data available to the application. */
 
-    bool open; /** Whether the menu is currently shown. */
-    bool wasOpen; /** The open state of the previous update, to detect fresh opens. */
-    bool uiBuilt; /** nk_begin ran this frame, so RenderMenu must flush and clear. */
+    bool open; /**< Whether the menu is currently shown. */
+    bool wasOpen; /**< The open state of the previous update, to detect fresh opens. */
+    bool uiBuilt; /**< nk_begin ran this frame, so RenderMenu must flush and clear. */
 
     // Widgets whose visibility depends on the running game.
     nk_console* resumeButton;
@@ -221,15 +221,15 @@ struct SDL_LibretroMenu {
     int volumePercent;
     int fitModeIndex;
     int styleIndex;
-    int uiScaleIndex; /** 0 = Auto (resolution-based), 1..4 = fixed multiplier; defaults to 2. */
-    SDL_LibretroMenuStyle style; /** The active menu style. */
-    int filterIndex; /** 0 = Nearest, 1 = Linear. */
+    int uiScaleIndex; /**< 0 = Auto (resolution-based), 1..4 = fixed multiplier; defaults to 2. */
+    SDL_LibretroMenuStyle style; /**< The active menu style. */
+    int filterIndex; /**< 0 = Nearest, 1 = Linear. */
     nk_bool fullscreenChecked;
     nk_bool vsyncChecked;
     nk_bool muteChecked;
     nk_bool rewindChecked;
-    int rewindBufferMB; /** Rewind memory limit in MB; 0 for no limit. */
-    float preMuteVolume; /** Volume to restore when unmuting. */
+    int rewindBufferMB; /**< Rewind memory limit in MB; 0 for no limit. */
+    float preMuteVolume; /**< Volume to restore when unmuting. */
 
     // Load Game
     char loadGamePath[SDL_LIBRETRO_MAX_PATH];
@@ -237,10 +237,10 @@ struct SDL_LibretroMenu {
     // Core Options rebuild tracking
     SDL_LibretroMenuOptionState* optionStates;
     unsigned optionStateCount;
-    bool optionsStale; /** The Core Options submenu no longer matches the core's options. */
-    bool settingsDirty; /** A menu-owned setting changed and awaits SDL_Libretro_MenuSaveState(). */
-    unsigned builtOptionCount; /** Option count when the submenu was last built. */
-    char builtCoreName[128]; /** Core library name when the submenu was last built. */
+    bool optionsStale; /**< The Core Options submenu no longer matches the core's options. */
+    bool settingsDirty; /**< A menu-owned setting changed and awaits SDL_Libretro_MenuSaveState(). */
+    unsigned builtOptionCount; /**< Option count when the submenu was last built. */
+    char builtCoreName[128]; /**< Core library name when the submenu was last built. */
 
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_USERS];
@@ -255,16 +255,16 @@ struct SDL_LibretroMenu {
 
     // Disks, rebuilt when the menu opens.
     nk_console* disksButton;
-    int diskSelected; /** Radio-selected disk index. */
-    unsigned builtDiskCount; /** Disk count when the submenu was last built; bounds diskLabels. */
-    char** diskLabels; /** Owned label copies backing the radios. */
+    int diskSelected; /**< Radio-selected disk index. */
+    unsigned builtDiskCount; /**< Disk count when the submenu was last built; bounds diskLabels. */
+    char** diskLabels; /**< Owned label copies backing the radios. */
 
     // Progress rows, refreshed every update.
-    nk_console* osdProgressWidget; /** Top-level bar for progress-type OSD messages. */
+    nk_console* osdProgressWidget; /**< Top-level bar for progress-type OSD messages. */
     nk_size osdProgressValue;
     char osdProgressLabel[128];
 
-    nk_console* quitButton; /** Kept as the last top-level entry when the app adds its own. */
+    nk_console* quitButton; /**< Kept as the last top-level entry when the app adds its own. */
 
     // Settings textedit buffers (directories + username).
     char coreDirBuffer[SDL_LIBRETRO_MAX_PATH];
@@ -276,7 +276,7 @@ struct SDL_LibretroMenu {
     // About page, rebuilt each time it opens. The labels read the arena
     // lazily, so it must stay allocated for as long as the menu.
     nk_console* aboutButton;
-    char aboutText[2048]; /** Packed NUL-separated label lines. */
+    char aboutText[2048]; /**< Packed NUL-separated label lines. */
     size_t aboutTextLength;
 };
 
@@ -542,8 +542,8 @@ typedef struct SDL_LibretroMenuItem {
     SDL_LibretroMenuCallback callback;
     void* userdata;
     char* label;
-    nk_bool checked; /** Backing checkbox state when the caller brings none. */
-    bool* value; /** The app's checkbox value, mirrored from checked; may be NULL. */
+    nk_bool checked; /**< Backing checkbox state when the caller brings none. */
+    bool* value; /**< The app's checkbox value, mirrored from checked; may be NULL. */
 } SDL_LibretroMenuItem;
 
 /**
@@ -1690,23 +1690,23 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
  */
 typedef struct SDL_LibretroMenuPalette {
     struct nk_color text;
-    struct nk_color window; /** Window background. */
-    struct nk_color frame; /** Header and border. */
-    struct nk_color widget; /** Buttons, selects, properties, edits, combos, charts, tab headers. */
+    struct nk_color window; /**< Window background. */
+    struct nk_color frame; /**< Header and border. */
+    struct nk_color widget; /**< Buttons, selects, properties, edits, combos, charts, tab headers. */
     struct nk_color widgetHover;
     struct nk_color widgetActive;
     struct nk_color selectActive;
-    struct nk_color toggle; /** Checkbox/toggle track. */
+    struct nk_color toggle; /**< Checkbox/toggle track. */
     struct nk_color toggleHover;
     struct nk_color toggleCursor;
-    struct nk_color slider; /** Slider and knob track. */
+    struct nk_color slider; /**< Slider and knob track. */
     struct nk_color sliderCursor;
     struct nk_color sliderCursorHover;
     struct nk_color sliderCursorActive;
     struct nk_color editCursor;
     struct nk_color chartColor;
     struct nk_color chartHighlight;
-    struct nk_color scrollbar; /** Scrollbar track. */
+    struct nk_color scrollbar; /**< Scrollbar track. */
     struct nk_color scrollbarCursor;
     struct nk_color scrollbarCursorHover;
     struct nk_color scrollbarCursorActive;

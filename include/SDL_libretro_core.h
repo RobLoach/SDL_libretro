@@ -667,7 +667,8 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
         SDL_LogWarn(SDL_LOG_CATEGORY_VIDEO, "[SDL_Libretro] Video failed to initialize: %s", SDL_GetError());
     }
 
-    // A missing device shouldn't stop the game from running. Apps can re-init later with SDL_Libretro_InitAudio() or RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO
+    // A missing device shouldn't stop the game from running; it plays silently
+    // until the game is loaded again.
     if (!SDL_Libretro_InitAudio(lr)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Audio failed to initialize: %s", SDL_GetError());
     }

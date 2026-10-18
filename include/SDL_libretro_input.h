@@ -834,9 +834,12 @@ unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr) {
  * @param[out] id The ID of the descriptor.
  * @param[out] description The description of the input device.
  *
- * @return 0 on success, a negative error code on failure.
+ * @return true when a descriptor was written, or false when the core is not
+ *         ready or index is out of range.
  *
- * @note The contents written to @p out_desc are owned by the caller after the call returns and may be modified or freed as appropriate by the caller.
+ * @note The @p description string is owned by the libretro context; do not
+ *       modify or free it. It stays valid until the core sets new descriptors
+ *       or is unloaded.
  *
  * @see retro_input_descriptor
  */

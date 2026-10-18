@@ -83,11 +83,11 @@ typedef struct SDL_Libretro SDL_Libretro;
  * When rendering the libretro context, determine how to display within the destination.
  */
 typedef enum SDL_LibretroFitMode {
-    SDL_LIBRETRO_FIT_FIRST = 0, /** The default fit mode to fit within the destination. */
-    SDL_LIBRETRO_FIT_ASPECT = 0, /** Keep the same aspect ratio, and fit within the confines of the destination. */
-    SDL_LIBRETRO_FIT_INTEGER = 1, /** Keep the same aspect ratio, while keeping integer scaling within the confines of the destination. */
-    SDL_LIBRETRO_FIT_STRETCH = 2, /** Ignore the aspect ratio, and stretch the image to match the destination rectangle. */
-    SDL_LIBRETRO_FIT_COUNT = 3 /** The number of possible fit modes. */
+    SDL_LIBRETRO_FIT_FIRST = 0, /**< The default fit mode to fit within the destination. */
+    SDL_LIBRETRO_FIT_ASPECT = 0, /**< Keep the same aspect ratio, and fit within the confines of the destination. */
+    SDL_LIBRETRO_FIT_INTEGER = 1, /**< Keep the same aspect ratio, while keeping integer scaling within the confines of the destination. */
+    SDL_LIBRETRO_FIT_STRETCH = 2, /**< Ignore the aspect ratio, and stretch the image to match the destination rectangle. */
+    SDL_LIBRETRO_FIT_COUNT = 3 /**< The number of possible fit modes. */
 } SDL_LibretroFitMode;
 
 /**
@@ -96,10 +96,10 @@ typedef enum SDL_LibretroFitMode {
  * @see SDL_Libretro_SetAnalogToDigital()
  */
 typedef enum SDL_LibretroAnalogToDigital {
-    SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE = 0, /** Only the D-Pad drives the retro joypad's directions. */
-    SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT = 1, /** The left analog stick also registers D-Pad presses. */
-    SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT = 2, /** The right analog stick also registers D-Pad presses. */
-    SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT = 3 /** The number of possible modes. */
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE = 0, /**< Only the D-Pad drives the retro joypad's directions. */
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT = 1, /**< The left analog stick also registers D-Pad presses. */
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_RIGHT = 2, /**< The right analog stick also registers D-Pad presses. */
+    SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT = 3 /**< The number of possible modes. */
 } SDL_LibretroAnalogToDigital;
 
 #ifdef __cplusplus
@@ -213,14 +213,14 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  */
 #define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
 
-#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /** A core finished loading; data2 is the core name, valid until the next load or unload. @see SDL_Libretro_GetCoreName() */
-#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /** A game finished loading, whether directly or through the menu; data2 is the game name, valid until the next load or unload. @see SDL_Libretro_GetGameName() */
-#define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /** The menu became visible; the game pauses. data2 is the SDL_LibretroMenu. */
-#define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /** The menu was dismissed; the game resumes. data2 is the SDL_LibretroMenu. */
-#define SDL_EVENT_LIBRETRO_CORE_UNLOADED (SDL_EVENT_LIBRETRO | 0xF04) /** The core was unloaded, along with any game it ran. */
-#define SDL_EVENT_LIBRETRO_GAME_UNLOADED (SDL_EVENT_LIBRETRO | 0xF05) /** The game was unloaded, whether directly or through the core unloading. */
-#define SDL_EVENT_LIBRETRO_SHUTDOWN (SDL_EVENT_LIBRETRO | 0xF06) /** The core requested shutdown. @see SDL_Libretro_ShouldQuit() */
-#define SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED (SDL_EVENT_LIBRETRO | 0xF07) /** The video size, aspect ratio, or timing changed mid-game. @see SDL_Libretro_GetSize() */
+#define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /**< A core finished loading; data2 is the core name, valid until the next load or unload. @see SDL_Libretro_GetCoreName() */
+#define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /**< A game finished loading, whether directly or through the menu; data2 is the game name, valid until the next load or unload. @see SDL_Libretro_GetGameName() */
+#define SDL_EVENT_LIBRETRO_MENU_OPENED (SDL_EVENT_LIBRETRO | 0xF02) /**< The menu became visible; the game pauses. data2 is the SDL_LibretroMenu. */
+#define SDL_EVENT_LIBRETRO_MENU_CLOSED (SDL_EVENT_LIBRETRO | 0xF03) /**< The menu was dismissed; the game resumes. data2 is the SDL_LibretroMenu. */
+#define SDL_EVENT_LIBRETRO_CORE_UNLOADED (SDL_EVENT_LIBRETRO | 0xF04) /**< The core was unloaded, along with any game it ran. */
+#define SDL_EVENT_LIBRETRO_GAME_UNLOADED (SDL_EVENT_LIBRETRO | 0xF05) /**< The game was unloaded, whether directly or through the core unloading. */
+#define SDL_EVENT_LIBRETRO_SHUTDOWN (SDL_EVENT_LIBRETRO | 0xF06) /**< The core requested shutdown. @see SDL_Libretro_ShouldQuit() */
+#define SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED (SDL_EVENT_LIBRETRO | 0xF07) /**< The video size, aspect ratio, or timing changed mid-game. @see SDL_Libretro_GetSize() */
 
 // Save States
 
@@ -252,33 +252,33 @@ void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t*
  * One selectable value for a core option.
  */
 typedef struct SDL_LibretroOptionValue {
-    const char* value; /** The value the core stores. */
-    const char* label; /** Human-readable name; may be NULL, in which case display value itself. */
+    const char* value; /**< The value the core stores. */
+    const char* label; /**< Human-readable name; may be NULL, in which case display value itself. */
 } SDL_LibretroOptionValue;
 
 /**
  * A core option and its current state.
  */
 typedef struct SDL_LibretroOption {
-    const char* key; /** Unique identifier the core queries. */
-    const char* desc; /** Human-readable name. */
-    const char* info; /** Description / help text; may be empty. */
-    const char* value; /** The current value. */
-    const char* defaultValue; /** The default value. */
-    const char* category; /** Key of the category it belongs to; empty if none. */
-    bool visible; /** Whether the frontend should display it. */
-    unsigned valuesCount; /** The number of populated entries in values. */
-    SDL_LibretroOptionValue* values; /** The selectable values; dynamically allocated. */
-    unsigned valuesCapacity; /** Allocated capacity of the values array. */
+    const char* key; /**< Unique identifier the core queries. */
+    const char* desc; /**< Human-readable name. */
+    const char* info; /**< Description / help text; may be empty. */
+    const char* value; /**< The current value. */
+    const char* defaultValue; /**< The default value. */
+    const char* category; /**< Key of the category it belongs to; empty if none. */
+    bool visible; /**< Whether the frontend should display it. */
+    unsigned valuesCount; /**< The number of populated entries in values. */
+    SDL_LibretroOptionValue* values; /**< The selectable values; dynamically allocated. */
+    unsigned valuesCapacity; /**< Allocated capacity of the values array. */
 } SDL_LibretroOption;
 
 /**
  * A group of related core options.
  */
 typedef struct SDL_LibretroCategory {
-    const char* key; /** Unique identifier referenced by SDL_LibretroOption::category. */
-    const char* desc; /** Human-readable name. */
-    const char* info; /** Description / help text; may be empty. */
+    const char* key; /**< Unique identifier referenced by SDL_LibretroOption::category. */
+    const char* desc; /**< Human-readable name. */
+    const char* info; /**< Description / help text; may be empty. */
 } SDL_LibretroCategory;
 
 unsigned SDL_Libretro_GetOptionCount(const SDL_Libretro* lr);
@@ -443,8 +443,8 @@ typedef void (*SDL_LibretroMenuCallback)(SDL_LibretroMenu* menu, void* userdata)
 bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata);
 
 /**
- * Adds a checkbox to the top of the menu. The value pointer is written on
- * every toggle, so it must outlive the menu.
+ * Adds a checkbox to the main menu, just above Quit. The value pointer is
+ * written on every toggle, so it must outlive the menu.
  */
 bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
 
@@ -601,19 +601,19 @@ typedef struct SDL_LibretroCoreSymbols {
  */
 typedef struct SDL_LibretroMicrophone {
     SDL_AudioStream* stream;
-    unsigned rate; /** The sample rate. */
-    bool active; /** Whether or not the micropohne device is active. */
-    SDL_Libretro* lr; /** A pointer back to the libretro data, used to dereference itself in case the core doesn't close for us. */
+    unsigned rate; /**< The sample rate. */
+    bool active; /**< Whether or not the micropohne device is active. */
+    SDL_Libretro* lr; /**< A pointer back to the libretro data, used to dereference itself in case the core doesn't close for us. */
 } SDL_LibretroMicrophone;
 
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
-    bool gameLoaded; /** A game is currently loaded into the core (content or no-content). */
-    bool shutdown; /** Whether or not the core has requested to shutdown. */
-    float speed; /** The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */
-    double speedAccumulator; /** Fractional frames accumulated for run-loop pacing; reset with the core. */
-    Uint64 lastTickNS; /** Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call, reset with the core. */
+    bool gameLoaded; /**< A game is currently loaded into the core (content or no-content). */
+    bool shutdown; /**< Whether or not the core has requested to shutdown. */
+    float speed; /**< The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */
+    double speedAccumulator; /**< Fractional frames accumulated for run-loop pacing; reset with the core. */
+    Uint64 lastTickNS; /**< Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call, reset with the core. */
     unsigned width, height;
     double fps;
     double sampleRate;
@@ -623,20 +623,20 @@ typedef struct SDL_LibretroCoreData {
     char libraryVersion[128];
     char validExtensions[128];
     bool needFullpath;
-    bool blockExtract; /** True if the core wants to restrict extracting any archives prior to loading the real content. */
-    bool usedVFS; /** The core requested RETRO_ENVIRONMENT_GET_VFS_INTERFACE. */
+    bool blockExtract; /**< True if the core wants to restrict extracting any archives prior to loading the real content. */
+    bool usedVFS; /**< The core requested RETRO_ENVIRONMENT_GET_VFS_INTERFACE. */
     bool supportNoGame;
     unsigned apiVersion;
     enum retro_pixel_format pixelFormat;
-    unsigned performanceLevel; /** @see SDL_Libretro_GetPerformanceLevel() */
+    unsigned performanceLevel; /**< @see SDL_Libretro_GetPerformanceLevel() */
     uint64_t serializationQuirks;
     enum retro_savestate_context savestateContext;
     int rotation;
 
     // Video
     SDL_Texture* texture;
-    SDL_FRect renderDstRect; /** The desired destination rendering rectangle. */
-    bool videoReinitPending; /** True when the video requires a re-initialization. */
+    SDL_FRect renderDstRect; /**< The desired destination rendering rectangle. */
+    bool videoReinitPending; /**< True when the video requires a re-initialization. */
 
     /**
      * Non-NULL while a software buffer lock is active.
@@ -653,13 +653,13 @@ typedef struct SDL_LibretroCoreData {
     int audioDropWarnCount;
     bool audioReinitPending;
     struct retro_audio_callback audio_callback;
-    struct retro_audio_buffer_status_callback audio_buffer_status; /** @see SDL_Libretro_ReportAudioBufferStatus() */
+    struct retro_audio_buffer_status_callback audio_buffer_status; /**< @see SDL_Libretro_ReportAudioBufferStatus() */
 
     // Input
     float inputLastMouseX, inputLastMouseY;
     float inputMouseX, inputMouseY;
-    float inputWheelAccumX, inputWheelAccumY; /** Wheel delta accumulated between frames via SDL_Libretro_HandleEvent(). */
-    float inputWheelX, inputWheelY; /** Wheel deltas for the current frame, snapshotted in SDL_Libretro_InputPoll(). */
+    float inputWheelAccumX, inputWheelAccumY; /**< Wheel delta accumulated between frames via SDL_Libretro_HandleEvent(). */
+    float inputWheelX, inputWheelY; /**< Wheel deltas for the current frame, snapshotted in SDL_Libretro_InputPoll(). */
     unsigned portDeviceMap[SDL_LIBRETRO_MAX_USERS];
     bool virtualJoypadState[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     retro_keyboard_event_t keyboard_event;
@@ -673,14 +673,14 @@ typedef struct SDL_LibretroCoreData {
     bool fastforwardOverrideActive;
 
     // Core Options
-    SDL_LibretroOption* options; /** The options that have been set by the core. The strings are owned by the context. */
-    unsigned optionCount; /** The number of options. */
-    unsigned optionCapacity; /** The capacity of the options array. */
-    bool optionsDirtyCore; /** An option changed since the core last polled GET_VARIABLE_UPDATE. */
-    bool optionsDirtyApp; /** An option changed since the app last called SDL_Libretro_AreOptionsDirty(). */
+    SDL_LibretroOption* options; /**< The options that have been set by the core. The strings are owned by the context. */
+    unsigned optionCount; /**< The number of options. */
+    unsigned optionCapacity; /**< The capacity of the options array. */
+    bool optionsDirtyCore; /**< An option changed since the core last polled GET_VARIABLE_UPDATE. */
+    bool optionsDirtyApp; /**< An option changed since the app last called SDL_Libretro_AreOptionsDirty(). */
 
-    retro_core_options_update_display_callback_t optionsUpdateDisplayCallback; /** A callback used to determine the visibility of options. */
-    SDL_LibretroCategory* optionCategories; /** Categories registered by the core. The strings are owned by the context. */
+    retro_core_options_update_display_callback_t optionsUpdateDisplayCallback; /**< A callback used to determine the visibility of options. */
+    SDL_LibretroCategory* optionCategories; /**< Categories registered by the core. The strings are owned by the context. */
     unsigned optionCategoriesCount;
     unsigned optionCategoriesCapacity;
 
@@ -693,20 +693,20 @@ typedef struct SDL_LibretroCoreData {
     unsigned controllerInfoCount;
 
     // Game Content
-    char contentPath[SDL_LIBRETRO_MAX_PATH]; /** The path to the content that's being loaded. */
-    char contentName[SDL_LIBRETRO_MAX_PATH]; /** The human-readable content name. */
-    char contentDir[SDL_LIBRETRO_MAX_PATH]; /** Directory of the content file; backs gameInfoExt.dir. */
-    char contentExt[32]; /** Lower-case content extension; backs gameInfoExt.ext. */
-    char contentTempPath[SDL_LIBRETRO_MAX_PATH]; /** File spilled to disk by SDL_Libretro_LoadGame_IO() for a need_fullpath core; removed when the content unloads. */
+    char contentPath[SDL_LIBRETRO_MAX_PATH]; /**< The path to the content that's being loaded. */
+    char contentName[SDL_LIBRETRO_MAX_PATH]; /**< The human-readable content name. */
+    char contentDir[SDL_LIBRETRO_MAX_PATH]; /**< Directory of the content file; backs gameInfoExt.dir. */
+    char contentExt[32]; /**< Lower-case content extension; backs gameInfoExt.ext. */
+    char contentTempPath[SDL_LIBRETRO_MAX_PATH]; /**< File spilled to disk by SDL_Libretro_LoadGame_IO() for a need_fullpath core; removed when the content unloads. */
 
-    struct retro_game_info_ext gameInfoExt; /** Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
+    struct retro_game_info_ext gameInfoExt; /**< Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
 
     // Content Info Overrides
-    struct retro_system_content_info_override* contentInfoOverrides; /** Deep-copied; owned by the context. */
-    unsigned contentInfoOverrideCount; /** The number of content info overrides. @see contentInfoOverrides */
+    struct retro_system_content_info_override* contentInfoOverrides; /**< Deep-copied; owned by the context. */
+    unsigned contentInfoOverrideCount; /**< The number of content info overrides. @see contentInfoOverrides */
 
     // Subsystems
-    struct retro_subsystem_info* subsystems; /** Deep-copied from RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO; owned by the context. */
+    struct retro_subsystem_info* subsystems; /**< Deep-copied from RETRO_ENVIRONMENT_SET_SUBSYSTEM_INFO; owned by the context. */
     unsigned subsystemCount;
 
     // Rumble
@@ -730,8 +730,8 @@ typedef struct SDL_LibretroCoreData {
     unsigned memoryMapDescriptorCount;
 
     // Dynamic Rate Control
-    bool drcEnabled; /** Dynamic Rate Control. @see SDL_Libretro_UpdateDRC() */
-    float drcAdjustment; /** How much the dynamic rate control should be adjusted. */
+    bool drcEnabled; /**< Dynamic Rate Control. @see SDL_Libretro_UpdateDRC() */
+    float drcAdjustment; /**< How much the dynamic rate control should be adjusted. */
     double drcDriftAvg;
 
     // Performance Counter
@@ -748,12 +748,12 @@ typedef struct SDL_LibretroRewindDelta {
 
 struct SDL_Libretro {
     // Persistent Settings Across Cores
-    float volume; /** The audio volume. */
-    SDL_LibretroFitMode fitMode; /** How the libretro context should fit into its destination when rendering. */
-    SDL_ScaleMode scaleMode; /** The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
+    float volume; /**< The audio volume. */
+    SDL_LibretroFitMode fitMode; /**< How the libretro context should fit into its destination when rendering. */
+    SDL_ScaleMode scaleMode; /**< The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
-    SDL_GamepadButton gamepadButtons[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS]; /** SDL button per port and RETRO_DEVICE_ID_JOYPAD_*. @see SDL_Libretro_SetGamepadMapping() */
-    SDL_LibretroAnalogToDigital analogToDigital[SDL_LIBRETRO_MAX_USERS]; /** Which stick, if any, also drives each port's D-Pad. @see SDL_Libretro_SetAnalogToDigital() */
+    SDL_GamepadButton gamepadButtons[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS]; /**< SDL button per port and RETRO_DEVICE_ID_JOYPAD_*. @see SDL_Libretro_SetGamepadMapping() */
+    SDL_LibretroAnalogToDigital analogToDigital[SDL_LIBRETRO_MAX_USERS]; /**< Which stick, if any, also drives each port's D-Pad. @see SDL_Libretro_SetAnalogToDigital() */
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
     char systemDirectory[SDL_LIBRETRO_MAX_PATH];
@@ -763,8 +763,8 @@ struct SDL_Libretro {
     char username[64];
 
     // Video
-    SDL_Renderer* renderer; /** The render target. @see SDL_Libretro_SetRenderer() */
-    SDL_Window* window; /** Derived from the renderer via SDL_GetRenderWindow(). */
+    SDL_Renderer* renderer; /**< The render target. @see SDL_Libretro_SetRenderer() */
+    SDL_Window* window; /**< Derived from the renderer via SDL_GetRenderWindow(). */
 
     // Logging
     enum retro_log_level logLevel;
@@ -790,29 +790,29 @@ struct SDL_Libretro {
     unsigned rewindCount;
     unsigned rewindCaptureInterval;
     unsigned rewindFrameCounter;
-    bool rewindEnabled; /** When enabled, will capture serialized frames to allow rewinding. */
+    bool rewindEnabled; /**< When enabled, will capture serialized frames to allow rewinding. */
     bool rewindHasReference;
-    bool rewindActive; /** true only during a backward step's re-run (mutes audio, neutralizes input) */
+    bool rewindActive; /**< true only during a backward step's re-run (mutes audio, neutralizes input) */
 
     // Input
     SDL_Gamepad* gamepads[SDL_LIBRETRO_MAX_USERS];
     unsigned gamepadCount;
 
-    SDL_LibretroCoreData core; /** The loaded core state. */
+    SDL_LibretroCoreData core; /**< The loaded core state. */
 
     // Configuration
     char* iniFile;
     SDL_ini* ini;
 
     // Core Library
-    SDL_Libretro_CoreInfo* coreLibrary; /** The list of cores that were discovered in the "cores" directory. */
-    unsigned coreLibraryCount; /** The number of core libraries represented in coreLibrary. */
+    SDL_Libretro_CoreInfo* coreLibrary; /**< The list of cores that were discovered in the "cores" directory. */
+    unsigned coreLibraryCount; /**< The number of core libraries represented in coreLibrary. */
 
-    void* userData; /** Generic data available to the implementation. */
+    void* userData; /**< Generic data available to the implementation. */
 
 #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
-    bool physfsReady; /** PhysFS is initialized and the VFS overrides are installed. */
-    char physfsMountSource[SDL_LIBRETRO_MAX_PATH]; /** The archive currently mounted at the mount point. */
+    bool physfsReady; /**< PhysFS is initialized and the VFS overrides are installed. */
+    char physfsMountSource[SDL_LIBRETRO_MAX_PATH]; /**< The archive currently mounted at the mount point. */
 #endif
 };
 

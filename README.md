@@ -154,7 +154,7 @@ cmake ..
 cmake --build .
 ```
 
-SDL3 is fetched automatically via CMake FetchContent if not already installed on the system.
+By default, SDL3 is fetched and built via CMake FetchContent. To use an SDL3 already installed on the system instead, configure with `-DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON`.
 
 ### Emscripten
 
