@@ -1876,7 +1876,7 @@ static const SDL_LibretroMenuPalette* SDL_Libretro_MenuGetPalette(SDL_LibretroMe
 
 /**
  * The automatic UI scale step for a window of the given logical width,
- * following raylib-libretro's resolution thresholds adapted to the 16px base
+ * following raylib-libretro's resolution thresholds adapted to the 13px base
  * font.
  *
  * @internal
