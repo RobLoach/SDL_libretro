@@ -279,7 +279,7 @@ static void SDL_Libretro_FitRect(const SDL_Libretro* lr, SDL_FRect* rect, bool r
  *
  * @param renderer the renderer to draw into; must not be NULL.
  * @param lr the libretro context.
- * @param dstRect the destination rectangle, or NULL to fit within the full width and height of the renderer.
+ * @param dstRect the destination rectangle, or NULL to fit within the renderer's logical size, or its current output size when logical presentation is disabled.
  * @returns true on success, false on invalid arguments or if there is nothing to draw yet.
  *
  * @see SDL_Libretro_SetRenderer()
@@ -298,8 +298,14 @@ bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRe
         lr->core.renderDstRect = *dstRect;
     }
     else {
+        // With logical presentation, draw in logical units; otherwise fill
+        // the current output (the render target if one is set).
         int w, h;
-        if (!SDL_GetRenderOutputSize(renderer, &w, &h)) return false;
+        SDL_RendererLogicalPresentation mode = SDL_LOGICAL_PRESENTATION_DISABLED;
+        if (!SDL_GetRenderLogicalPresentation(renderer, &w, &h, &mode) ||
+            mode == SDL_LOGICAL_PRESENTATION_DISABLED) {
+            if (!SDL_GetCurrentRenderOutputSize(renderer, &w, &h)) return false;
+        }
         lr->core.renderDstRect = (SDL_FRect){0.0f, 0.0f, (float)w, (float)h};
     }
 

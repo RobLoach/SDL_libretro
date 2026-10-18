@@ -1809,6 +1809,15 @@ static int SDLCALL test_Rotation(void *arg) {
     lr->core.inputMouseX = 240.0f;
     lr->core.inputMouseY = 60.0f;
     CheckPointer(lr, 0, HI, LO);
+
+    // Rendering without a rect fits the logical size, not the output pixels.
+    lr->core.rotation = 0;
+    SDLTest_AssertCheck(SDL_Libretro_Render(renderer, lr, NULL), "Render with logical presentation");
+    SDL_FRect logicalRect = lr->core.renderDstRect;
+    SDLTest_AssertCheck(logicalRect.x >= 0.0f && logicalRect.y >= 0.0f &&
+        logicalRect.x + logicalRect.w <= 160.0f && logicalRect.y + logicalRect.h <= 120.0f,
+        "Render rect fits the 160x120 logical size, got %.0f,%.0f %.0fx%.0f",
+        logicalRect.x, logicalRect.y, logicalRect.w, logicalRect.h);
     SDL_SetRenderLogicalPresentation(renderer, 0, 0, SDL_LOGICAL_PRESENTATION_DISABLED);
 
     // --- CreateSurface reads back the frame at its native size ---
