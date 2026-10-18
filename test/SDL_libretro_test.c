@@ -1745,6 +1745,16 @@ static int SDLCALL test_Rotation(void *arg) {
     CheckPointer(lr, 2, HI, LO); // u=1-sx=.75, v=1-sy=.25 (180deg)
     CheckPointer(lr, 3, HI, HI); // u=sy=.75,   v=1-sx=.75 (270deg CCW)
 
+    // --- The mouse maps from window to render coordinates ---
+    // A 160x120 logical presentation halves the 320x240 window, so the window
+    // point (240,60) is render point (120,30): sx=.75, sy=.25 of the rect.
+    SDL_SetRenderLogicalPresentation(renderer, 160, 120, SDL_LOGICAL_PRESENTATION_STRETCH);
+    lr->core.renderDstRect = (SDL_FRect){ 0.0f, 0.0f, 160.0f, 120.0f };
+    lr->core.inputMouseX = 240.0f;
+    lr->core.inputMouseY = 60.0f;
+    CheckPointer(lr, 0, HI, LO);
+    SDL_SetRenderLogicalPresentation(renderer, 0, 0, SDL_LOGICAL_PRESENTATION_DISABLED);
+
     // --- CreateSurface reads back the frame at its native size ---
     lr->core.rotation = 0;
     SDL_Libretro_Update(lr);

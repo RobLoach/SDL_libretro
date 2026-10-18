@@ -358,6 +358,7 @@ static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
  * Calculate the pointer coordinates based on the current mouse position.
  *
  * The libretro pointer/lightgun coordinates are [-0x7FFF, 0x7FFF],
+ * mapping the window-space mouse into render coordinates, then
  * considering the render destination rectangle (letterbox/integer-scale),
  * along with the rotation applied by SDL_Libretro_Render().
  *
@@ -366,6 +367,13 @@ static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
 static bool SDL_Libretro_PointerCoords(const SDL_Libretro* lr, int16_t* outX, int16_t* outY) {
     float mx = lr->core.inputMouseX;
     float my = lr->core.inputMouseY;
+
+    // The mouse is in window coordinates, while renderDstRect is in render
+    // coordinates (HiDPI pixel density, logical presentation).
+    if (lr->renderer) {
+        SDL_RenderCoordinatesFromWindow(lr->renderer, mx, my, &mx, &my);
+    }
+
     SDL_FRect r = lr->core.renderDstRect;
     bool inside = r.w > 0.0f && r.h > 0.0f &&
                   mx >= r.x && mx < r.x + r.w &&
