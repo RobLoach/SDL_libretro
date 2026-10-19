@@ -5,19 +5,20 @@ project(SDL_libretro
     DESCRIPTION "SDL3-based libretro frontend library"
 )
 
-set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+list(PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 find_package(SDL3 REQUIRED)
 
-# Core downloads for development/testing
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    option(SDL_LIBRETRO_DOWNLOAD_CORES "Download libretro cores for testing" ON)
-else()
-    option(SDL_LIBRETRO_DOWNLOAD_CORES "Download libretro cores for testing" OFF)
-endif()
+# Development conveniences and the optional components default to on only
+# when SDL_libretro is the top-level project, not when it's added with
+# add_subdirectory() or FetchContent.
+option(SDL_LIBRETRO_DOWNLOAD_CORES "Download libretro cores for testing" ${PROJECT_IS_TOP_LEVEL})
+option(SDL_LIBRETRO_PHYSFS "Enable PhysFS-backed zip loading (SDL_libretro_physfs.h)" ${PROJECT_IS_TOP_LEVEL})
+option(SDL_LIBRETRO_MENU "Enable the nuklear_console menu (SDL_libretro_menu.h)" ${PROJECT_IS_TOP_LEVEL})
+option(SDL_LIBRETRO_BUILD_EXAMPLES "Build example applications" ${PROJECT_IS_TOP_LEVEL})
+option(SDL_LIBRETRO_BUILD_TESTS "Build unit tests" ${PROJECT_IS_TOP_LEVEL})
 
-if(NOT DEFINED CORES_DIR)
-    set(CORES_DIR "${CMAKE_BINARY_DIR}/cores")
-endif()
+set(SDL_LIBRETRO_CORES_DIR "${PROJECT_BINARY_DIR}/cores" CACHE PATH
+    "Directory the downloaded libretro cores are placed in")
 
 if(SDL_LIBRETRO_DOWNLOAD_CORES)
     include(DownloadCores)
@@ -28,9 +29,9 @@ endif()
 add_library(SDL_libretro INTERFACE)
 
 target_include_directories(SDL_libretro INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/libretro-common/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/SDL_ini>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/libretro-common/include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/SDL_ini>
     $<INSTALL_INTERFACE:include>
 )
 
@@ -46,12 +47,6 @@ target_compile_features(SDL_libretro INTERFACE c_std_99)
 
 # PhysFS-backed archive loading (SDL_libretro_physfs.h). Kept out of the base
 # SDL_libretro target so consumers that don't want it pull in no PhysFS.
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    option(SDL_LIBRETRO_PHYSFS "Enable PhysFS-backed zip loading (SDL_libretro_physfs.h)" ON)
-else()
-    option(SDL_LIBRETRO_PHYSFS "Enable PhysFS-backed zip loading (SDL_libretro_physfs.h)" OFF)
-endif()
-
 if(SDL_LIBRETRO_PHYSFS)
     find_package(PhysFS REQUIRED)     # physfs-static, built on the SDL3 platform backend
     find_package(SDL_PhysFS REQUIRED) # SDL_PhysFS header-only interface
@@ -65,14 +60,8 @@ endif()
 
 # Menu system (SDL_libretro_menu.h) built on nuklear_console. Kept out of the
 # base SDL_libretro target so consumers that don't want it pull in no Nuklear.
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-    option(SDL_LIBRETRO_MENU "Enable the nuklear_console menu (SDL_libretro_menu.h)" ON)
-else()
-    option(SDL_LIBRETRO_MENU "Enable the nuklear_console menu (SDL_libretro_menu.h)" OFF)
-endif()
-
 if(SDL_LIBRETRO_MENU)
-    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/Nuklear/nuklear.h")
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/Nuklear/nuklear.h")
         message(FATAL_ERROR "SDL_LIBRETRO_MENU requires the vendored submodules: git submodule update --init")
     endif()
 
@@ -81,10 +70,10 @@ if(SDL_LIBRETRO_MENU)
     # "vendor/c-vector/cvector.h" and "vendor/tinydir/tinydir.h" includes
     # resolve against the sibling submodules in vendor/.
     target_include_directories(SDL_libretro_menu INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/Nuklear>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_console>
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/nuklear_gamepad>)
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/Nuklear>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/nuklear_console>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/nuklear_gamepad>)
     target_compile_definitions(SDL_libretro_menu INTERFACE SDL_LIBRETRO_ENABLE_MENU)
     target_link_libraries(SDL_libretro_menu INTERFACE SDL_libretro)
     if(UNIX)
@@ -94,7 +83,6 @@ if(SDL_LIBRETRO_MENU)
 endif()
 
 # Example
-option(SDL_LIBRETRO_BUILD_EXAMPLES "Build example applications" ON)
 if(SDL_LIBRETRO_BUILD_EXAMPLES)
     add_executable(SDL_libretro_basic example/SDL_libretro_basic.c)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
@@ -117,14 +105,13 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
 endif()
 
 # Tests
-option(SDL_LIBRETRO_BUILD_TESTS "Build unit tests" ON)
 if(SDL_LIBRETRO_BUILD_TESTS)
     enable_testing()
     add_subdirectory(test)
 endif()
 
 # Install (only when this is the top-level project)
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+if(PROJECT_IS_TOP_LEVEL)
     include(CMakePackageConfigHelpers)
     include(GNUInstallDirs)
 
@@ -148,23 +135,23 @@ if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
 
     configure_package_config_file(
         cmake/SDL_libretroConfig.cmake.in
-        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfig.cmake
+        ${PROJECT_BINARY_DIR}/SDL_libretroConfig.cmake
         INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SDL_libretro)
 
     write_basic_package_version_file(
-        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfigVersion.cmake
+        ${PROJECT_BINARY_DIR}/SDL_libretroConfigVersion.cmake
         VERSION ${PROJECT_VERSION}
         COMPATIBILITY SameMajorVersion)
 
     install(FILES
-        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfig.cmake
-        ${CMAKE_CURRENT_BINARY_DIR}/SDL_libretroConfigVersion.cmake
+        ${PROJECT_BINARY_DIR}/SDL_libretroConfig.cmake
+        ${PROJECT_BINARY_DIR}/SDL_libretroConfigVersion.cmake
         DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/SDL_libretro)
 endif()
 
 if(EMSCRIPTEN)
-    if(NOT SDL_LIBRETRO_DOWNLOAD_CORES)
-        message(FATAL_ERROR "Emscripten builds require SDL_LIBRETRO_DOWNLOAD_CORES=ON: "
+    if(TARGET SDL_libretro_app AND NOT SDL_LIBRETRO_DOWNLOAD_CORES)
+        message(FATAL_ERROR "The Emscripten SDL_libretro app requires SDL_LIBRETRO_DOWNLOAD_CORES=ON: "
             "cores must be downloaded so they can be preloaded into the virtual filesystem.")
     endif()
     include(EmscriptenConfig)
