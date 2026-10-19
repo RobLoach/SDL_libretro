@@ -1,3 +1,10 @@
+#include <SDL3/SDL_stdinc.h>
+#include <SDL3/SDL_timer.h>
+
+/* A fake clock for deterministic pacing tests; 0 uses the real clock. */
+static Uint64 test_fakeTicksNS = 0;
+#define SDL_LIBRETRO_GET_TICKS_NS() (test_fakeTicksNS ? test_fakeTicksNS : SDL_GetTicksNS())
+
 #define SDL_LIBRETRO_IMPLEMENTATION
 #define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
@@ -1293,6 +1300,9 @@ static int SDLCALL test_FrameTime(void *arg) {
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
 
+    // Drive the pacing clock by hand, so the test is immune to scheduling.
+    test_fakeTicksNS = 1000 * SDL_NS_PER_SECOND;
+
     // A reference deliberately unlike 1/60s, so it can't be confused with the idealized frame period.
     const retro_usec_t coreReference = 12345;
     struct retro_frame_time_callback ftcb = { test_FrameTimeCallback, coreReference };
@@ -1306,16 +1316,16 @@ static int SDLCALL test_FrameTime(void *arg) {
 
     // At 1x, a 50ms stall runs two catch-up ticks that share the measured time.
     test_frameTimeCount = 0;
-    SDL_DelayNS(50 * SDL_NS_PER_MS);
+    test_fakeTicksNS += 50 * SDL_NS_PER_MS;
     SDL_Libretro_Update(lr);
     SDLTest_AssertCheck(test_frameTimeCount == 2, "50ms stall runs two catch-up ticks, got %d", test_frameTimeCount);
-    SDLTest_AssertCheck(test_frameTimeCount >= 1 && test_frameTimes[0] >= 24000 && test_frameTimes[0] < 1000000,
+    SDLTest_AssertCheck(test_FrameTimesAll(25000),
         "Catch-up ticks report their share of the measured time, got %lld", (long long)test_frameTimes[0]);
 
     // Off 1x speed the idealized per-tick period is reported.
     SDL_Libretro_SetSpeed(lr, 2.0f);
     test_frameTimeCount = 0;
-    SDL_DelayNS(20 * SDL_NS_PER_MS);
+    test_fakeTicksNS += 20 * SDL_NS_PER_MS;
     SDL_Libretro_Update(lr);
     retro_usec_t fastReference = (retro_usec_t)((1.0 / 60.0) * 1.0e6 / 2.0);
     SDLTest_AssertCheck(test_FrameTimesAll(fastReference), "Fast-forward reports the idealized period %lld, got %d calls, first %lld",
@@ -1326,24 +1336,25 @@ static int SDLCALL test_FrameTime(void *arg) {
     SDL_Libretro_Update(lr);
     SDL_Libretro_SetSpeed(lr, 1.0f);
     test_frameTimeCount = 0;
-    SDL_DelayNS(30 * SDL_NS_PER_MS);
+    test_fakeTicksNS += 30 * SDL_NS_PER_MS;
     SDL_Libretro_Update(lr);
     SDLTest_AssertCheck(test_FrameTimesAll(coreReference), "First tick after a pause reports the core reference");
 
     // A reset restarts the clock too.
     SDLTest_AssertCheck(SDL_Libretro_Reset(lr), "Reset succeeds");
     test_frameTimeCount = 0;
-    SDL_DelayNS(30 * SDL_NS_PER_MS);
+    test_fakeTicksNS += 30 * SDL_NS_PER_MS;
     SDL_Libretro_Update(lr);
     SDLTest_AssertCheck(test_FrameTimesAll(coreReference), "First tick after a reset reports the core reference");
 
     // Once running, a single 1x tick reports the measured time, not the idealized 16666us.
     test_frameTimeCount = 0;
-    SDL_DelayNS(16 * SDL_NS_PER_MS);
+    test_fakeTicksNS += 16 * SDL_NS_PER_MS;
     SDL_Libretro_Update(lr);
-    SDLTest_AssertCheck(test_frameTimeCount >= 1 && test_frameTimes[0] >= 16000 && test_frameTimes[0] != 16666,
+    SDLTest_AssertCheck(test_frameTimeCount == 1 && test_frameTimes[0] == 16000,
         "1x tick reports measured time, got %d calls, %lld", test_frameTimeCount, (long long)test_frameTimes[0]);
 
+    test_fakeTicksNS = 0;
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

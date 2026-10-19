@@ -8,6 +8,15 @@
 #define SDL_LIBRETRO_CORE_IMPL_ONCE
 
 /**
+ * The clock that paces SDL_Libretro_Update() and the frame-time callback, in nanoseconds.
+ *
+ * Define before including the implementation to substitute a custom clock, e.g. a fake one in tests.
+ */
+#ifndef SDL_LIBRETRO_GET_TICKS_NS
+#define SDL_LIBRETRO_GET_TICKS_NS() SDL_GetTicksNS()
+#endif
+
+/**
  * Reset all controller ports to the libretro default device.
  *
  * Libretro assumes ports are \c RETRO_DEVICE_JOYPAD, so we start with that.
@@ -1243,7 +1252,7 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
  * Mirrors RetroArch: the first tick (or the first after a load, reset, pause or rewind) has no measured cadence, so it gets the reference the core declared. At 1x speed the wall-clock time since the previous tick batch is reported. Off 1x speed (fast-forward, slow-motion) the idealized `referenceUsec` is reported instead, since the measured time doesn't describe game time. When one Update runs several catch-up ticks, the measured time is split evenly across them, so each tick still reports its share rather than the first getting it all and the rest ~0.
  */
 static retro_usec_t SDL_Libretro_FrameTimeDelta(SDL_Libretro* lr, retro_usec_t referenceUsec, int ticks) {
-    Uint64 nowNS = SDL_GetTicksNS();
+    Uint64 nowNS = SDL_LIBRETRO_GET_TICKS_NS();
     Uint64 lastNS = lr->core.runloop_frame_time_last;
     lr->core.runloop_frame_time_last = nowNS;
     if (!lastNS || referenceUsec <= 0) {
@@ -1311,7 +1320,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
 
     // Rewind mode: step backwards when speed is negative.
     if (lr->rewindEnabled && lr->core.speed < 0.0f) {
-        Uint64 nowNS = SDL_GetTicksNS();
+        Uint64 nowNS = SDL_LIBRETRO_GET_TICKS_NS();
         if (lr->core.lastTickNS == 0) {
             lr->core.lastTickNS = nowNS;
         }
@@ -1350,7 +1359,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     SDL_Libretro_UpdateDRC(lr, lr->core.speed);
 
     // Wall-clock delta since the previous RunFrame.
-    Uint64 nowNS = SDL_GetTicksNS();
+    Uint64 nowNS = SDL_LIBRETRO_GET_TICKS_NS();
     if (lr->core.lastTickNS == 0) {
         // First call: seed the clock and run exactly one tick.
         lr->core.lastTickNS = nowNS;
