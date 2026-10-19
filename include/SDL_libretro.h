@@ -234,8 +234,21 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  * doesn't also reach the event queue; unclaimed commands arrive there once,
  * with the data pointer already expired. user.reserved is used internally to
  * tell queued copies of the same command apart.
+ *
+ * The range is a fixed offset into the SDL user events, so the types work as
+ * `case` labels. The first SDL_Libretro_Create() in a process reserves
+ * SDL_EVENT_LIBRETRO through SDL_EVENT_LIBRETRO_LAST with
+ * SDL_RegisterEvents(), so events the application registers afterwards land
+ * past it. Applications registering events before then should keep below
+ * SDL_EVENT_LIBRETRO; a warning is logged when they've reached into it.
  */
 #define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
+
+/**
+ * The last SDL event type in the SDL_libretro range. Every SDL_libretro
+ * event falls within SDL_EVENT_LIBRETRO to SDL_EVENT_LIBRETRO_LAST.
+ */
+#define SDL_EVENT_LIBRETRO_LAST (SDL_EVENT_LIBRETRO | 0xFFF)
 
 #define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /**< A core finished loading; data2 is the core name, valid until the next load or unload. @see SDL_Libretro_GetCoreName() */
 #define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /**< A game finished loading, whether directly or through the menu; data2 is the game name, valid until the next load or unload. @see SDL_Libretro_GetGameName() */

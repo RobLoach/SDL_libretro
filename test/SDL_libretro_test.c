@@ -3158,13 +3158,37 @@ static bool SDLCALL test_EventsFilterClaim(void* userdata, SDL_Event* event) {
     return true;
 }
 
+static int SDLCALL test_EventRange(void *arg) {
+    (void)arg;
+
+    // Creating a context reserves the fixed SDL_EVENT_LIBRETRO range, so
+    // later application registrations land past it.
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    const Uint32 first = SDL_RegisterEvents(1);
+    SDLTest_AssertCheck(first != 0, "SDL_RegisterEvents still has room after Create");
+    SDLTest_AssertCheck(first < SDL_EVENT_LIBRETRO || first > SDL_EVENT_LIBRETRO_LAST,
+        "A registered event (0x%x) is outside the libretro range", first);
+    SDLTest_AssertCheck(first > SDL_EVENT_LIBRETRO_LAST,
+        "Registrations after Create come after the libretro range");
+
+    // The range is reserved once per process, not per context.
+    SDL_Libretro* other = SDL_Libretro_Create();
+    const Uint32 second = SDL_RegisterEvents(1);
+    SDLTest_AssertCheck(second == first + 1, "A second context doesn't reserve the range again");
+
+    SDL_Libretro_Destroy(other);
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_Events(void *arg) {
     (void)arg;
 
     // The event space sits in the SDL user event range; the experimental
     // flag is masked off so every command fits below the lifecycle events.
     SDLTest_AssertCheck(SDL_EVENT_LIBRETRO >= SDL_EVENT_USER, "SDL_EVENT_LIBRETRO is a user event");
-    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_MENU_CLOSED <= SDL_EVENT_LAST, "The libretro events fit the SDL event range");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_LAST <= SDL_EVENT_LAST, "The libretro events fit the SDL event range");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED <= SDL_EVENT_LIBRETRO_LAST, "The lifecycle events fit the libretro range");
     SDLTest_AssertCheck((SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE) <= SDL_EVENT_LAST,
         "Plain commands OR directly onto SDL_EVENT_LIBRETRO");
     SDLTest_AssertCheck((SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT & ~RETRO_ENVIRONMENT_EXPERIMENTAL)) < (Uint32)SDL_EVENT_LIBRETRO_CORE_LOADED,
@@ -3760,6 +3784,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
     LIBRETRO_TEST_CASE(test_VFSTruncate,      "VFS truncate keeps the handle usable"),
     LIBRETRO_TEST_CASE(test_Events,           "SDL event pushes: env dispatch, watches, and lifecycle"),
+    LIBRETRO_TEST_CASE(test_EventRange,       "Create reserves the SDL_EVENT_LIBRETRO range"),
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     LIBRETRO_TEST_CASE(test_Menu,             "Menu create/toggle/update/render lifecycle"),
 #endif

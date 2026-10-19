@@ -42,12 +42,47 @@ static void SDL_Libretro_ResetPortDevices(SDL_Libretro* lr) {
  *
  * @see SDL_Libretro_LoadCore()
  */
+/**
+ * Reserves the fixed SDL_EVENT_LIBRETRO range with SDL_RegisterEvents(), once
+ * per process, so events the application registers afterwards can't collide
+ * with it. SDL hands out user events sequentially from SDL_EVENT_USER, so
+ * this registers everything up to SDL_EVENT_LIBRETRO_LAST, and warns when
+ * earlier registrations already reached into the range.
+ *
+ * @internal
+ */
+static void SDL_Libretro_ReserveEvents(void) {
+    static SDL_AtomicInt reserved;
+    if (!SDL_CompareAndSwapAtomicInt(&reserved, 0, 1)) {
+        return;
+    }
+
+    // Probe where SDL's next user event sits, then claim up to the end of
+    // the range in one block.
+    const Uint32 next = SDL_RegisterEvents(1);
+    if (next == 0 || next >= SDL_EVENT_LIBRETRO) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+            "[SDL_Libretro] Registered user events reach the SDL_EVENT_LIBRETRO range (0x%x-0x%x); they may collide",
+            (unsigned)SDL_EVENT_LIBRETRO, (unsigned)SDL_EVENT_LIBRETRO_LAST);
+        return;
+    }
+    const int count = (int)(SDL_EVENT_LIBRETRO_LAST - next);
+    const Uint32 base = SDL_RegisterEvents(count);
+    if (base == 0 || base > SDL_EVENT_LIBRETRO) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
+            "[SDL_Libretro] Failed to reserve the SDL_EVENT_LIBRETRO range (0x%x-0x%x); registered user events may collide",
+            (unsigned)SDL_EVENT_LIBRETRO, (unsigned)SDL_EVENT_LIBRETRO_LAST);
+    }
+}
+
 SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro* lr = (SDL_Libretro*)SDL_calloc(1, sizeof(SDL_Libretro));
     if (!lr) {
         SDL_SetError("[SDL_Libretro] Failed to allocate context");
         return NULL;
     }
+
+    SDL_Libretro_ReserveEvents();
 
     // Initial state (the calloc above already zeroed the struct).
     lr->rewindMaxBytes = SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES;
@@ -111,7 +146,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
 
     // Queued SDL_libretro events (including the unloads pushed above) carry
     // pointers into this context; drop them before it goes away.
-    SDL_FlushEvents(SDL_EVENT_LIBRETRO, SDL_EVENT_LIBRETRO | 0xFFF);
+    SDL_FlushEvents(SDL_EVENT_LIBRETRO, SDL_EVENT_LIBRETRO_LAST);
 
     SDL_free(lr);
 }
