@@ -511,6 +511,23 @@ static int SDLCALL test_PerfInterface(void *arg) {
 #endif
     }
 
+    // perf_start counts calls and perf_stop accumulates the elapsed ticks.
+    SDLTest_AssertCheck(perf.perf_register && perf.perf_start && perf.perf_stop && perf.perf_log, "Perf counter functions provided");
+    if (perf.perf_register && perf.perf_start && perf.perf_stop && perf.perf_log) {
+        struct retro_perf_counter counter = {0};
+        counter.ident = "test_counter";
+        perf.perf_register(&counter);
+        SDLTest_AssertCheck(counter.registered, "Counter registered");
+        for (int i = 0; i < 3; i++) {
+            perf.perf_start(&counter);
+            perf.perf_stop(&counter);
+        }
+        SDLTest_AssertCheck(counter.call_cnt == 3, "perf_start counted 3 calls, got %llu", (unsigned long long)counter.call_cnt);
+        perf.perf_start(NULL);
+        perf.perf_stop(NULL);
+        perf.perf_log();
+    }
+
     SDL_Libretro_Destroy(lr);
     SDL_Libretro_active = prevActive;
     return TEST_COMPLETED;

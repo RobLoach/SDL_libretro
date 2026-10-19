@@ -89,7 +89,9 @@ static void SDL_Libretro_PerfRegister(struct retro_perf_counter* counter) {
 }
 
 static void SDL_Libretro_PerfStart(struct retro_perf_counter* counter) {
-    if (counter) counter->start = (retro_perf_tick_t)SDL_GetPerformanceCounter();
+    if (!counter) return;
+    counter->call_cnt++;
+    counter->start = (retro_perf_tick_t)SDL_GetPerformanceCounter();
 }
 
 static void SDL_Libretro_PerfStop(struct retro_perf_counter* counter) {
