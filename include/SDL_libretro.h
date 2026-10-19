@@ -731,7 +731,9 @@ typedef struct SDL_LibretroCoreData {
     char contentExt[32]; /**< Lower-case content extension; backs gameInfoExt.ext. */
     char contentTempPath[SDL_LIBRETRO_MAX_PATH]; /**< File spilled to the temp directory by SDL_Libretro_LoadGame_IO() for a need_fullpath core; removed when the content unloads. */
 
-    struct retro_game_info_ext gameInfoExt; /**< Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
+    struct retro_game_info_ext gameInfoExt; /**< Extended game info handed to cores via GET_GAME_INFO_EXT for single-file loads (a 1-entry array). A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
+    struct retro_game_info_ext* gameInfoExtArray; /**< Subsystem loads: one GET_GAME_INFO_EXT entry per content file, in subsystem order. The strings are owned by the context; NULL for single-file loads. */
+    unsigned gameInfoExtCount; /**< Number of entries in gameInfoExtArray. */
 
     // Content Info Overrides
     struct retro_system_content_info_override* contentInfoOverrides; /**< Deep-copied; owned by the context. */

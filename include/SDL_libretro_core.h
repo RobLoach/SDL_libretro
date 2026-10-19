@@ -520,6 +520,54 @@ static bool SDL_Libretro_ContentPersistData(const SDL_Libretro* lr, const char* 
 }
 
 /**
+ * Free the per-file subsystem GET_GAME_INFO_EXT entries.
+ *
+ * @internal
+ */
+static void SDL_Libretro_FreeGameInfoExtArray(SDL_Libretro* lr) {
+    for (unsigned i = 0; i < lr->core.gameInfoExtCount; i++) {
+        struct retro_game_info_ext* entry = &lr->core.gameInfoExtArray[i];
+        SDL_free((void*)entry->full_path);
+        SDL_free((void*)entry->dir);
+        SDL_free((void*)entry->name);
+        SDL_free((void*)entry->ext);
+    }
+    SDL_free(lr->core.gameInfoExtArray);
+    lr->core.gameInfoExtArray = NULL;
+    lr->core.gameInfoExtCount = 0;
+}
+
+/**
+ * Fill a GET_GAME_INFO_EXT entry's path, directory, base name and lower-case extension from a content path. The strings are allocated, and freed by SDL_Libretro_FreeGameInfoExtArray().
+ *
+ * @internal
+ */
+static void SDL_Libretro_FillGameInfoExt(struct retro_game_info_ext* entry, const char* path) {
+    if (!path) return;
+    entry->full_path = SDL_strdup(path);
+
+    char buffer[SDL_LIBRETRO_MAX_PATH];
+    SDL_Libretro_GetFileName(buffer, sizeof(buffer), path, false);
+    entry->name = SDL_strdup(buffer);
+
+    SDL_Libretro_GetFileName(buffer, sizeof(buffer), path, true);
+    const char* dot = SDL_strrchr(buffer, '.');
+    char* ext = SDL_strdup(dot ? dot + 1 : "");
+    if (ext) {
+        for (char* c = ext; *c; c++) *c = (char)SDL_tolower((unsigned char)*c);
+    }
+    entry->ext = ext;
+
+    SDL_strlcpy(buffer, path, sizeof(buffer));
+    char* sep = SDL_strrchr(buffer, '/');
+    char* backslash = SDL_strrchr(buffer, '\\');
+    if (!sep || (backslash && backslash > sep)) sep = backslash;
+    if (sep) *sep = '\0';
+    else buffer[0] = '\0';
+    entry->dir = SDL_strdup(buffer);
+}
+
+/**
  * Reset the loaded-content identity to the no-content state.
  *
  * Clear the content path/dir/ext, restore the content name to the core's library-name default (so GetSavePath keeps working), free any persistent content buffer, and invalidate gameInfoExt.
@@ -542,6 +590,7 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
         SDL_free((void*)lr->core.gameInfoExt.data);
     }
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
+    SDL_Libretro_FreeGameInfoExtArray(lr);
 
     // Images added with SDL_Libretro_AddDiskImage_IO() belong to the game.
     SDL_Libretro_FreeDiskImages(lr);
@@ -1034,6 +1083,19 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
         SDL_strlcpy(lr->core.contentName, lr->core.libraryName, sizeof(lr->core.contentName));
     }
 
+    // GET_GAME_INFO_EXT hands subsystem cores one entry per content file, in subsystem order. Files that weren't given keep a NULL full_path.
+    SDL_Libretro_FreeGameInfoExtArray(lr);
+    lr->core.gameInfoExtArray = (struct retro_game_info_ext*)SDL_calloc(numPaths, sizeof(struct retro_game_info_ext));
+    if (lr->core.gameInfoExtArray) {
+        lr->core.gameInfoExtCount = numPaths;
+        for (unsigned i = 0; i < numPaths; i++) {
+            SDL_Libretro_FillGameInfoExt(&lr->core.gameInfoExtArray[i], paths[i]);
+            lr->core.gameInfoExtArray[i].data = gameInfos[i].data;
+            lr->core.gameInfoExtArray[i].size = gameInfos[i].size;
+            lr->core.gameInfoExtArray[i].persistent_data = false;
+        }
+    }
+
     SDL_Libretro_SetCoreCallbacks(lr);
 
     bool result = lr->core.symbols.retro_load_game_special(subsystemId, gameInfos, numPaths);
@@ -1045,6 +1107,10 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
     SDL_free(gameInfos);
     lr->core.gameInfoExt.data = NULL;
     lr->core.gameInfoExt.size = 0;
+    for (unsigned i = 0; i < lr->core.gameInfoExtCount; i++) {
+        lr->core.gameInfoExtArray[i].data = NULL;
+        lr->core.gameInfoExtArray[i].size = 0;
+    }
 
     if (!result) {
         SDL_Libretro_ResetContentState(lr);

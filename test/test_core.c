@@ -92,8 +92,11 @@ static bool RETRO_CALLCONV disk_add_image_index(void) {
  * [18] GET_INPUT_MAX_USERS result, [19] max users value,
  * [20] GET_JIT_CAPABLE result, [21] jit capable value,
  * [22] GET_PREFERRED_HW_RENDER result, [23] preferred context + 1,
- * [24] 1 if GET_VARIABLE gave test_option_late as "late_b". */
-static uint8_t game_info_probe[32];
+ * [24] 1 if GET_VARIABLE gave test_option_late as "late_b".
+ * Subsystem loads also record the second GET_GAME_INFO_EXT entry:
+ * [32..47] name, [48..55] lower-case ext, [56] data != NULL,
+ * [57] full_path matches info[1].path, [58] dir != NULL. */
+static uint8_t game_info_probe[64];
 
 /* Probe the trivial environment queries and record the results in
  * game_info_probe[18..23] for the frontend test to assert on. */
@@ -427,13 +430,18 @@ RETRO_API bool retro_load_game_special(unsigned type, const struct retro_game_in
         memcpy(save_ram, info[0].data, n);
     }
 
-    // Probe the extended game info the frontend published for the primary ROM.
+    // Probe the extended game info the frontend published: one entry per ROM.
     memset(game_info_probe, 0, sizeof(game_info_probe));
     const struct retro_game_info_ext *ext = NULL;
     if (environ_cb && environ_cb(RETRO_ENVIRONMENT_GET_GAME_INFO_EXT, &ext) && ext) {
-        if (ext->ext) strncpy((char *)game_info_probe, ext->ext, 15);
-        game_info_probe[16] = ext->persistent_data ? 1 : 0;
-        game_info_probe[17] = ext->data != NULL ? 1 : 0;
+        if (ext[0].ext) strncpy((char *)game_info_probe, ext[0].ext, 15);
+        game_info_probe[16] = ext[0].persistent_data ? 1 : 0;
+        game_info_probe[17] = ext[0].data != NULL ? 1 : 0;
+        if (ext[1].name) strncpy((char *)game_info_probe + 32, ext[1].name, 15);
+        if (ext[1].ext) strncpy((char *)game_info_probe + 48, ext[1].ext, 7);
+        game_info_probe[56] = ext[1].data != NULL ? 1 : 0;
+        game_info_probe[57] = (ext[1].full_path && info[1].path && strcmp(ext[1].full_path, info[1].path) == 0) ? 1 : 0;
+        game_info_probe[58] = ext[1].dir != NULL ? 1 : 0;
     }
     return true;
 }

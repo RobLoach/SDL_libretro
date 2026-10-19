@@ -1158,8 +1158,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_GAME_INFO_EXT: {
-            // A non-NULL full_path means LoadGame populated this for content.
-            if (!data || !lr->core.gameInfoExt.full_path) return false;
+            if (!data) return false;
+            // Subsystem loads get an array with one entry per content file.
+            if (lr->core.gameInfoExtArray) {
+                *(const struct retro_game_info_ext**)data = lr->core.gameInfoExtArray;
+                return true;
+            }
+            // Single-file loads get a 1-entry array. A non-NULL full_path means LoadGame populated it for content.
+            if (!lr->core.gameInfoExt.full_path) return false;
             *(const struct retro_game_info_ext**)data = &lr->core.gameInfoExt;
             return true;
         }

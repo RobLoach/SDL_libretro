@@ -1425,8 +1425,17 @@ static int SDLCALL test_LoadGameSpecial(void *arg) {
     if (probe) {
         SDLTest_AssertCheck(SDL_strcmp((const char*)probe, "gb") == 0, "Core saw primary ROM ext 'gb', got '%s'", (const char*)probe);
         SDLTest_AssertCheck(probe[17] == 1, "Core saw non-NULL game info data");
+        // GET_GAME_INFO_EXT is an array with an entry per ROM, in subsystem order.
+        SDLTest_AssertCheck(SDL_strcmp((const char*)probe + 32, "test_sgb_rom1") == 0, "Second entry name is 'test_sgb_rom1', got '%s'", (const char*)probe + 32);
+        SDLTest_AssertCheck(SDL_strcmp((const char*)probe + 48, "sfc") == 0, "Second entry ext is 'sfc', got '%s'", (const char*)probe + 48);
+        SDLTest_AssertCheck(probe[56] == 0, "Second entry (need_fullpath) has no data");
+        SDLTest_AssertCheck(probe[57] == 1, "Second entry full_path matches its path");
+        SDLTest_AssertCheck(probe[58] == 1, "Second entry has a dir");
     }
+    SDLTest_AssertCheck(lr->core.gameInfoExtCount == 2, "Two GET_GAME_INFO_EXT entries kept, got %u", lr->core.gameInfoExtCount);
+    SDLTest_AssertCheck(lr->core.gameInfoExtArray && lr->core.gameInfoExtArray[0].data == NULL, "Entry data cleared after the load");
     SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(lr->core.gameInfoExtArray == NULL && lr->core.gameInfoExtCount == 0, "Entries freed on unload");
 
     // Load by description resolves to the same subsystem.
     SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "Super Game Boy", paths, 2) == true, "LoadGameSpecial by description succeeds");
