@@ -50,6 +50,16 @@ static uint64_t SDL_Libretro_GetCPUFeatures(void) {
     if (SDL_HasSSE42()) features |= RETRO_SIMD_SSE42;
     if (SDL_HasAVX()) features |= RETRO_SIMD_AVX;
     if (SDL_HasAVX2()) features |= RETRO_SIMD_AVX2;
+    if (SDL_HasAVX512F()) features |= RETRO_SIMD_AVX512;
+    if (SDL_HasMMX()) features |= RETRO_SIMD_MMX;
+    if (SDL_HasAltiVec()) features |= RETRO_SIMD_VMX;
+    if (SDL_HasNEON()) {
+        features |= RETRO_SIMD_NEON;
+#if defined(__aarch64__) || defined(_M_ARM64)
+        // AArch64's Advanced SIMD is NEON; report both, as RetroArch does.
+        features |= RETRO_SIMD_ASIMD;
+#endif
+    }
     return features;
 }
 

@@ -486,6 +486,36 @@ static int SDLCALL test_OptionReregister(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Exercises the perf interface directly through a bare active context. */
+static int SDLCALL test_PerfInterface(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+
+    struct retro_perf_callback perf = {0};
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_PERF_INTERFACE, &perf), "GET_PERF_INTERFACE succeeds");
+    SDLTest_AssertCheck(perf.get_cpu_features != NULL, "get_cpu_features provided");
+
+    // CPU features mirror SDL's queries.
+    if (perf.get_cpu_features) {
+        uint64_t features = perf.get_cpu_features();
+        SDLTest_AssertCheck(!SDL_HasNEON() || (features & RETRO_SIMD_NEON), "NEON reported when SDL_HasNEON()");
+        SDLTest_AssertCheck(!SDL_HasSSE2() || (features & RETRO_SIMD_SSE2), "SSE2 reported when SDL_HasSSE2()");
+        SDLTest_AssertCheck(!SDL_HasMMX() || (features & RETRO_SIMD_MMX), "MMX reported when SDL_HasMMX()");
+        SDLTest_AssertCheck(!SDL_HasAltiVec() || (features & RETRO_SIMD_VMX), "VMX reported when SDL_HasAltiVec()");
+        SDLTest_AssertCheck(!SDL_HasAVX512F() || (features & RETRO_SIMD_AVX512), "AVX512 reported when SDL_HasAVX512F()");
+        SDLTest_AssertCheck(SDL_HasNEON() || !(features & RETRO_SIMD_NEON), "NEON not reported without SDL_HasNEON()");
+#if defined(__aarch64__) || defined(_M_ARM64)
+        // NEON is mandatory on AArch64.
+        SDLTest_AssertCheck((features & RETRO_SIMD_NEON) && (features & RETRO_SIMD_ASIMD), "AArch64 reports NEON and ASIMD");
+#endif
+    }
+
+    SDL_Libretro_Destroy(lr);
+    SDL_Libretro_active = prevActive;
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -3328,6 +3358,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_GamepadEvents,    "Gamepad hotplug events update gamepadCount"),
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
     LIBRETRO_TEST_CASE(test_SetVariablesLegacy, "Legacy SET_VARIABLES parsing without truncation"),
+    LIBRETRO_TEST_CASE(test_PerfInterface,   "Perf interface CPU features and counters"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),
