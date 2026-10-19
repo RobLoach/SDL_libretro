@@ -356,7 +356,10 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archiv
 bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     if (!lr) return false;
 
-    // Drop any prior mount up front.
+    // Unload any running game before touching the mount. Otherwise the old
+    // archive is pulled out from under it before retro_unload_game(), and the
+    // unload inside SDL_Libretro_LoadGameFile() would unmount the new one.
+    SDL_Libretro_UnloadGame(lr);
     SDL_Libretro_PhysFS_ClearMount(lr);
 
     // Load the core without content.

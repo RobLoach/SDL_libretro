@@ -1602,6 +1602,52 @@ static int SDLCALL test_PhysFSNestedDir(void *arg) {
 #endif
 }
 
+static int SDLCALL test_PhysFSLoadSecondZip(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_SECOND_ZIP_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_SECOND_ZIP_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // Load zip A, then zip B on the same core without unloading in between.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_CONTENT_ZIP_PATH) == true,
+        "First zip loads");
+    SDLTest_AssertCheck(SDL_strcmp(lr->physfsMountSource, TEST_CONTENT_ZIP_PATH) == 0,
+        "Mount source is the first zip");
+
+    // B holds need_fullpath content served by its virtual path, so the core
+    // can only read it if B is still mounted when retro_load_game runs.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_SECOND_ZIP_PATH) == true,
+        "Second zip loads over the first");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after second zip load");
+    SDLTest_AssertCheck(SDL_strcmp(lr->physfsMountSource, TEST_SECOND_ZIP_PATH) == 0,
+        "Mount source is the second zip, got '%s'", lr->physfsMountSource);
+
+    const char expected[] = "SECOND ZIP PICK";
+    size_t sramSize = 0;
+    const unsigned char* sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram != NULL && sramSize >= sizeof(expected) - 1, "SAVE_RAM available");
+    if (sram && sramSize >= sizeof(expected) - 1) {
+        SDLTest_AssertCheck(SDL_memcmp(sram, expected, sizeof(expected) - 1) == 0,
+            "Core read the second zip's file via the PhysFS VFS");
+    }
+
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_PhysFSSpillFallback(void *arg) {
 #if !defined(TEST_CORE_NOVFS_PATH) || !defined(TEST_FULLPATH_ZIP_PATH) || !defined(TEST_CONTENT_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_NOVFS_PATH, TEST_FULLPATH_ZIP_PATH, or TEST_CONTENT_PATH not defined");
@@ -3097,6 +3143,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PhysFSNonZip,      "PhysFS loader passes non-zip content through"),
     LIBRETRO_TEST_CASE(test_PhysFSPickPriority, "Content pick prefers disc metadata and base-name matches"),
     LIBRETRO_TEST_CASE(test_PhysFSNestedDir,   "Content in a zip subdirectory is found"),
+    LIBRETRO_TEST_CASE(test_PhysFSLoadSecondZip, "Loading a second zip keeps it mounted"),
     LIBRETRO_TEST_CASE(test_PhysFSSpillFallback, "Full-path cores without VFS get an extracted file"),
 #endif
     LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
