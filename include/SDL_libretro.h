@@ -665,8 +665,9 @@ typedef struct SDL_LibretroCoreData {
     struct retro_audio_buffer_status_callback audio_buffer_status; /**< @see SDL_Libretro_ReportAudioBufferStatus() */
 
     // Input
-    float inputLastMouseX, inputLastMouseY;
-    float inputMouseX, inputMouseY;
+    float inputMouseX, inputMouseY; /**< Absolute mouse position in window coordinates, for the pointer and lightgun. */
+    float inputMotionAccumX, inputMotionAccumY; /**< Relative mouse motion accumulated between frames via SDL_Libretro_HandleEvent(). */
+    float inputMotionX, inputMotionY; /**< Relative mouse motion for the current frame, snapshotted in SDL_Libretro_InputPoll(). */
     float inputWheelAccumX, inputWheelAccumY; /**< Wheel delta accumulated between frames via SDL_Libretro_HandleEvent(). */
     float inputWheelX, inputWheelY; /**< Wheel deltas for the current frame, snapshotted in SDL_Libretro_InputPoll(). */
     unsigned portDeviceMap[SDL_LIBRETRO_MAX_USERS];

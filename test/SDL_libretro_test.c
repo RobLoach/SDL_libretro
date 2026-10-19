@@ -1970,6 +1970,55 @@ static void CheckPointer(SDL_Libretro* lr, int rot, int16_t expectX, int16_t exp
     SDLTest_AssertCheck(SDL_abs(y - expectY) <= 2, "rot %d POINTER_Y ~%d, got %d", rot, expectY, y);
 }
 
+static void PushMouseMotion(SDL_Libretro* lr, float x, float y, float xrel, float yrel) {
+    SDL_Event e;
+    SDL_zero(e);
+    e.type = SDL_EVENT_MOUSE_MOTION;
+    e.motion.x = x;
+    e.motion.y = y;
+    e.motion.xrel = xrel;
+    e.motion.yrel = yrel;
+    SDL_Libretro_HandleEvent(lr, &e);
+}
+
+static int SDLCALL test_MouseMotion(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // Relative motion accumulates between polls, even when the absolute
+    // position doesn't change (pinned at a window edge or in relative mode).
+    PushMouseMotion(lr, 0.0f, 0.0f, -5.0f, 3.0f);
+    PushMouseMotion(lr, 0.0f, 0.0f, -7.0f, 4.0f);
+    SDL_Libretro_InputPoll();
+    int16_t dx = SDL_Libretro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+    int16_t dy = SDL_Libretro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
+    SDLTest_AssertCheck(dx == -12, "MOUSE_X sums xrel, got %d", dx);
+    SDLTest_AssertCheck(dy == 7, "MOUSE_Y sums yrel, got %d", dy);
+
+    // Reading again within the same frame reports the same delta.
+    dx = SDL_Libretro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+    SDLTest_AssertCheck(dx == -12, "MOUSE_X stable within a frame, got %d", dx);
+
+    // The next poll with no motion reports zero.
+    SDL_Libretro_InputPoll();
+    dx = SDL_Libretro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X);
+    dy = SDL_Libretro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_Y);
+    SDLTest_AssertCheck(dx == 0 && dy == 0, "No motion reports zero, got %d,%d", dx, dy);
+
+    SDL_Libretro_Destroy(lr);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_Rotation(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -3264,6 +3313,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGameNoRenderer, "Load game without a renderer, attach one later"),
     LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),
     LIBRETRO_TEST_CASE(test_Rotation,          "Rotation-aware fit rect and pointer mapping"),
+    LIBRETRO_TEST_CASE(test_MouseMotion,       "Mouse deltas come from relative motion events"),
     LIBRETRO_TEST_CASE(test_InputDescriptorCopy, "Input descriptors and controller info are deep-copied"),
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),

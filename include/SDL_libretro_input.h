@@ -337,9 +337,14 @@ static void SDL_Libretro_InputPoll(void) {
     if (!lr) return;
 
     // Mouse Position
-    lr->core.inputLastMouseX = lr->core.inputMouseX;
-    lr->core.inputLastMouseY = lr->core.inputMouseY;
     SDL_GetMouseState(&lr->core.inputMouseX, &lr->core.inputMouseY);
+
+    // Relative Mouse Motion Accumulator; whole pixels are reported this frame
+    // and the sub-pixel remainder carries over so slow motion isn't lost.
+    lr->core.inputMotionX = SDL_truncf(lr->core.inputMotionAccumX);
+    lr->core.inputMotionY = SDL_truncf(lr->core.inputMotionAccumY);
+    lr->core.inputMotionAccumX -= lr->core.inputMotionX;
+    lr->core.inputMotionAccumY -= lr->core.inputMotionY;
 
     // Mouse Wheel Accumulator
     lr->core.inputWheelX = lr->core.inputWheelAccumX;
@@ -515,9 +520,9 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         case RETRO_DEVICE_MOUSE: {
             switch (id) {
                 case RETRO_DEVICE_ID_MOUSE_X:
-                    return (int16_t)(lr->core.inputMouseX - lr->core.inputLastMouseX);
+                    return (int16_t)SDL_clamp(lr->core.inputMotionX, -32768.0f, 32767.0f);
                 case RETRO_DEVICE_ID_MOUSE_Y:
-                    return (int16_t)(lr->core.inputMouseY - lr->core.inputLastMouseY);
+                    return (int16_t)SDL_clamp(lr->core.inputMotionY, -32768.0f, 32767.0f);
                 case RETRO_DEVICE_ID_MOUSE_LEFT: {
                     Uint32 state = SDL_GetMouseState(NULL, NULL);
                     return (state & SDL_BUTTON_LMASK) ? 1 : 0;
@@ -652,6 +657,13 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
             // clears them so each is reported for one frame.
             lr->core.inputWheelAccumX += event->wheel.x;
             lr->core.inputWheelAccumY += event->wheel.y;
+            break;
+        }
+        case SDL_EVENT_MOUSE_MOTION: {
+            // Accumulate relative motion, which keeps flowing at the window
+            // edges and in relative mouse mode; reported as MOUSE_X/Y.
+            lr->core.inputMotionAccumX += event->motion.xrel;
+            lr->core.inputMotionAccumY += event->motion.yrel;
             break;
         }
         case SDL_EVENT_GAMEPAD_ADDED: {
