@@ -71,8 +71,20 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         SDL_Libretro_SetCoreDirectory(lr, INI_GetString(ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr)));
     if (INI_HasValue(ini, NULL, "coreassetsdirectory"))
         SDL_Libretro_SetCoreAssetsDirectory(lr, INI_GetString(ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr)));
-    if (INI_HasValue(ini, NULL, "rewindenabled"))
-        SDL_Libretro_SetRewindEnabled(lr, INI_GetBoolean(ini, NULL, "rewindenabled", false), 0, 0);
+    if (INI_HasValue(ini, NULL, "rewindenabled") || INI_HasValue(ini, NULL, "rewindframes") || INI_HasValue(ini, NULL, "rewindinterval")) {
+        // Keep the current snapshot count and capture interval unless saved; 0 means the default.
+        bool enabled = INI_GetBoolean(ini, NULL, "rewindenabled", SDL_Libretro_GetRewindEnabled(lr));
+        Sint64 frames = INI_GetInt(ini, NULL, "rewindframes", (Sint64)lr->rewindCapacity);
+        Sint64 interval = INI_GetInt(ini, NULL, "rewindinterval", (Sint64)lr->rewindCaptureInterval);
+        unsigned bufferFrames = (frames > 0 && frames <= SDL_MAX_UINT32) ? (unsigned)frames : 0;
+        unsigned captureInterval = (interval > 0 && interval <= SDL_MAX_UINT32) ? (unsigned)interval : 0;
+        SDL_Libretro_SetRewindEnabled(lr, enabled, bufferFrames, captureInterval);
+        if (!enabled) {
+            // Disabling frees the buffers without storing the settings, so keep them for re-enabling later.
+            lr->rewindCapacity = bufferFrames;
+            lr->rewindCaptureInterval = captureInterval;
+        }
+    }
     if (INI_HasValue(ini, NULL, "rewindmemorylimit"))
         SDL_Libretro_SetRewindMemoryLimit(lr, (size_t)INI_GetInt(ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr)));
     if (INI_HasValue(ini, NULL, "filebrowserdirectory"))
@@ -218,6 +230,8 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetString(lr->ini, NULL, "coredirectory", SDL_Libretro_GetCoreDirectory(lr));
     INI_SetString(lr->ini, NULL, "coreassetsdirectory", SDL_Libretro_GetCoreAssetsDirectory(lr));
     INI_SetBoolean(lr->ini, NULL, "rewindenabled", SDL_Libretro_GetRewindEnabled(lr));
+    INI_SetInt(lr->ini, NULL, "rewindframes", (Sint64)lr->rewindCapacity);
+    INI_SetInt(lr->ini, NULL, "rewindinterval", (Sint64)lr->rewindCaptureInterval);
     INI_SetInt(lr->ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr));
     INI_SetString(lr->ini, NULL, "filebrowserdirectory", lr->fileBrowserStartDirectory);
 

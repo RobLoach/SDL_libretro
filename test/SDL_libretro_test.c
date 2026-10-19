@@ -624,6 +624,52 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Rewind settings round-trip through the config file, and loading a config
+   doesn't discard a snapshot count or interval the app already set. */
+static int SDLCALL test_RewindConfig(void *arg) {
+    (void)arg;
+    const char* cfg = "rewind_test.cfg";
+    SDL_RemovePath(cfg);
+
+    // Enabled with custom settings.
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDL_Libretro_SetRewindEnabled(lr, true, 600, 3);
+    SDL_Libretro_Destroy(lr);
+
+    lr = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindEnabled(lr) == true, "Rewind enabled persists");
+    SDLTest_AssertCheck(lr->rewindCapacity == 600, "Rewind frames persist");
+    SDLTest_AssertCheck(lr->rewindCaptureInterval == 3, "Rewind interval persists");
+
+    // Disabled settings are kept too, ready for re-enabling.
+    SDL_Libretro_SetRewindEnabled(lr, true, 120, 2);
+    SDL_Libretro_SetRewindEnabled(lr, false, lr->rewindCapacity, lr->rewindCaptureInterval);
+    SDL_Libretro_Destroy(lr);
+
+    lr = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindEnabled(lr) == false, "Rewind disabled persists");
+    SDLTest_AssertCheck(lr->rewindCapacity == 120, "Rewind frames persist while disabled");
+    SDLTest_AssertCheck(lr->rewindCaptureInterval == 2, "Rewind interval persists while disabled");
+    SDL_Libretro_Destroy(lr);
+
+    // A config with only the enabled flag keeps what the app set.
+    const char* text = "rewindenabled=true\n";
+    SDLTest_AssertCheck(SDL_SaveFile(cfg, text, SDL_strlen(text)), "Write the config file");
+    lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRewindEnabled(lr, true, 900, 4);
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindEnabled(lr) == true, "Rewind enabled from the config");
+    SDLTest_AssertCheck(lr->rewindCapacity == 900, "App-set rewind frames kept");
+    SDLTest_AssertCheck(lr->rewindCaptureInterval == 4, "App-set rewind interval kept");
+    SDL_Libretro_Destroy(lr);
+
+    SDL_RemovePath(cfg);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_OptionVisibility(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -3034,6 +3080,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
     LIBRETRO_TEST_CASE(test_OptionReregister, "Re-registering an option updates it"),
+    LIBRETRO_TEST_CASE(test_RewindConfig,     "Rewind settings round-trip through the config"),
     LIBRETRO_TEST_CASE(test_LateOptionConfig, "Late-registered options get their saved values"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
