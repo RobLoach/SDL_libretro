@@ -52,13 +52,12 @@ static void SDL_Libretro_ResetPortDevices(SDL_Libretro* lr) {
  * @see SDL_Libretro_LoadCore()
  */
 /**
+ * @internal
  * Reserves the fixed SDL_EVENT_LIBRETRO range with SDL_RegisterEvents(), once
  * per process, so events the application registers afterwards can't collide
  * with it. SDL hands out user events sequentially from SDL_EVENT_USER, so
  * this registers everything up to SDL_EVENT_LIBRETRO_LAST, and warns when
  * earlier registrations already reached into the range.
- *
- * @internal
  */
 static void SDL_Libretro_ReserveEvents(void) {
     static SDL_AtomicInt reserved;
@@ -410,9 +409,8 @@ size_t SDL_Libretro_GetFileName(char* dst, size_t dstSize, const char* path, boo
 }
 
 /**
- * The extension of a path, without the dot ("" if none).
- *
  * @internal
+ * The extension of a path, without the dot ("" if none).
  */
 static const char* SDL_Libretro_GetExtension(const char* path) {
     const char* dot = SDL_strrchr(path, '.');
@@ -450,9 +448,8 @@ size_t SDL_Libretro_GetSavePath(const SDL_Libretro* lr, const char* extension, c
 }
 
 /**
- * Free the stored content-info overrides, including the deep-copied extension strings, and reset the count.
- *
  * @internal
+ * Free the stored content-info overrides, including the deep-copied extension strings, and reset the count.
  */
 static void SDL_Libretro_FreeContentInfoOverrides(SDL_Libretro* lr) {
     if (lr->core.contentInfoOverrides) {
@@ -557,12 +554,12 @@ static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemByName(const 
 }
 
 /**
+ * @internal
  * Gets the content-info override whose extension list matches `ext`.
  *
  * Cores register overrides via RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE to change need_fullpath / persistent_data for specific content extensions.
  *
  * @returns the matching override index, or -1 if none matches.
- * @internal
  */
 static int SDL_Libretro_GetContentInfoOverride(const SDL_Libretro* lr, const char* ext) {
     if (!lr || !ext || ext[0] == '\0') return -1;
@@ -575,9 +572,8 @@ static int SDL_Libretro_GetContentInfoOverride(const SDL_Libretro* lr, const cha
 }
 
 /**
- * Whether the core needs the full content path (rather than a loaded data buffer) for the given extension. Defaults to the core's system-info value, overridden per-extension by RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE.
- *
  * @internal
+ * Whether the core needs the full content path (rather than a loaded data buffer) for the given extension. Defaults to the core's system-info value, overridden per-extension by RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE.
  */
 static bool SDL_Libretro_ContentNeedsFullpath(const SDL_Libretro* lr, const char* ext) {
     int i = SDL_Libretro_GetContentInfoOverride(lr, ext);
@@ -585,9 +581,8 @@ static bool SDL_Libretro_ContentNeedsFullpath(const SDL_Libretro* lr, const char
 }
 
 /**
- * Whether the loaded content buffer must persist until the core is unloaded for the given extension. Only content-info overrides enable this; plain system info has no such concept, so it defaults to false.
- *
  * @internal
+ * Whether the loaded content buffer must persist until the core is unloaded for the given extension. Only content-info overrides enable this; plain system info has no such concept, so it defaults to false.
  */
 static bool SDL_Libretro_ContentPersistData(const SDL_Libretro* lr, const char* ext) {
     int i = SDL_Libretro_GetContentInfoOverride(lr, ext);
@@ -595,9 +590,8 @@ static bool SDL_Libretro_ContentPersistData(const SDL_Libretro* lr, const char* 
 }
 
 /**
- * Free the per-file subsystem GET_GAME_INFO_EXT entries.
- *
  * @internal
+ * Free the per-file subsystem GET_GAME_INFO_EXT entries.
  */
 static void SDL_Libretro_FreeGameInfoExtArray(SDL_Libretro* lr) {
     for (unsigned i = 0; i < lr->core.gameInfoExtCount; i++) {
@@ -613,9 +607,8 @@ static void SDL_Libretro_FreeGameInfoExtArray(SDL_Libretro* lr) {
 }
 
 /**
- * Fill a GET_GAME_INFO_EXT entry's path, directory, base name and lower-case extension from a content path. The strings are allocated, and freed by SDL_Libretro_FreeGameInfoExtArray().
- *
  * @internal
+ * Fill a GET_GAME_INFO_EXT entry's path, directory, base name and lower-case extension from a content path. The strings are allocated, and freed by SDL_Libretro_FreeGameInfoExtArray().
  */
 static void SDL_Libretro_FillGameInfoExt(struct retro_game_info_ext* entry, const char* path) {
     if (!path) return;
@@ -643,11 +636,10 @@ static void SDL_Libretro_FillGameInfoExt(struct retro_game_info_ext* entry, cons
 }
 
 /**
+ * @internal
  * Reset the loaded-content identity to the no-content state.
  *
  * Clear the content path/dir/ext, restore the content name to the core's library-name default (so GetSavePath keeps working), free any persistent content buffer, and invalidate gameInfoExt.
- *
- * @internal
  */
 static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     lr->core.contentPath[0] = '\0';
@@ -678,6 +670,7 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Populate the content identity from a path.
  *
  * This will fill in the core's path, base name, lower-case ext, directory,
@@ -693,7 +686,6 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
  *
  * @returns the raw-case extension (a pointer into contentPath) for
  *          need_fullpath / persistent-data lookups.
- * @internal
  */
 static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char* path, const char* identityPath) {
     SDL_strlcpy(lr->core.contentPath, path, sizeof(lr->core.contentPath));
@@ -761,11 +753,10 @@ static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath)
 }
 
 /**
+ * @internal
  * Wire the core's audio/video/input callbacks.
  *
  * The symbols must be loaded prior.
- *
- * @internal
  */
 static void SDL_Libretro_SetCoreCallbacks(SDL_Libretro* lr) {
     if (!lr) return;
@@ -826,14 +817,13 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Shared tail of SDL_Libretro_LoadGame() and SDL_Libretro_LoadGame_IO().
  *
  * Takes ownership of `fileData` (content bytes already read from an IOStream;
  * NULL to read them from `gamePath` when the core wants a data buffer). The
  * content identity (name, dir, ext) comes from `identityPath` when it's not
  * NULL, otherwise from `gamePath`. The core must already be loaded.
- *
- * @internal
  */
 static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, const char* identityPath, void* fileData, size_t fileSize) {
     // Switching content: unload any game that's already running first.
@@ -964,6 +954,7 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 }
 
 /**
+ * @internal
  * Spill a stream to a new file in the frontend's temp directory.
  *
  * The temp directory is "<save directory>/tmp", falling back to "<pref
@@ -979,8 +970,6 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
  * @param tempPath receives the path of the written file.
  * @param tempPathSize the size of `tempPath` in bytes.
  * @returns true when the file was written.
- *
- * @internal
  */
 static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio, char* tempPath, size_t tempPathSize) {
     // Read the content first, so the stream is handled on every path.
@@ -1535,10 +1524,9 @@ int SDL_Libretro_GetVersion(void) {
 }
 
 /**
+ * @internal
  * Pushes an SDL_libretro event onto the SDL event queue: data1 is the
  * context, data2 the event-specific payload (a name, the menu, or NULL).
- *
- * @internal
  */
 static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
     SDL_Event event;
@@ -1550,11 +1538,10 @@ static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
 }
 
 /**
+ * @internal
  * Event filter for SDL_FilterEvents() that removes exactly the queued copy of
  * the env event in userdata, matched by type, context, and the sequence tag
  * SDL_Libretro_PushEnvEvent() stored in user.reserved.
- *
- * @internal
  */
 static bool SDLCALL SDL_Libretro_KeepUnclaimedEnvEvent(void* userdata, SDL_Event* event) {
     const SDL_UserEvent* pushed = (const SDL_UserEvent*)userdata;
@@ -1564,6 +1551,7 @@ static bool SDLCALL SDL_Libretro_KeepUnclaimedEnvEvent(void* userdata, SDL_Event
 }
 
 /**
+ * @internal
  * Reports an environment command the library doesn't handle itself as
  * SDL_EVENT_LIBRETRO | cmd, masking off the experimental and private flags
  * since they don't fit the SDL event range. data2 is the command's data
@@ -1578,8 +1566,6 @@ static bool SDLCALL SDL_Libretro_KeepUnclaimedEnvEvent(void* userdata, SDL_Event
  *         SDL_PushEvent(), which is how an application implements an
  *         environment command while the core waits. A filter may also drop
  *         the event by returning false; the claim still counts.
- *
- * @internal
  */
 static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data) {
     static SDL_AtomicInt sequence;
@@ -1702,10 +1688,9 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
 }
 
 /**
+ * @internal
  * Orders core library entries by case-insensitive core name, then by path, so
  * the library is the same on every machine regardless of directory order.
- *
- * @internal
  */
 static int SDLCALL SDL_Libretro_CompareCoreInfo(const void* a, const void* b) {
     const SDL_Libretro_CoreInfo* left = (const SDL_Libretro_CoreInfo*)a;
@@ -1755,6 +1740,7 @@ bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
 }
 
 /**
+ * @internal
  * The application's writable pref path, without the trailing separator.
  *
  * Keyed by the app metadata (SDL_SetAppMetadata): CREATOR_STRING as the
@@ -1763,8 +1749,6 @@ bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
  *
  * @returns true when `dst` received the path, false when no pref path is
  * available (leaving `dst` untouched).
- *
- * @internal
  */
 static bool SDL_Libretro_GetPrefDirectory(char* dst, size_t dstSize) {
     const char* appName = SDL_GetAppMetadataProperty(SDL_PROP_APP_METADATA_NAME_STRING);
@@ -1942,6 +1926,13 @@ const char* SDL_Libretro_GetUsername(SDL_Libretro* lr) {
 
 /**
  * Set the audio volume when playing sounds.
+ *
+ * The volume is kept across core and game loads, and applied to the audio stream as soon as one is open.
+ *
+ * @param lr the libretro context. NULL is ignored.
+ * @param volume the volume, from 0.0 (silent) to 1.0 (full); values outside that range are clamped.
+ *
+ * @see SDL_Libretro_GetVolume()
  */
 void SDL_Libretro_SetVolume(SDL_Libretro* lr, float volume) {
     if (!lr) return;
@@ -2186,11 +2177,11 @@ const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Gets whether or not the given extension appears within the provided piped list.
  *
  * @param ext The extension to check, without the dot.
  * @param pipeList A piped list of extensions. For example: nes|rom|bin
- * @internal
  */
 static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList) {
     if (!ext || !pipeList) return false;

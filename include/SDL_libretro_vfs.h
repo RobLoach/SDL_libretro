@@ -55,11 +55,10 @@ static const char* SDL_Libretro_VFS_GetPath(struct retro_vfs_file_handle* stream
 }
 
 /**
+ * @internal
  * Wrap an already-open SDL_IOStream in a VFS file handle.
  *
  * Takes ownership of `io` (closed on allocation failure).
- *
- * @internal
  */
 static struct retro_vfs_file_handle* SDL_Libretro_VFS_WrapIO(SDL_IOStream* io, const char* path, unsigned mode) {
     struct retro_vfs_file_handle* h = (struct retro_vfs_file_handle*)SDL_malloc(sizeof(*h));
@@ -201,13 +200,13 @@ static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
 }
 
 /**
+ * @internal
  * Truncate a file to a specified size.
  *
  * @param stream An open handle with write access. Stays usable afterwards, even on failure where possible.
  * @param length The target size of the file in bytes. Must be non-negative.
  *
  * @return 0 on success. On error, -1 is returned.
- * @internal
  */
 static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, int64_t length) {
     if (!stream || length < 0) return -1;
@@ -330,10 +329,9 @@ static int SDL_Libretro_VFS_Stat64(const char* path, int64_t* size) {
 }
 
 /**
+ * @internal
  * Clamp a 64-bit stat size for the legacy 32-bit stat callback, warning on
  * overflow.
- *
- * @internal
  */
 static int32_t SDL_Libretro_VFS_ClampStatSize(const char* path, int64_t size) {
     if (size > SDL_MAX_SINT32) {

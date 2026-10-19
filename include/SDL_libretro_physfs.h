@@ -35,11 +35,11 @@
 #endif
 
 /**
+ * @internal
  * PhysFS VFS Open override: Loads a file that exist in the PhysFS search path.
  *
  * When note found, will fall through to the SDL VFS.
  *
- * @internal
  * @see SDL_Libretro_VFS_Open()
  */
 static struct retro_vfs_file_handle* SDL_Libretro_PhysFS_VFS_Open(const char* path, unsigned mode, unsigned hints) {
@@ -55,9 +55,9 @@ static struct retro_vfs_file_handle* SDL_Libretro_PhysFS_VFS_Open(const char* pa
 }
 
 /**
+ * @internal
  * PhysFS VFS Stat64 override to fall through to the SDL VFS.
  *
- * @internal
  * @see SDL_Libretro_VFS_Stat64()
  */
 static int SDL_Libretro_PhysFS_VFS_Stat64(const char* path, int64_t* size) {
@@ -76,8 +76,8 @@ static int SDL_Libretro_PhysFS_VFS_Stat64(const char* path, int64_t* size) {
 }
 
 /**
- * PhysFS VFS Stat override, falling through to the SDL VFS.
  * @internal
+ * PhysFS VFS Stat override, falling through to the SDL VFS.
  * @see SDL_Libretro_PhysFS_VFS_Stat64
  */
 static int SDL_Libretro_PhysFS_VFS_Stat(const char* path, int32_t* size) {
@@ -90,9 +90,9 @@ static int SDL_Libretro_PhysFS_VFS_Stat(const char* path, int32_t* size) {
 }
 
 /**
+ * @internal
  * PhysFS VFS Opendir override, falling through to the SDL VFS.
  *
- * @internal
  * @see SDL_Libretro_VFS_Opendir
  */
 static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* dir, bool include_hidden) {
@@ -147,9 +147,8 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
 }
 
 /**
- * Unmount the PhysFS archive currently mounted at the mount point, if any.
- *
  * @internal
+ * Unmount the PhysFS archive currently mounted at the mount point, if any.
  */
 static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
     if (!lr) return;
@@ -217,9 +216,9 @@ void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * A list of files within a directory.
  * @see SDL_Libretro_PhysFS_PickContent()
- * @internal
  */
 typedef struct SDL_Libretro_PhysFS_FileList {
     char** paths;
@@ -228,9 +227,8 @@ typedef struct SDL_Libretro_PhysFS_FileList {
 } SDL_Libretro_PhysFS_FileList;
 
 /**
- * Recursively collect the regular files under `dir` in the PhysFS search path.
- *
  * @internal
+ * Recursively collect the regular files under `dir` in the PhysFS search path.
  */
 static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysFS_FileList* list) {
     char** entries = PHYSFS_enumerateFiles(dir);
@@ -260,6 +258,7 @@ static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysF
 }
 
 /**
+ * @internal
  * Pick the content file within the mounted archive.
  *
  * Tries each strategy in turn, stopping at the first match:
@@ -279,8 +278,6 @@ static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysF
  * @param dst receives the virtual path of the pick.
  * @param dstSize the size of dst in bytes.
  * @return true if a candidate was found and copied into `dst`.
- *
- * @internal
  */
 static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archivePath, char* dst, size_t dstSize) {
     SDL_Libretro_PhysFS_FileList list = {0};

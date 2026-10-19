@@ -125,17 +125,15 @@
 #endif
 
 /**
- * The style names, separated by a |, in SDL_LibretroMenuStyle order.
- *
  * @internal
+ * The style names, separated by a |, in SDL_LibretroMenuStyle order.
  */
 #define SDL_LIBRETRO_MENU_STYLE_NAMES "Mocha|Latte|Frappe|Macchiato|Dracula|Dark"
 
 /**
+ * @internal
  * The Language combobox entries, separated by a |: Auto, then the
  * RETRO_LANGUAGE_* values in enum order.
- *
- * @internal
  */
 #define SDL_LIBRETRO_MENU_LANGUAGE_NAMES                                              \
     "Auto|English|Japanese|French|Spanish|German|Italian|Dutch|"                      \
@@ -146,12 +144,11 @@
     "Belarusian|Galician|Norwegian|Irish|Thai"
 
 /**
+ * @internal
  * Per-option UI state for the "Core Options" submenu.
  *
  * The comboboxes and checkboxes write directly into these fields, so the array
  * must stay allocated for as long as the widgets exist.
- *
- * @internal
  */
 typedef struct SDL_LibretroMenuOptionState {
     SDL_LibretroMenu* menu;
@@ -162,10 +159,10 @@ typedef struct SDL_LibretroMenuOptionState {
 } SDL_LibretroMenuOptionState;
 
 /**
+ * @internal
  * Per-port UI state for the "Controllers" submenu.
  *
  * @see SDL_LibretroMenuOptionState
- * @internal
  */
 typedef struct SDL_LibretroMenuPortState {
     SDL_LibretroMenu* menu;
@@ -176,9 +173,8 @@ typedef struct SDL_LibretroMenuPortState {
 } SDL_LibretroMenuPortState;
 
 /**
- * Per-button UI state for the "Keyboard" bindings submenu.
- *
  * @internal
+ * Per-button UI state for the "Keyboard" bindings submenu.
  */
 typedef struct SDL_LibretroMenuKeyBind {
     SDL_LibretroMenu* menu;
@@ -187,9 +183,8 @@ typedef struct SDL_LibretroMenuKeyBind {
 } SDL_LibretroMenuKeyBind;
 
 /**
- * Per-button UI state for a player's page of the "Gamepad" submenu.
- *
  * @internal
+ * Per-button UI state for a player's page of the "Gamepad" submenu.
  */
 typedef struct SDL_LibretroMenuPadBind {
     SDL_LibretroMenu* menu;
@@ -199,9 +194,8 @@ typedef struct SDL_LibretroMenuPadBind {
 } SDL_LibretroMenuPadBind;
 
 /**
- * Per-player UI state for the "Gamepad" submenu.
- *
  * @internal
+ * Per-player UI state for the "Gamepad" submenu.
  */
 typedef struct SDL_LibretroMenuPadPort {
     SDL_LibretroMenu* menu;
@@ -212,10 +206,9 @@ typedef struct SDL_LibretroMenuPadPort {
 } SDL_LibretroMenuPadPort;
 
 /**
+ * @internal
  * The state behind the opaque SDL_LibretroMenu handle. Applications must use
  * the SDL_Libretro_*Menu* functions rather than these fields.
- *
- * @internal
  */
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
@@ -306,11 +299,10 @@ struct SDL_LibretroMenu {
 };
 
 /**
+ * @internal
  * Closes the menu when a game is available to resume.
  *
  * Also used as the BACK handler of the top level menu.
- *
- * @internal
  */
 static void SDL_Libretro_MenuResumeClicked(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
@@ -320,9 +312,8 @@ static void SDL_Libretro_MenuResumeClicked(SDL_LibretroMenu* menu, void* userdat
 }
 
 /**
- * BACK on the top level acts like Resume.
- *
  * @internal
+ * BACK on the top level acts like Resume.
  */
 static void SDL_Libretro_MenuBackClicked(nk_console* widget, void* user_data) {
     (void)widget;
@@ -330,9 +321,8 @@ static void SDL_Libretro_MenuBackClicked(nk_console* widget, void* user_data) {
 }
 
 /**
- * Load the game waiting in loadGamePath, closing the menu on success.
- *
  * @internal
+ * Load the game waiting in loadGamePath, closing the menu on success.
  */
 static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     if (menu->loadGamePath[0] == '\0') {
@@ -370,12 +360,11 @@ static void SDL_Libretro_MenuGameFileChanged(nk_console* widget, void* user_data
 
 #ifdef __EMSCRIPTEN__
 /**
+ * @internal
  * Opens a browser file picker; the chosen file is written into the virtual
  * file system and handed back through SDL_Libretro_MenuLoadGameFromJS().
  *
  * Requires ccall and FS in -sEXPORTED_RUNTIME_METHODS.
- *
- * @internal
  */
 EM_JS(void, SDL_Libretro_MenuOpenWebFilePicker, (SDL_LibretroMenu * menu), {
     var input = document.createElement('input');
@@ -403,10 +392,9 @@ EM_JS(void, SDL_Libretro_MenuOpenWebFilePicker, (SDL_LibretroMenu * menu), {
 });
 
 /**
+ * @internal
  * Called from SDL_Libretro_MenuOpenWebFilePicker()'s JS once the picked file
  * lands in the virtual file system.
- *
- * @internal
  */
 EMSCRIPTEN_KEEPALIVE void SDL_Libretro_MenuLoadGameFromJS(SDL_LibretroMenu* menu, const char* path) {
     if (menu == NULL || path == NULL) {
@@ -492,9 +480,8 @@ static void SDL_Libretro_MenuResetClicked(SDL_LibretroMenu* menu, void* userdata
 }
 
 /**
- * Human-readable name for the core's pixel format.
- *
  * @internal
+ * Human-readable name for the core's pixel format.
  */
 static const char* SDL_Libretro_MenuPixelFormatName(enum retro_pixel_format format) {
     switch (format) {
@@ -510,9 +497,8 @@ static const char* SDL_Libretro_MenuPixelFormatName(enum retro_pixel_format form
 }
 
 /**
- * Standard submenu header: a back button labeled like the submenu itself.
- *
  * @internal
+ * Standard submenu header: a back button labeled like the submenu itself.
  */
 static void SDL_Libretro_MenuAddBackButton(nk_console* parent, const char* label) {
     nk_console_button_set_symbol(
@@ -521,9 +507,8 @@ static void SDL_Libretro_MenuAddBackButton(nk_console* parent, const char* label
 }
 
 /**
- * Create a submenu button with a symbol and the standard back-button header.
- *
  * @internal
+ * Create a submenu button with a symbol and the standard back-button header.
  */
 static nk_console* SDL_Libretro_MenuAddSubmenu(nk_console* parent, const char* label, enum nk_symbol_type symbol) {
     nk_console* button = nk_console_button(parent, label);
@@ -533,11 +518,10 @@ static nk_console* SDL_Libretro_MenuAddSubmenu(nk_console* parent, const char* l
 }
 
 /**
+ * @internal
  * Wire a CHANGED handler onto a freshly created widget.
  *
  * @return The widget, for further configuration.
- *
- * @internal
  */
 static nk_console* SDL_Libretro_MenuOnChanged(nk_console* widget, nk_console_event callback, void* user_data) {
     nk_console_add_event_handler(widget, NK_CONSOLE_EVENT_CHANGED, callback, user_data, NULL);
@@ -545,10 +529,9 @@ static nk_console* SDL_Libretro_MenuOnChanged(nk_console* widget, nk_console_eve
 }
 
 /**
+ * @internal
  * Move the active parent up to root when it sits inside root's subtree, so
  * rebuilding root's children can't leave it pointing at freed widgets.
- *
- * @internal
  */
 static void SDL_Libretro_MenuGuardActiveParent(SDL_LibretroMenu* menu, nk_console* root) {
     nk_console* active = nk_console_active_parent(menu->console);
@@ -563,12 +546,11 @@ static void SDL_Libretro_MenuGuardActiveParent(SDL_LibretroMenu* menu, nk_consol
 }
 
 /**
+ * @internal
  * One menu entry created through the shared button/checkbox path; the menu's
  * own widgets and the application-added entries both use it.
  *
  * Owns the label copy; freed through the widget's event destructor.
- *
- * @internal
  */
 typedef struct SDL_LibretroMenuItem {
     SDL_LibretroMenu* menu;
@@ -623,13 +605,12 @@ static SDL_LibretroMenuItem* SDL_Libretro_MenuCreateItem(SDL_LibretroMenu* menu,
 }
 
 /**
+ * @internal
  * Create a button under parent whose CLICKED handler is an
  * SDL_LibretroMenuCallback. Backs the menu's own entries and
  * SDL_Libretro_AddMenuButton().
  *
  * @return The widget, or NULL on allocation failure.
- *
- * @internal
  */
 static nk_console* SDL_Libretro_MenuAddButton(SDL_LibretroMenu* menu, nk_console* parent, const char* label, enum nk_symbol_type symbol, SDL_LibretroMenuCallback callback, void* userdata) {
     SDL_LibretroMenuItem* item = SDL_Libretro_MenuCreateItem(menu, label, callback, userdata);
@@ -646,14 +627,13 @@ static nk_console* SDL_Libretro_MenuAddButton(SDL_LibretroMenu* menu, nk_console
 }
 
 /**
+ * @internal
  * Create a checkbox under parent whose CHANGED handler is an
  * SDL_LibretroMenuCallback. checked is the widget's live storage, or NULL to
  * use the item's own, mirrored into the optional value bool. Backs the
  * menu's own entries and SDL_Libretro_AddMenuCheckbox().
  *
  * @return The widget, or NULL on allocation failure.
- *
- * @internal
  */
 static nk_console* SDL_Libretro_MenuAddCheckbox(SDL_LibretroMenu* menu, nk_console* parent, const char* label, nk_bool* checked, bool* value, SDL_LibretroMenuCallback callback, void* userdata) {
     SDL_LibretroMenuItem* item = SDL_Libretro_MenuCreateItem(menu, label, callback, userdata);
@@ -675,10 +655,9 @@ static nk_console* SDL_Libretro_MenuAddCheckbox(SDL_LibretroMenu* menu, nk_conso
 }
 
 /**
+ * @internal
  * Append a formatted line to the About text arena and add a label for it.
  * Lines that no longer fit are dropped.
- *
- * @internal
  */
 static void SDL_Libretro_MenuAboutLine(SDL_LibretroMenu* menu, const char* format, ...) {
     char* line = menu->aboutText + menu->aboutTextLength;
@@ -701,10 +680,9 @@ static void SDL_Libretro_MenuAboutLine(SDL_LibretroMenu* menu, const char* forma
 }
 
 /**
+ * @internal
  * Rebuild the About page from the current frontend, core and content state,
  * adding only the lines that apply.
- *
- * @internal
  */
 static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
@@ -761,10 +739,9 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Rebuilds the About page and enters it. A CLICKED handler suppresses the
  * button's default submenu navigation, so the handler navigates itself.
- *
- * @internal
  */
 static void SDL_Libretro_MenuAboutOpened(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
@@ -868,9 +845,8 @@ static void SDL_Libretro_MenuRewindBufferChanged(nk_console* widget, void* user_
 }
 
 /**
- * Mute drops the volume to zero and restores the previous level on unmute.
- *
  * @internal
+ * Mute drops the volume to zero and restores the previous level on unmute.
  */
 static void SDL_Libretro_MenuMuteChanged(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
@@ -887,13 +863,12 @@ static void SDL_Libretro_MenuMuteChanged(SDL_LibretroMenu* menu, void* userdata)
 }
 
 /**
+ * @internal
  * Special keys that map between SDL scancodes and NK_CONSOLE_KEY_* runes.
  *
  * Aliases (keypad enter, right-hand modifiers) come after their primary, so
  * rune-to-scancode lookups resolve to the primary. Printable keys are
  * handled by the ASCII fallbacks in the lookups below.
- *
- * @internal
  */
 static const struct { SDL_Scancode scancode; nk_rune rune; } SDL_Libretro_MenuKeyRunes[] = {
     { SDL_SCANCODE_RETURN, NK_CONSOLE_KEY_ENTER },
@@ -927,11 +902,10 @@ static const struct { SDL_Scancode scancode; nk_rune rune; } SDL_Libretro_MenuKe
 };
 
 /**
+ * @internal
  * The NK_CONSOLE_KEY_* rune for an SDL scancode, to show the current binding
  * in a key-capture widget. NK_CONSOLE_KEY_NONE when the key has no rune; it
  * can still be rebound, just not displayed.
- *
- * @internal
  */
 static nk_rune SDL_Libretro_MenuRuneFromScancode(SDL_Scancode scancode) {
     for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
@@ -947,10 +921,9 @@ static nk_rune SDL_Libretro_MenuRuneFromScancode(SDL_Scancode scancode) {
 }
 
 /**
+ * @internal
  * The SDL scancode for a captured NK_CONSOLE_KEY_* rune, or
  * SDL_SCANCODE_UNKNOWN when it has no equivalent.
- *
- * @internal
  */
 static SDL_Scancode SDL_Libretro_MenuScancodeFromRune(nk_rune rune) {
     for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
@@ -968,9 +941,8 @@ static SDL_Scancode SDL_Libretro_MenuScancodeFromRune(nk_rune rune) {
 }
 
 /**
- * Refresh the Keyboard page's captured runes from the live mapping.
- *
  * @internal
+ * Refresh the Keyboard page's captured runes from the live mapping.
  */
 static void SDL_Libretro_MenuSyncKeyBinds(SDL_LibretroMenu* menu) {
     for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
@@ -979,11 +951,10 @@ static void SDL_Libretro_MenuSyncKeyBinds(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Apply a captured key to the player 1 keyboard mapping. Captures without an
  * SDL equivalent (including a timed-out prompt) revert to the current
  * binding.
- *
- * @internal
  */
 static void SDL_Libretro_MenuKeyBindChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -998,11 +969,10 @@ static void SDL_Libretro_MenuKeyBindChanged(nk_console* widget, void* user_data)
 }
 
 /**
+ * @internal
  * The nk_gamepad button whose SDL equivalent is the given button, for
  * showing the current binding in a capture widget. NK_GAMEPAD_BUTTON_INVALID
  * when nk_gamepad has no equivalent (e.g. the trigger paddle defaults).
- *
- * @internal
  */
 static enum nk_gamepad_button SDL_Libretro_MenuNkButtonFromSDL(SDL_GamepadButton button) {
     for (int i = NK_GAMEPAD_BUTTON_FIRST; i <= NK_GAMEPAD_BUTTON_R3; i++) {
@@ -1014,10 +984,9 @@ static enum nk_gamepad_button SDL_Libretro_MenuNkButtonFromSDL(SDL_GamepadButton
 }
 
 /**
+ * @internal
  * Refresh every Gamepad page's captured buttons and analog-to-digital
  * choices from the live per-port state.
- *
- * @internal
  */
 static void SDL_Libretro_MenuSyncPadBinds(SDL_LibretroMenu* menu) {
     for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
@@ -1030,11 +999,10 @@ static void SDL_Libretro_MenuSyncPadBinds(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Apply a captured gamepad button to its port's mapping; captures without an
  * SDL equivalent (including a timed-out prompt) revert to the current
  * binding.
- *
- * @internal
  */
 static void SDL_Libretro_MenuPadBindChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -1049,9 +1017,8 @@ static void SDL_Libretro_MenuPadBindChanged(nk_console* widget, void* user_data)
 }
 
 /**
- * Apply the Analog to Digital combobox choice to its port.
- *
  * @internal
+ * Apply the Analog to Digital combobox choice to its port.
  */
 static void SDL_Libretro_MenuAnalogToDigitalChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -1060,12 +1027,11 @@ static void SDL_Libretro_MenuAnalogToDigitalChanged(nk_console* widget, void* us
 }
 
 /**
+ * @internal
  * Populate the "Gamepad" submenu with one page per player, titled with the
  * connected gamepad's name, holding that port's button bindings and its
  * Analog to Digital stick choice. Rebuilt when the menu opens so the names
  * stay current.
- *
- * @internal
  */
 static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
     if (menu->gamepadButton == NULL) {
@@ -1105,13 +1071,12 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Read the menu's own persisted state from the config, applying it to the
  * window, renderer and volume before the widgets snapshot them.
  *
  * The counterpart of SDL_Libretro_MenuSaveState(); menu-owned config keys
  * live in these two functions only.
- *
- * @internal
  */
 static void SDL_Libretro_MenuLoadState(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
@@ -1146,13 +1111,12 @@ static void SDL_Libretro_MenuLoadState(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Write every menu-owned config value; the file itself is saved when the
  * context closes.
  *
  * One choke point, flushed on settingsDirty, so the change handlers stay
  * free of persistence code.
- *
- * @internal
  */
 static void SDL_Libretro_MenuSaveState(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
@@ -1169,9 +1133,8 @@ static void SDL_Libretro_MenuSaveState(SDL_LibretroMenu* menu) {
 }
 
 /**
- * Whether the value reads as the "on" half of a boolean core option.
- *
  * @internal
+ * Whether the value reads as the "on" half of a boolean core option.
  */
 static bool SDL_Libretro_MenuValueTruthy(const char* value) {
     return value != NULL && (SDL_strcasecmp(value, "enabled") == 0 ||
@@ -1194,9 +1157,8 @@ static bool SDL_Libretro_MenuValueFalsy(const char* value) {
 }
 
 /**
- * Whether the option is exactly an on/off pair, in either order.
- *
  * @internal
+ * Whether the option is exactly an on/off pair, in either order.
  */
 static bool SDL_Libretro_MenuOptionIsBoolean(const SDL_LibretroOption* option) {
     if (option->valuesCount != 2) {
@@ -1209,10 +1171,9 @@ static bool SDL_Libretro_MenuOptionIsBoolean(const SDL_LibretroOption* option) {
 }
 
 /**
+ * @internal
  * Marks the Core Options submenu for a rebuild when the change flipped any
  * option visibility, consuming the dirty flag our own write raised.
- *
- * @internal
  */
 static void SDL_Libretro_MenuOptionWritten(SDL_LibretroMenu* menu) {
     SDL_Libretro_AreOptionsDirty(menu->lr);
@@ -1280,13 +1241,12 @@ static void SDL_Libretro_MenuFreeOptionStates(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Join count items into a freshly allocated "a|b|c" string for a combobox.
  *
  * @param count the number of items.
  * @param item Returns the text for an index; must never return NULL.
  * @param userdata passed to item.
- *
- * @internal
  */
 static char* SDL_Libretro_MenuJoinPipeList(unsigned count, const char* (*item)(void* userdata, unsigned index), void* userdata) {
     size_t length = 0;
@@ -1309,18 +1269,17 @@ static char* SDL_Libretro_MenuJoinPipeList(unsigned count, const char* (*item)(v
 }
 
 /**
- * Whether the option should appear in the Core Options submenu.
- *
  * @internal
+ * Whether the option should appear in the Core Options submenu.
  */
 static bool SDL_Libretro_MenuOptionShown(const SDL_LibretroOption* option) {
     return option != NULL && option->visible && option->valuesCount > 0;
 }
 
 /**
+ * @internal
  * The display text for one core option value: its label, or the raw value.
  *
- * @internal
  * @see SDL_Libretro_MenuJoinPipeList()
  */
 static const char* SDL_Libretro_MenuOptionValueText(void* userdata, unsigned index) {
@@ -1330,9 +1289,8 @@ static const char* SDL_Libretro_MenuOptionValueText(void* userdata, unsigned ind
 }
 
 /**
- * Build the checkbox/combobox widget for the given option under parent.
- *
  * @internal
+ * Build the checkbox/combobox widget for the given option under parent.
  */
 static void SDL_Libretro_MenuBuildOptionWidget(SDL_LibretroMenu* menu, nk_console* parent, unsigned index) {
     const SDL_LibretroOption* option = SDL_Libretro_GetOptionByIndex(menu->lr, index);
@@ -1371,10 +1329,9 @@ static void SDL_Libretro_MenuBuildOptionWidget(SDL_LibretroMenu* menu, nk_consol
 }
 
 /**
+ * @internal
  * Category index of the option, or -1 when uncategorized (or the category was
  * never registered, in which case the option is treated as flat).
- *
- * @internal
  */
 static int SDL_Libretro_MenuOptionCategory(SDL_Libretro* lr, const SDL_LibretroOption* option) {
     if (option->category == NULL || option->category[0] == '\0') {
@@ -1391,9 +1348,8 @@ static int SDL_Libretro_MenuOptionCategory(SDL_Libretro* lr, const SDL_LibretroO
 }
 
 /**
- * Populate the "Core Options" submenu from the loaded core's options.
- *
  * @internal
+ * Populate the "Core Options" submenu from the loaded core's options.
  */
 static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
     if (menu->optionsButton == NULL) {
@@ -1472,13 +1428,12 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
 
 #ifndef __EMSCRIPTEN__
 /**
+ * @internal
  * Append each extension from a pipe-separated list (e.g. "gb|gbc") to a
  * semicolon-separated file filter (e.g. ".gb;.GB;.gbc;.GBC"), deduplicated.
  *
  * The filter matching is case-sensitive, so both lower and upper case
  * variants are added.
- *
- * @internal
  */
 static void SDL_Libretro_MenuAppendExtensions(char* filter, size_t filterSize, const char* extensions) {
     if (extensions == NULL) {
@@ -1535,10 +1490,9 @@ static void SDL_Libretro_MenuAppendExtensions(char* filter, size_t filterSize, c
 #endif /* !__EMSCRIPTEN__ */
 
 /**
+ * @internal
  * Restrict the Load Game file browser to content the scanned cores (and the
  * loaded core) can open.
- *
- * @internal
  */
 static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
 #ifndef __EMSCRIPTEN__
@@ -1566,9 +1520,8 @@ static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
 }
 
 /**
- * Refresh the Settings textedit buffers from the current context values.
- *
  * @internal
+ * Refresh the Settings textedit buffers from the current context values.
  */
 static void SDL_Libretro_MenuSyncSettingsBuffers(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
@@ -1584,12 +1537,11 @@ static void SDL_Libretro_MenuSyncSettingsBuffers(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Consolidated callback for all Settings textedits (directories + username).
  *
  * Applies every settings buffer at once, so a single handler serves all the
  * textedits without per-field state.
- *
- * @internal
  */
 static void SDL_Libretro_MenuSettingChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -1608,10 +1560,9 @@ static void SDL_Libretro_MenuSettingChanged(nk_console* widget, void* user_data)
 }
 
 /**
+ * @internal
  * Create a textedit widget under @p parent and wire it to the consolidated
  * Settings callback.
- *
- * @internal
  */
 static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const char* label,
                                                        SDL_LibretroMenu* menu,
@@ -1621,10 +1572,9 @@ static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const
 }
 
 /**
+ * @internal
  * Create a directory-picker widget under @p parent and wire it to the
  * consolidated Settings callback.
- *
- * @internal
  */
 static nk_console* SDL_Libretro_MenuAddSettingDir(nk_console* parent, const char* label,
                                                   SDL_LibretroMenu* menu,
@@ -1677,10 +1627,9 @@ static const char* SDL_Libretro_MenuPortDeviceText(void* userdata, unsigned inde
 }
 
 /**
+ * @internal
  * Populate the "Controllers" submenu with a device combobox per port that
  * offers more than one controller type.
- *
- * @internal
  */
 static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
     if (menu->controllersButton == NULL) {
@@ -1734,12 +1683,11 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * A menu color theme, expressed as the distinct colors the themes vary on.
  *
  * SDL_Libretro_MenuApplyPalette() fans these out over the full Nuklear color
  * table, so adding a theme is ~20 colors instead of ~30 table assignments.
- *
- * @internal
  */
 typedef struct SDL_LibretroMenuPalette {
     struct nk_color text;
@@ -1911,9 +1859,8 @@ static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteDracula = {
 };
 
 /**
- * The palette backing a built-in style, or NULL for the Nuklear default.
- *
  * @internal
+ * The palette backing a built-in style, or NULL for the Nuklear default.
  */
 static const SDL_LibretroMenuPalette* SDL_Libretro_MenuGetPalette(SDL_LibretroMenuStyle style) {
     static const SDL_LibretroMenuPalette* const palettes[SDL_LIBRETRO_MENU_STYLE_COUNT] = {
@@ -1928,11 +1875,10 @@ static const SDL_LibretroMenuPalette* SDL_Libretro_MenuGetPalette(SDL_LibretroMe
 }
 
 /**
+ * @internal
  * The automatic UI scale step for a window of the given logical width,
  * following raylib-libretro's resolution thresholds adapted to the 13px base
  * font.
- *
- * @internal
  */
 static float SDL_Libretro_MenuAutoScale(int width) {
     if (width >= 3840) {
@@ -1948,10 +1894,9 @@ static float SDL_Libretro_MenuAutoScale(int width) {
 }
 
 /**
+ * @internal
  * The UI render scale for the current window: the UI scale (manual override
  * or resolution-based step) times the window's display scale.
- *
- * @internal
  */
 static float SDL_Libretro_MenuRenderScale(SDL_LibretroMenu* menu) {
     float displayScale = SDL_GetWindowDisplayScale(menu->lr->window);
@@ -1973,11 +1918,10 @@ static float SDL_Libretro_MenuRenderScale(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Bakes the default font at the base pixel height and makes it the active
  * style font. The font is baked once at SDL_LIBRETRO_MENU_FONT_HEIGHT;
  * scaling is handled by SDL_SetRenderScale in the render path.
- *
- * @internal
  */
 static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu) {
     if (menu->atlas != NULL) {
@@ -2011,9 +1955,8 @@ static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu) {
 }
 
 /**
- * Fan the palette out over the Nuklear color table.
- *
  * @internal
+ * Fan the palette out over the Nuklear color table.
  */
 static void SDL_Libretro_MenuApplyPalette(struct nk_context* ctx, const SDL_LibretroMenuPalette* palette) {
     struct nk_color table[NK_COLOR_COUNT];
@@ -2116,12 +2059,11 @@ static void SDL_Libretro_MenuStyleChanged(nk_console* widget, void* user_data) {
 }
 
 /**
+ * @internal
  * Refresh the Settings widget state from the current context values.
  *
  * Runs at creation and every time the menu opens, so changes made outside
  * the menu (a hotkey volume change, an app fullscreen toggle) show up.
- *
- * @internal
  */
 static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
@@ -2143,9 +2085,8 @@ static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
 }
 
 /**
- * Swap to the radio-selected disk: eject, change the index, insert.
- *
  * @internal
+ * Swap to the radio-selected disk: eject, change the index, insert.
  */
 static void SDL_Libretro_MenuDiskClicked(nk_console* widget, void* user_data) {
     (void)widget;
@@ -2184,10 +2125,9 @@ static void SDL_Libretro_MenuFreeDiskLabels(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Rebuild the Disks submenu: one radio per disk in the core's disk control,
  * hidden unless the running game has disks to swap.
- *
- * @internal
  */
 static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
     if (menu->disksButton == NULL) {
@@ -2233,10 +2173,9 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
 }
 
 /**
+ * @internal
  * Build the Settings submenu; the widgets write into the fields that
  * SDL_Libretro_MenuSyncSettings() keeps current.
- *
- * @internal
  */
 static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console* settings = SDL_Libretro_MenuAddSubmenu(menu->console, "Settings", NK_SYMBOL_HAMBURGER);
@@ -2342,9 +2281,8 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
 }
 
 /**
- * Build the top-level menu tree.
- *
  * @internal
+ * Build the top-level menu tree.
  */
 static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
@@ -2697,6 +2635,7 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
 }
 
 /**
+ * @internal
  * Rebuild the core-derived submenus (Core Options, Controllers, and the file
  * filter) when they no longer match the loaded core:
  *
@@ -2704,8 +2643,6 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
  *  * the loaded core changed (library name) or its option set changed size,
  *  * the menu just opened; visibility may have shifted while it was closed,
  *    so the core's display callback is re-run first.
- *
- * @internal
  */
 static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justOpened) {
     SDL_Libretro* lr = menu->lr;
@@ -2878,9 +2815,8 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
 }
 
 /**
- * New entries append after Quit; swap them so Quit stays the last entry.
- *
  * @internal
+ * New entries append after Quit; swap them so Quit stays the last entry.
  */
 static void SDL_Libretro_MenuKeepQuitLast(SDL_LibretroMenu* menu) {
     nk_console** children = menu->console->children;

@@ -12,9 +12,8 @@ static char* SDL_Libretro_Strdup(const char* s) {
 }
 
 /**
- * Whether the value is one the option declared. Options with no declared values accept anything.
- *
  * @internal
+ * Whether the value is one the option declared. Options with no declared values accept anything.
  */
 static bool SDL_Libretro_IsOptionValueValid(const SDL_LibretroOption* opt, const char* value) {
     if (!opt || !value) return false;
@@ -28,9 +27,8 @@ static bool SDL_Libretro_IsOptionValueValid(const SDL_LibretroOption* opt, const
 }
 
 /**
- * Free an option's declared values.
- *
  * @internal
+ * Free an option's declared values.
  */
 static void SDL_Libretro_FreeOptionValues(SDL_LibretroOptionValue* values, unsigned count) {
     if (!values) return;
@@ -42,11 +40,10 @@ static void SDL_Libretro_FreeOptionValues(SDL_LibretroOptionValue* values, unsig
 }
 
 /**
+ * @internal
  * Deep-copy the core's NULL-terminated value list into an owned array.
  *
  * @returns false when out of memory.
- *
- * @internal
  */
 static bool SDL_Libretro_CopyOptionValues(const struct retro_core_option_value* values, SDL_LibretroOptionValue** outValues, unsigned* outCount) {
     *outValues = NULL;

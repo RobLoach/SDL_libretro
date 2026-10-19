@@ -68,14 +68,13 @@ static void SDL_Libretro_QueueAudio(SDL_Libretro* lr, const void* samples, int b
 }
 
 /**
+ * @internal
  * Queue int16 stereo frames in reverse frame order.
  *
  * Used while rewinding: each captured frame's audio is emitted back-to-front,
  * and since frames are replayed newest-to-oldest the result is clean
  * time-reversed audio (the classic "rewind" sound) rather than forward chirps.
  * Chunked through a fixed scratch buffer.
- *
- * @internal
  */
 static void SDL_Libretro_QueueAudioReversed(SDL_Libretro* lr, const int16_t* data, size_t frames) {
     int16_t revBuf[512 * 2];

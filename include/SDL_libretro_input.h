@@ -7,10 +7,9 @@
 #define SDL_LIBRETRO_INPUT_IMPL_ONCE
 
 /**
+ * @internal
  * The default SDL button for each RETRO_DEVICE_ID_JOYPAD_* id; seeds
  * SDL_Libretro::gamepadButtons at creation.
- *
- * @internal
  */
 static const SDL_GamepadButton SDL_Libretro_DefaultGamepadButtons[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
     SDL_GAMEPAD_BUTTON_SOUTH, // B
@@ -32,9 +31,9 @@ static const SDL_GamepadButton SDL_Libretro_DefaultGamepadButtons[SDL_LIBRETRO_M
 };
 
 /**
+ * @internal
  * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
  *
- * @internal
  * @see RETRO_DEVICE_ID_JOYPAD_B
  * @see SDL_GAMEPAD_BUTTON_SOUTH
  */
@@ -44,10 +43,10 @@ static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(const SDL_Libre
 }
 
 /**
+ * @internal
  * Whether the port's analog-to-digital stick currently pushes the given
  * D-Pad direction, using the same threshold as the L2/R2 trigger axes.
  *
- * @internal
  * @see SDL_Libretro_SetAnalogToDigital()
  */
 static bool SDL_Libretro_AnalogToDigitalPressed(const SDL_Libretro* lr, unsigned port, unsigned id) {
@@ -68,10 +67,10 @@ static bool SDL_Libretro_AnalogToDigitalPressed(const SDL_Libretro* lr, unsigned
 }
 
 /**
+ * @internal
  * Ports a RETROK_* to a SDL_SCANCODE_*
  *
  * @see RETROK_BACKSPACE
- * @internal
  * @see SDL_SCANCODE_BACKSPACE
  * @see SDL_Libretro_ScancodeToRetroKey()
  */
@@ -199,10 +198,10 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
 }
 
 /**
+ * @internal
  * Ports a SDL physical key to a RETROK_*.
  *
  * @see SDL_SCANCODE_BACKSPACE
- * @internal
  * @see RETROK_BACKSPACE
  * @see SDL_Libretro_RetroKeyToScancode()
  */
@@ -319,9 +318,8 @@ static unsigned SDL_Libretro_ScancodeToRetroKey(SDL_Scancode scancode) {
 }
 
 /**
- * Map SDL modifier flags to the RETROKMOD_* bitmask the core expects.
- *
  * @internal
+ * Map SDL modifier flags to the RETROKMOD_* bitmask the core expects.
  */
 static uint16_t SDL_Libretro_KeymodToRetroMod(SDL_Keymod mod) {
     uint16_t retromod = RETROKMOD_NONE;
@@ -363,6 +361,7 @@ static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
 }
 
 /**
+ * @internal
  * Calculate the pointer coordinates based on the current mouse position.
  *
  * The libretro pointer/lightgun coordinates are [-0x7FFF, 0x7FFF],
@@ -371,8 +370,6 @@ static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
  * along with the rotation applied by SDL_Libretro_Render().
  *
  * @returns true if the cursor is inside the on-screen image, false if offscreen.
- *
- * @internal
  */
 static bool SDL_Libretro_PointerCoords(const SDL_Libretro* lr, int16_t* outX, int16_t* outY) {
     float mx = lr->core.inputMouseX;

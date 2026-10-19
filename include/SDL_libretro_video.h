@@ -8,9 +8,8 @@
 #define SDL_LIBRETRO_VIDEO_IMPL_ONCE
 
 /**
- * Maps a libretro pixel format over to an SDL_PixelFormat.
- *
  * @internal
+ * Maps a libretro pixel format over to an SDL_PixelFormat.
  */
 static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt) {
     switch (fmt) {
@@ -22,11 +21,10 @@ static SDL_PixelFormat SDL_Libretro_GetTextureFormat(enum retro_pixel_format fmt
 }
 
 /**
+ * @internal
  * Releases any in-flight software-framebuffer texture lock.
  *
  * Safe to call when no lock is held. Called before re-locking and before the texture is destroyed/recreated, so a core that acquires a buffer can't leave the texture locked or `softwareFramebufferPixels` dangling.
- *
- * @internal
  */
 static void SDL_Libretro_ReleaseSoftwareFramebuffer(SDL_Libretro* lr) {
     if (!lr->core.softwareFramebufferPixels) {
@@ -39,9 +37,8 @@ static void SDL_Libretro_ReleaseSoftwareFramebuffer(SDL_Libretro* lr) {
 }
 
 /**
- * Initialize the libretro video system.
- *
  * @internal
+ * Initialize the libretro video system.
  */
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
     if (!lr || !lr->renderer) return false;
@@ -69,9 +66,8 @@ static bool SDL_Libretro_InitVideo(SDL_Libretro* lr) {
 }
 
 /**
- * Cleans up any video memory reserved for the core.
- *
  * @internal
+ * Cleans up any video memory reserved for the core.
  */
 static void SDL_Libretro_CloseVideo(SDL_Libretro* lr) {
     if (!lr) return;
@@ -248,13 +244,12 @@ bool SDL_Libretro_SaveScreenshot(const SDL_Libretro* lr, const char* path) {
 }
 
 /**
+ * @internal
  * Shrink `*rect` from the available area to the on-screen rectangle.
  *
  * Letterboxed to the aspect ratio, inverted for a 90/270 turn when
  * `rotated`. Considers the integer-scale mode, snapped to a whole
  * multiple of the native size.
- *
- * @internal
  */
 static void SDL_Libretro_FitRect(const SDL_Libretro* lr, SDL_FRect* rect, bool rotated) {
     SDL_FRect avail = *rect;

@@ -450,37 +450,12 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu);
 void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu);
 void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu);
 
-/**
- * Routes an event to the menu; call this for every event, before
- * SDL_Libretro_HandleEvent().
- *
- * The toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button
- * flip the menu open or closed, and are always consumed.
- *
- * @param menu the menu.
- * @param event the event to route.
- * @return true when the menu consumed the event: do not forward it to
- *         SDL_Libretro_HandleEvent(). This happens for the toggle inputs
- *         above, and for gameplay input swallowed while the menu is open.
- *         false when the event should be handled as usual: the menu is
- *         closed, or the event is a lifecycle event (quit, drop-file,
- *         window, and gamepad/joystick add/remove) which always passes
- *         through so the application and frontend still see it.
- */
 bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event);
 
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open);
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu);
 bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
 
-/**
- * Opens the menu and navigates to a page by its slash-separated label path,
- * e.g. "Settings/Audio & Video", "Settings/Core Options" or "Disks".
- *
- * \param menu the menu.
- * \param path the slash-separated labels of the page to open.
- * \return true when the path resolved; the menu stays open either way.
- */
 bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path);
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style);
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
@@ -495,50 +470,14 @@ typedef void (*SDL_LibretroMenuCallback)(SDL_LibretroMenu* menu, void* userdata)
 
 bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata);
 
-/**
- * Adds a checkbox to the main menu, just above Quit. The value pointer is
- * written on every toggle, so it must outlive the menu.
- *
- * @param menu the menu.
- * @param label the checkbox label.
- * @param value the bool the checkbox reads its initial state from and writes on every toggle, or NULL.
- * @param callback called when the checkbox is toggled, or NULL.
- * @param userdata passed to the callback.
- * @return true when the checkbox was added; call SDL_GetError() for more information on failure.
- *
- * @see SDL_Libretro_AddMenuButton()
- */
 bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
 
-/**
- * A ready-made menu callback that saves a PNG screenshot of the current frame.
- *
- * Pass it to SDL_Libretro_AddMenuButton(); userdata is the destination path
- * as a const char*, or NULL for "screenshot.png".
- *
- * \param menu the menu the button belongs to.
- * \param userdata the destination path as a const char*, or NULL.
- * \see SDL_Libretro_AddMenuButton()
- */
 void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata);
 
-/**
- * The SDL_Libretro context the menu was created for, or NULL.
- */
 SDL_Libretro* SDL_Libretro_GetMenuLibretro(const SDL_LibretroMenu* menu);
 
-/**
- * Attaches generic application data to the menu.
- *
- * @param menu the menu. NULL is ignored.
- * @param userData the application data; the menu doesn't take ownership.
- * @see SDL_Libretro_GetMenuUserData()
- */
 void SDL_Libretro_SetMenuUserData(SDL_LibretroMenu* menu, void* userData);
 
-/**
- * The data set by SDL_Libretro_SetMenuUserData(), or NULL.
- */
 void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
 
 /**

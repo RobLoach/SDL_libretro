@@ -105,13 +105,12 @@ bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Free the disk images kept by SDL_Libretro_AddDiskImage() and
  * SDL_Libretro_AddDiskImage_IO().
  *
  * Removes any temp files and frees the buffers. Called when the game unloads,
  * after retro_unload_game(), so the core no longer references them.
- *
- * @internal
  */
 static void SDL_Libretro_FreeDiskImages(SDL_Libretro* lr) {
     if (!lr) return;
@@ -129,9 +128,8 @@ static void SDL_Libretro_FreeDiskImages(SDL_Libretro* lr) {
 }
 
 /**
- * Validate the disk control state for adding an image.
- *
  * @internal
+ * Validate the disk control state for adding an image.
  */
 static bool SDL_Libretro_CanAddDiskImage(SDL_Libretro* lr) {
     if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index || !lr->core.disk_control.get_num_images) {
@@ -146,12 +144,11 @@ static bool SDL_Libretro_CanAddDiskImage(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Append a disk slot and fill it with `info`.
  *
  * When the core rejects the image, the new slot is discarded again (a NULL
  * replace_image_index removes the index), so no empty slot is left behind.
- *
- * @internal
  */
 static bool SDL_Libretro_AppendDiskImage(SDL_Libretro* lr, const struct retro_game_info* info) {
     unsigned before = lr->core.disk_control.get_num_images();
@@ -563,10 +560,9 @@ bool SDL_Libretro_SetMemoryData(SDL_Libretro* lr, unsigned memoryType, const voi
 }
 
 /**
+ * @internal
  * Free the stored memory-map descriptors, including the deep-copied addrspace
  * label strings, and reset the count.
- *
- * @internal
  */
 static void SDL_Libretro_FreeMemoryMap(SDL_Libretro* lr) {
     if (!lr) return;
@@ -684,9 +680,8 @@ void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t*
 }
 
 /**
- * Human-readable name for a libretro memory type, used in log/error messages.
- *
  * @internal
+ * Human-readable name for a libretro memory type, used in log/error messages.
  */
 static const char* SDL_Libretro_GetMemoryTypeName(unsigned memoryType) {
     switch (memoryType) {
@@ -896,6 +891,7 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
 #ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
 
 /**
+ * @internal
  * Worst-case encoded size of a delta over `len` bytes.
  *
  * Reached when every byte differs: the whole buffer becomes one literal run,
@@ -905,7 +901,6 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
  * this lets the capture path encode in a single pass instead of a sizing pass
  * followed by a real one.
  *
- * @internal
  * @see SDL_LIBRETRO_ENABLE_REWIND_DELTA
  */
 static size_t SDL_Libretro_RewindMaxEncodedSize(size_t len) {
@@ -913,11 +908,11 @@ static size_t SDL_Libretro_RewindMaxEncodedSize(size_t len) {
 }
 
 /**
+ * @internal
  * Count the leading bytes that match between two buffers, scanning a machine word at a time and only dropping to a byte compare for the final partial word.
  *
  * The encoder spends most of its time skipping over the unchanged bulk of a serialized state; a per-byte compare there is the dominant capture cost for multi-megabyte cores. Comparing `sizeof(size_t)` bytes per step cuts that scan several-fold. This only accelerates *matching* runs: a whole-word inequality means "at least one byte differs", not "all differ", so the differing-byte scan in the literal path stays byte-wise. Endianness is irrelevant, it only asks whether the words are equal. SDL_memcpy is `memcpy`, so each fixed-size load lowers to a single (possibly unaligned) word read.
  *
- * @internal
  * @see SDL_Libretro_RewindEncodeDelta()
  */
 static size_t SDL_Libretro_RewindMatchRun(const unsigned char* a, const unsigned char* b, size_t max) {
@@ -933,6 +928,7 @@ static size_t SDL_Libretro_RewindMatchRun(const unsigned char* a, const unsigned
 }
 
 /**
+ * @internal
  * Rewind: delta-compressed circular buffer.
  *
  * Instead of storing full serialized states, each entry holds an RLE-compressed XOR delta between consecutive captures. A single full "reference" state is kept; on rewind the delta is XOR'd back to reconstruct the previous state.
@@ -943,8 +939,6 @@ static size_t SDL_Libretro_RewindMatchRun(const unsigned char* a, const unsigned
  *   0x80-0xFF - (tag & 0x7F)+1 literal XOR bytes follow (1-128)
  *
  * A matching run between two changed regions shorter than kMinSkip is folded into the surrounding literal run (emitted as zero XOR bytes) instead of as a skip: breaking a literal costs a skip tag plus a fresh literal header, so a skip only pays for itself once the gap is at least that long. Skips of 128-254 bytes use two short codes (2 bytes) rather than the extended form (3 bytes).
- *
- * @internal
  */
 static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const unsigned char* ref, size_t len, unsigned char* out, size_t outCap) {
     // A matching gap shorter than this is cheaper to fold into a literal than to emit as a skip. A skip also forces a new literal header afterwards.
@@ -1020,13 +1014,13 @@ static size_t SDL_Libretro_RewindEncodeDelta(const unsigned char* cur, const uns
 }
 
 /**
+ * @internal
  * Apply an encoded XOR delta to the `state` in place, reconstructing the prior state.
  *
  * Walks the delta produced by SDL_Libretro_RewindEncodeDelta(): skip codes advance past unchanged bytes, literal codes XOR their bytes into `state`. Given the newer serialized state in `state`, this yields the older one.
  *
  * @returns true on success, false if the delta is malformed (a code runs past the
  *          end of the delta or `state`).
- * @internal
  */
 static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t deltaLen, unsigned char* state, size_t stateLen) {
     size_t dp = 0, sp = 0;
@@ -1263,9 +1257,8 @@ bool SDL_Libretro_SetRewindMemoryDuration(SDL_Libretro* lr, double seconds) {
 }
 
 /**
- * Captures the current instance state into the rewind buffer.
- *
  * @internal
+ * Captures the current instance state into the rewind buffer.
  */
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
     if (!lr->rewindEnabled || !lr->rewindReference) return;
@@ -1381,9 +1374,8 @@ static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
 }
 
 /**
- * Free a single delta slot and deduct its allocation from the byte total.
- *
  * @internal
+ * Free a single delta slot and deduct its allocation from the byte total.
  */
 static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDelta* entry) {
     lr->rewindBytes -= entry->capacity;
@@ -1394,11 +1386,10 @@ static void SDL_Libretro_RewindFreeEntry(SDL_Libretro* lr, SDL_LibretroRewindDel
 }
 
 /**
+ * @internal
  * Restore the previous snapshot from the rewind buffer (state only, no re-run).
  *
  * Reconstructs the previous state into the reference and hands it to the core via retro_unserialize. In delta mode the most recent delta is XOR'd back into the reference; in full-state mode the stored snapshot is copied over it. The consumed entry is freed. The caller is responsible for running the core afterwards if it needs fresh video/audio for the frame.
- *
- * @internal
  */
 static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
     if (!lr->rewindEnabled || !lr->rewindReference || lr->rewindCount == 0) return false;
@@ -1433,14 +1424,13 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Step back a single captured frame and re-run the core to emit its output.
  *
  * Decoupled from the negative-speed path so a frontend can offer manual frame-by-frame reverse stepping. Audio is muted and input neutralized during the throwaway re-run that produces the displayed frame.
  *
  * @param lr the libretro context.
  * @returns true if a frame was rewound, false if rewind is unavailable or the buffer is empty.
- *
- * @internal
  */
 static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
     if (!SDL_Libretro_IsGameReady(lr) || !lr->rewindEnabled) {
@@ -1456,11 +1446,10 @@ static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Drop the oldest snapshots until the stored delta memory fits the budget.
  *
  * Always retains at least the most recent snapshot so a non-zero budget can't empty the buffer entirely. A zero budget means unbounded (no-op).
- *
- * @internal
  */
 static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr) {
     if (!lr->rewindEnabled || lr->rewindMaxBytes == 0 || !lr->rewindEntries) return;
@@ -1473,13 +1462,12 @@ static void SDL_Libretro_RewindEvictToBudget(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Discard all recorded rewind history without disabling rewind.
  *
  * Keeps the buffer allocated; the next captured frame starts a fresh reference. Called both by the public API and internally after a discontinuity (state load, reset, serialize-size change) so rewinding can't walk back across it into a stale timeline.
  *
  * @param lr the libretro context.
- *
- * @internal
  */
 static void SDL_Libretro_ClearRewind(SDL_Libretro* lr) {
     if (!lr) return;
@@ -1499,9 +1487,8 @@ static void SDL_Libretro_ClearRewind(SDL_Libretro* lr) {
 }
 
 /**
- * Frees the entire rewind buffer.
- *
  * @internal
+ * Frees the entire rewind buffer.
  */
 static void SDL_Libretro_RewindFree(SDL_Libretro* lr) {
     // Clear the rewind data.

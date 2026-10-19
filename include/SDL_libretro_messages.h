@@ -62,9 +62,8 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
 }
 
 /**
- * Expires old on-screen-display messages from the OSD queue.
- *
  * @internal
+ * Expires old on-screen-display messages from the OSD queue.
  */
 static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
     Uint64 now = SDL_GetTicks();
@@ -85,11 +84,10 @@ static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Gets the message index of the highest priority message.
  *
  * @returns the message index, or -1 if none.
- *
- * @internal
  */
 static int SDL_Libretro_OsdFindTop(const SDL_Libretro* lr) {
     Uint64 now = SDL_GetTicks();

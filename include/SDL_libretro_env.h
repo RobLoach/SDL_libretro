@@ -10,9 +10,8 @@
 #include <stdarg.h>
 
 /**
- * Callback for when the libretro core writes to the log.
- *
  * @internal
+ * Callback for when the libretro core writes to the log.
  */
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
     if (SDL_Libretro_active && level < SDL_Libretro_active->logLevel) {
@@ -101,9 +100,8 @@ static void SDL_Libretro_PerfStop(struct retro_perf_counter* counter) {
 }
 
 /**
- * Displays the active performance timers in the log.
- *
  * @internal
+ * Displays the active performance timers in the log.
  */
 static void SDL_Libretro_PerfLog(void) {
     SDL_Libretro* lr = SDL_Libretro_active;
@@ -122,11 +120,10 @@ static void SDL_Libretro_PerfLog(void) {
 }
 
 /**
+ * @internal
  * Push a port's rumble state to its gamepad.
  *
  * Libretro rumble persists until the core sets it to 0, while SDL rumble expires, so this is re-applied every frame from SDL_Libretro_Update(). The duration only bounds how long it keeps going if the frontend stops updating.
- *
- * @internal
  */
 static void SDL_Libretro_ApplyRumble(SDL_Libretro* lr, unsigned port) {
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS || !lr->gamepads[port]) return;
@@ -136,9 +133,8 @@ static void SDL_Libretro_ApplyRumble(SDL_Libretro* lr, unsigned port) {
 }
 
 /**
- * Stop rumble on every port and forget the core's rumble state.
- *
  * @internal
+ * Stop rumble on every port and forget the core's rumble state.
  */
 static void SDL_Libretro_StopRumble(SDL_Libretro* lr) {
     if (!lr) return;
@@ -199,10 +195,9 @@ static const char* SDL_Libretro_GetDirectory(SDL_Libretro* lr, unsigned cmd) {
 }
 
 /**
+ * @internal
  * The refresh rate the frontend is presenting at, in Hz. Taken from the
  * current display mode of the core's window, defaulting to 60 when unknown.
- *
- * @internal
  */
 static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
     float rate = 60.0f;
@@ -219,11 +214,10 @@ static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
  * Picks the text a categorizing frontend should show. libretro provides a
  * `*_categorized` variant for use when an option sits inside a category; it falls
  * back to the base text when there's no category or the variant is empty.
- *
- * @internal
  */
 static const char* SDL_Libretro_PickCoreOptionText(const char* base, const char* categorized, const char* categoryKey) {
     if (categoryKey && categoryKey[0] && categorized && categorized[0]) {
@@ -233,12 +227,11 @@ static const char* SDL_Libretro_PickCoreOptionText(const char* base, const char*
 }
 
 /**
+ * @internal
  * Map an ISO 639 language code and ISO 3166 country code (as found in SDL_Locale) to a RETRO_LANGUAGE_* value.
  *
  * @param language The language code, such as "pt". NULL or unknown gives RETRO_LANGUAGE_ENGLISH.
  * @param country The country code, such as "BR". May be NULL.
- *
- * @internal
  */
 static int SDL_Libretro_LanguageFromLocale(const char* language, const char* country) {
     if (!language || !language[0]) return RETRO_LANGUAGE_ENGLISH;
@@ -307,9 +300,8 @@ static int SDL_Libretro_LanguageFromLocale(const char* language, const char* cou
 }
 
 /**
- * Detect the RETRO_LANGUAGE_* value from the user's most preferred locale.
- *
  * @internal
+ * Detect the RETRO_LANGUAGE_* value from the user's most preferred locale.
  */
 static int SDL_Libretro_DetectLanguage(void) {
     int count = 0;
@@ -333,18 +325,16 @@ int SDL_Libretro_GetLanguage(const SDL_Libretro* lr) {
 }
 
 /**
- * Pick the translated text when the core provides it, otherwise the US English text.
- *
  * @internal
+ * Pick the translated text when the core provides it, otherwise the US English text.
  */
 static const char* SDL_Libretro_PickLocalText(const char* us, const char* local) {
     return (local && local[0]) ? local : us;
 }
 
 /**
- * Convert a NULL-key-terminated v1 option definition list into a newly allocated v2 list (also NULL-key-terminated). Strings still point into the core's data.
- *
  * @internal
+ * Convert a NULL-key-terminated v1 option definition list into a newly allocated v2 list (also NULL-key-terminated). Strings still point into the core's data.
  */
 static struct retro_core_option_v2_definition* SDL_Libretro_CoreOptionsV1ToV2(const struct retro_core_option_definition* defs) {
     unsigned count = 0;
