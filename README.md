@@ -61,6 +61,26 @@ SDL_Libretro_Destroy(lr);
 - [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
 - [SDL_libretro](example/SDL_libretro.c): The full-featured app, with the menu ([try it online](https://robloach.github.io/SDL_libretro/demo/))
 
+### Cores and Content
+
+`SDL_Libretro_SetCoreDirectory()` scans a directory for cores and their `.info` files, and returns `false` when the directory doesn't exist. The core library is sorted by core name, so when `SDL_Libretro_LoadGame()` is called with no core loaded, the first core in that order that supports the game's extension wins.
+
+Cores that support running without content (see `SDL_Libretro_IsGameRequired()`) start with a `NULL` game:
+
+```c
+SDL_Libretro_LoadCore(lr, "core.so");
+SDL_Libretro_LoadGame(lr, NULL);
+```
+
+### Input and Language
+
+- `SDL_Libretro_SetMousePort()` / `SDL_Libretro_GetMousePort()`: The one controller port the mouse drives (default `0`). Only that port answers the mouse, pointer and lightgun devices, so one mouse doesn't act as every player.
+- `SDL_Libretro_SetLanguage()` / `SDL_Libretro_GetLanguage()`: The `RETRO_LANGUAGE_*` reported to cores, detected from the system locale by default; pass `-1` to go back to detecting it. Cores usually ask while loading, so a change applies on the next core load.
+
+### Disk Control
+
+Multi-disc games swap disks with `SDL_Libretro_EjectDisk()`, `SDL_Libretro_SetDiskIndex()` and `SDL_Libretro_InsertDisk()`. With the tray ejected, `SDL_Libretro_AddDiskImage(lr, path)` or `SDL_Libretro_AddDiskImage_IO(lr, src, path, closeio)` appends an image; `path` is the name the image is known by. Depending on the core, it gets the image's bytes, or, when it needs a full path, a temp file the stream was written to.
+
 ### Zip Loading
 
 To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake option, and then let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_PHYSFS`.
@@ -73,6 +93,12 @@ To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake o
 // Enables loading games directly from .zip files.
 SDL_Libretro_LoadGame(lr, "game.zip");
 ```
+
+Cores that set `block_extract` in their `.info` file, or that list `zip` as a supported extension, get the raw `.zip` instead of the content inside it.
+
+### Config
+
+`SDL_Libretro_InitConfig(lr, org, app)` or `SDL_Libretro_InitConfigFile(lr, file)` loads settings from an `.ini` file and saves them back when the context is destroyed. Besides each core's options and the keyboard and gamepad bindings, it stores `volume`, `username`, `audiolatency`, `fitmode`, `scalemode`, `savedirectory`, `systemdirectory`, `coredirectory`, `coreassetsdirectory`, `rewindenabled`, `rewindframes`, `rewindinterval`, `rewindmemorylimit`, `mouseport`, `language` and `filebrowserdirectory`.
 
 ### Menu
 
@@ -193,6 +219,13 @@ See [`example/SDL_libretro_embed.html`](example/SDL_libretro_embed.html) for a c
 
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
 
+- `SDL_LIBRETRO_MAX_USERS`: The number of controller ports (default `4`)
+- `SDL_LIBRETRO_GET_TICKS_NS()`: The nanosecond clock that paces `SDL_Libretro_Update()` and the frame-time callback (default `SDL_GetTicksNS()`), e.g. to substitute a fake clock in tests
+- `SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS`: The default audio latency threshold (default `100`)
+- `SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE`: The rate used when a core reports no sample rate (default `48000`)
+- `SDL_LIBRETRO_AUDIO_DRC_MAX_DELTA`: How hard dynamic rate control may bend the audio pitch (default `0.005`)
+- `SDL_LIBRETRO_MIC_DEFAULT_RATE`: The default microphone sample rate (default `44100`)
+- `SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES`: The default rewind memory limit (default 256 MiB)
 - `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
 - `SDL_LIBRETRO_ENABLE_PHYSFS`: Enable .zip loading with PhysFS
 - `SDL_LIBRETRO_PHYSFS_MOUNT_POINT`: The PhysFS mount point archives are mounted at (default `"game"`)
@@ -200,6 +233,17 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - `SDL_LIBRETRO_MENU_TOGGLE_KEY`: The key that toggles the menu (default `SDLK_F1`)
 - `SDL_LIBRETRO_MENU_FONT_HEIGHT`: Base menu font height in pixels (default `13`)
 - `SDL_LIBRETRO_MENU_DEFAULT_STYLE`: The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA`)
+- `SDL_LIBRETRO_DISABLE_PHYSFS` / `SDL_LIBRETRO_DISABLE_MENU`: Turn PhysFS or the menu back off, even when enabled
+- `SDL_LIBRETRO_DISABLE_VFS`: Don't provide the SDL-backed libretro VFS, e.g. when implementing your own (PhysFS requires it)
+- `SDL_LIBRETRO_NO_INI_IMPLEMENTATION`, `SDL_LIBRETRO_PHYSFS_NO_SDL_PHYSFS_IMPLEMENTATION`, `SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION`: Skip compiling the bundled SDL_ini, SDL_PhysFS or Nuklear implementations when they're already compiled elsewhere
+- `SDL_LIBRETRO_MENU_NUKLEAR_H`, `SDL_LIBRETRO_MENU_NUKLEAR_SDL3_RENDERER_H`, `SDL_LIBRETRO_MENU_NUKLEAR_GAMEPAD_H`, `SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H`: Include paths for the menu's Nuklear headers
+
+## Limitations
+
+- Only one `SDL_Libretro` context can have a core loaded at a time, as libretro callbacks reach it through a single global. The API isn't thread-safe; use it from the main thread.
+- SRAM isn't loaded or saved automatically; call `SDL_Libretro_LoadSRAM()` and `SDL_Libretro_SaveSRAM()` from the application ([#182](https://github.com/RobLoach/SDL_libretro/issues/182)).
+- Web builds don't persist saves between visits ([#222](https://github.com/RobLoach/SDL_libretro/issues/222)).
+- Hardware rendering (`RETRO_ENVIRONMENT_SET_HW_RENDER`) is unsupported, so cores need software rendering ([#14](https://github.com/RobLoach/SDL_libretro/issues/14)).
 
 ## Dependencies
 
