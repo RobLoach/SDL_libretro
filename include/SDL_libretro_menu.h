@@ -126,12 +126,16 @@
 
 /**
  * The style names, separated by a |, in SDL_LibretroMenuStyle order.
+ *
+ * @internal
  */
 #define SDL_LIBRETRO_MENU_STYLE_NAMES "Mocha|Latte|Frappe|Macchiato|Dracula|Dark"
 
 /**
  * The Language combobox entries, separated by a |: Auto, then the
  * RETRO_LANGUAGE_* values in enum order.
+ *
+ * @internal
  */
 #define SDL_LIBRETRO_MENU_LANGUAGE_NAMES                                              \
     "Auto|English|Japanese|French|Spanish|German|Italian|Dutch|"                      \
@@ -207,6 +211,12 @@ typedef struct SDL_LibretroMenuPadPort {
     SDL_LibretroMenuPadBind binds[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
 } SDL_LibretroMenuPadPort;
 
+/**
+ * The state behind the opaque SDL_LibretroMenu handle. Applications must use
+ * the SDL_Libretro_*Menu* functions rather than these fields.
+ *
+ * @internal
+ */
 struct SDL_LibretroMenu {
     SDL_Libretro* lr;
     struct nk_context* ctx;
@@ -446,9 +456,17 @@ static void SDL_Libretro_MenuLoadStateClicked(SDL_LibretroMenu* menu, void* user
 }
 
 /**
- * Save a PNG screenshot of the current frame, reporting the result in the
- * menu. Suitable for SDL_Libretro_AddMenuButton(); userdata is the
- * destination path, or NULL for "screenshot.png".
+ * A ready-made menu callback that saves a PNG screenshot of the current
+ * frame, reporting the result in the menu.
+ *
+ * Pass it to SDL_Libretro_AddMenuButton(). The menu's own Screenshot entry
+ * uses it too.
+ *
+ * @param menu the menu the callback fired for. NULL is ignored.
+ * @param userdata the destination path as a const char*, or NULL for
+ *                 "screenshot.png".
+ *
+ * @see SDL_Libretro_AddMenuButton()
  */
 void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata) {
     if (menu == NULL) {
@@ -1264,7 +1282,9 @@ static void SDL_Libretro_MenuFreeOptionStates(SDL_LibretroMenu* menu) {
 /**
  * Join count items into a freshly allocated "a|b|c" string for a combobox.
  *
+ * @param count the number of items.
  * @param item Returns the text for an index; must never return NULL.
+ * @param userdata passed to item.
  *
  * @internal
  */
@@ -2041,6 +2061,20 @@ static void SDL_Libretro_MenuUIScaleChanged(nk_console* widget, void* user_data)
     menu->settingsDirty = true;
 }
 
+/**
+ * Applies a color theme to the menu.
+ *
+ * The choice is saved to the config with the other menu settings, and
+ * restored by SDL_Libretro_CreateMenu(). The initial style is
+ * SDL_LIBRETRO_MENU_DEFAULT_STYLE.
+ *
+ * @param menu the menu to style.
+ * @param style the theme; must be below SDL_LIBRETRO_MENU_STYLE_COUNT.
+ * @returns true on success, false when menu is NULL or style is out of
+ *          range.
+ *
+ * @see SDL_Libretro_GetMenuStyle()
+ */
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style) {
     if (menu == NULL || menu->ctx == NULL || (int)style < 0 || style >= SDL_LIBRETRO_MENU_STYLE_COUNT) {
         return false;
@@ -2059,6 +2093,15 @@ bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle sty
     return true;
 }
 
+/**
+ * Gets the menu's active color theme.
+ *
+ * @param menu the menu to query.
+ * @returns the active style, or SDL_LIBRETRO_MENU_DEFAULT_STYLE when menu is
+ *          NULL.
+ *
+ * @see SDL_Libretro_SetMenuStyle()
+ */
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu) {
     return menu != NULL ? menu->style : SDL_LIBRETRO_MENU_DEFAULT_STYLE;
 }
@@ -2360,6 +2403,29 @@ static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
     menu->quitButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Quit", NK_SYMBOL_X, &SDL_Libretro_MenuQuitClicked, NULL);
 }
 
+/**
+ * Creates the in-app menu for a libretro context.
+ *
+ * Sets up Nuklear on the context's window and renderer, restores the menu's
+ * persisted settings (style, UI scale, volume, and the like) from the config,
+ * and builds the menu pages. The menu starts closed, but
+ * SDL_Libretro_UpdateMenu() opens it whenever no game is running.
+ *
+ * Requires the implementation to be compiled with SDL_LIBRETRO_ENABLE_MENU.
+ * Each frame, route events through SDL_Libretro_HandleMenuEvent(), then call
+ * SDL_Libretro_UpdateMenu() and SDL_Libretro_RenderMenu() after rendering the
+ * game and before presenting.
+ *
+ * @param lr the libretro context. SDL_Libretro_SetRenderer() must have been
+ *           called on it first, and it must outlive the menu.
+ * @returns the new menu, or NULL on failure; call SDL_GetError() for more
+ *          information. Free it with SDL_Libretro_DestroyMenu().
+ *
+ * @see SDL_Libretro_DestroyMenu()
+ * @see SDL_Libretro_UpdateMenu()
+ * @see SDL_Libretro_RenderMenu()
+ * @see SDL_Libretro_HandleMenuEvent()
+ */
 SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     if (lr == NULL) {
         SDL_InvalidParamError("lr");
@@ -2408,6 +2474,20 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     return menu;
 }
 
+/**
+ * Destroys a menu created with SDL_Libretro_CreateMenu().
+ *
+ * Writes any changed menu settings to the config, frees the Nuklear context
+ * and every widget, including the entries added with
+ * SDL_Libretro_AddMenuButton() and SDL_Libretro_AddMenuCheckbox(), and drops
+ * any queued SDL_EVENT_LIBRETRO_MENU_OPENED and SDL_EVENT_LIBRETRO_MENU_CLOSED
+ * events that still refer to it. The libretro context is left untouched;
+ * destroy the menu before destroying the context.
+ *
+ * @param menu the menu to destroy. NULL is ignored.
+ *
+ * @see SDL_Libretro_CreateMenu()
+ */
 void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
     if (menu == NULL) {
         return;
@@ -2434,24 +2514,81 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
     SDL_free(menu);
 }
 
+/**
+ * Checks whether the menu is currently shown.
+ *
+ * While it is open, the application should skip SDL_Libretro_Update() so
+ * the game stays paused.
+ *
+ * @param menu the menu to query.
+ * @returns true when the menu is open, false when it is closed or menu is
+ *          NULL.
+ *
+ * @see SDL_Libretro_SetMenuOpen()
+ * @see SDL_Libretro_ToggleMenu()
+ */
 bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu) {
     return menu != NULL && menu->open;
 }
 
+/**
+ * Gets the libretro context the menu was created for.
+ *
+ * Handy inside an SDL_LibretroMenuCallback.
+ *
+ * @param menu the menu to query.
+ * @returns the SDL_Libretro context passed to SDL_Libretro_CreateMenu(), or
+ *          NULL when menu is NULL.
+ *
+ * @see SDL_Libretro_CreateMenu()
+ */
 SDL_Libretro* SDL_Libretro_GetMenuLibretro(const SDL_LibretroMenu* menu) {
     return menu != NULL ? menu->lr : NULL;
 }
 
+/**
+ * Attaches generic application data to the menu.
+ *
+ * The menu never reads or frees it.
+ *
+ * @param menu the menu to update. NULL is ignored.
+ * @param userData the data to store, or NULL to clear it.
+ *
+ * @see SDL_Libretro_GetMenuUserData()
+ */
 void SDL_Libretro_SetMenuUserData(SDL_LibretroMenu* menu, void* userData) {
     if (menu != NULL) {
         menu->userData = userData;
     }
 }
 
+/**
+ * Gets the data attached with SDL_Libretro_SetMenuUserData().
+ *
+ * @param menu the menu to query.
+ * @returns the stored data, or NULL when none was set or menu is NULL.
+ *
+ * @see SDL_Libretro_SetMenuUserData()
+ */
 void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu) {
     return menu != NULL ? menu->userData : NULL;
 }
 
+/**
+ * Opens or closes the menu.
+ *
+ * When the state changes, pushes SDL_EVENT_LIBRETRO_MENU_OPENED or
+ * SDL_EVENT_LIBRETRO_MENU_CLOSED with the menu in data2, and closing stops
+ * text input on the window. Setting the current state again does nothing.
+ * Note that SDL_Libretro_UpdateMenu() reopens the menu while no game is
+ * running.
+ *
+ * @param menu the menu to update. NULL is ignored.
+ * @param open true to show the menu, false to hide it.
+ *
+ * @see SDL_Libretro_ToggleMenu()
+ * @see SDL_Libretro_IsMenuOpen()
+ */
 void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     if (menu == NULL || menu->open == open) {
         return;
@@ -2463,12 +2600,43 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     SDL_Libretro_PushEvent(menu->lr, open ? SDL_EVENT_LIBRETRO_MENU_OPENED : SDL_EVENT_LIBRETRO_MENU_CLOSED, menu);
 }
 
+/**
+ * Opens the menu when it is closed, or closes it when it is open.
+ *
+ * This is what the toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad
+ * Guide button do in SDL_Libretro_HandleMenuEvent().
+ *
+ * @param menu the menu to toggle. NULL is ignored.
+ *
+ * @see SDL_Libretro_SetMenuOpen()
+ */
 void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
     if (menu != NULL) {
         SDL_Libretro_SetMenuOpen(menu, !menu->open);
     }
 }
 
+/**
+ * Routes an event to the menu; call this for every event, before
+ * SDL_Libretro_HandleEvent().
+ *
+ * The toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button
+ * flip the menu open or closed, and are always consumed. Gamepad connection
+ * changes are tracked even while the menu is closed.
+ *
+ * @param menu the menu to feed.
+ * @param event the event to handle; it is not modified.
+ * @returns true when the menu consumed the event: do not forward it to
+ *          SDL_Libretro_HandleEvent(). This happens for the toggle inputs
+ *          above, and for gameplay input swallowed while the menu is open.
+ *          false when the event should be handled as usual: the menu is
+ *          closed, menu or event is NULL, the event is an application event
+ *          (SDL_EVENT_USER and above), or it is a lifecycle event (quit,
+ *          drop-file, window, and gamepad/joystick add/remove) which always
+ *          passes through so the application and frontend still see it.
+ *
+ * @see SDL_Libretro_UpdateMenu()
+ */
 bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
     if (menu == NULL || menu->ctx == NULL || event == NULL) {
         return false;
@@ -2565,6 +2733,21 @@ static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justO
     SDL_strlcpy(menu->builtCoreName, lr->core.libraryName, sizeof(menu->builtCoreName));
 }
 
+/**
+ * Opens the menu and navigates to a page by its slash-separated label path,
+ * e.g. "Settings/Audio & Video", "Settings/Core Options" or "Disks".
+ *
+ * The pages built from the loaded core are refreshed first, so their paths
+ * resolve before the next frame.
+ *
+ * @param menu the menu to navigate.
+ * @param path the label path of the page to show.
+ * @returns true when the path resolved; the menu stays open either way.
+ *          false when menu or path is NULL; call SDL_GetError() for more
+ *          information.
+ *
+ * @see SDL_Libretro_SetMenuOpen()
+ */
 bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path) {
     if (menu == NULL || menu->console == NULL || path == NULL) {
         return SDL_InvalidParamError("menu");
@@ -2583,6 +2766,21 @@ bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path) {
     return nk_console_navigate_to_path(menu->console, path) == nk_true;
 }
 
+/**
+ * Processes input and lays out the menu for this frame.
+ *
+ * Call once per frame, after the frame's events went through
+ * SDL_Libretro_HandleMenuEvent() and after SDL_Libretro_Render(), then
+ * follow it with SDL_Libretro_RenderMenu(). Opens the menu whenever no game
+ * is running. While open, it refreshes the pages that depend on the loaded
+ * core, shows or hides the game-only entries, and writes changed menu
+ * settings to the config. Does nothing else while the menu is closed.
+ *
+ * @param menu the menu to update. NULL is ignored.
+ *
+ * @see SDL_Libretro_RenderMenu()
+ * @see SDL_Libretro_HandleMenuEvent()
+ */
 void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     if (menu == NULL || menu->ctx == NULL) {
         return;
@@ -2652,6 +2850,17 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
                                                                                                                   ((nk_console_active_parent(menu->console) == menu->console) ? NK_WINDOW_TITLE : 0));
 }
 
+/**
+ * Draws the menu laid out by SDL_Libretro_UpdateMenu() to the renderer.
+ *
+ * Call once per frame, after SDL_Libretro_UpdateMenu() and before
+ * SDL_RenderPresent(). Draws nothing while the menu is closed, but must still
+ * be called every frame so input is collected for the next one.
+ *
+ * @param menu the menu to draw. NULL is ignored.
+ *
+ * @see SDL_Libretro_UpdateMenu()
+ */
 void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
     if (menu == NULL || menu->ctx == NULL) {
         return;
@@ -2683,6 +2892,22 @@ static void SDL_Libretro_MenuKeepQuitLast(SDL_LibretroMenu* menu) {
     children[count - 1] = menu->quitButton;
 }
 
+/**
+ * Adds a button to the main menu, just above Quit.
+ *
+ * The menu copies the label and frees the button in
+ * SDL_Libretro_DestroyMenu().
+ *
+ * @param menu the menu to add to.
+ * @param label the button text.
+ * @param callback called when the button is clicked, or NULL.
+ * @param userdata passed to the callback.
+ * @returns true on success, false when menu or label is NULL or the button
+ *          could not be created; call SDL_GetError() for more information.
+ *
+ * @see SDL_Libretro_AddMenuCheckbox()
+ * @see SDL_Libretro_MenuScreenshotClicked()
+ */
 bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_LibretroMenuCallback callback, void* userdata) {
     if (menu == NULL || menu->console == NULL || label == NULL) {
         return SDL_InvalidParamError("menu");
@@ -2692,6 +2917,24 @@ bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_L
     return button != NULL;
 }
 
+/**
+ * Adds a checkbox to the main menu, just above Quit.
+ *
+ * The checkbox starts from the current value, and the value pointer is
+ * written on every toggle, so it must outlive the menu. The menu copies the
+ * label and frees the checkbox in SDL_Libretro_DestroyMenu().
+ *
+ * @param menu the menu to add to.
+ * @param label the checkbox text.
+ * @param value the bool the checkbox mirrors, or NULL to keep the state
+ *              internal.
+ * @param callback called after each toggle, once value is updated, or NULL.
+ * @param userdata passed to the callback.
+ * @returns true on success, false when menu or label is NULL or the checkbox
+ *          could not be created; call SDL_GetError() for more information.
+ *
+ * @see SDL_Libretro_AddMenuButton()
+ */
 bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata) {
     if (menu == NULL || menu->console == NULL || label == NULL) {
         return SDL_InvalidParamError("menu");

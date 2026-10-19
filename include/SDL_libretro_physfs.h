@@ -1,5 +1,10 @@
 /**
  * SDL_libretro - zip loading with PhysFS
+ *
+ * Enabled by defining SDL_LIBRETRO_ENABLE_PHYSFS alongside
+ * SDL_LIBRETRO_IMPLEMENTATION; requires the SDL VFS. Without it, the
+ * SDL_Libretro_PhysFS_* functions are stubs that fail with an error.
+ *
  * @file SDL_libretro_physfs.h
  */
 
@@ -158,11 +163,16 @@ static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
  * Initialize PhysFS and route the libretro VFS through it.
  *
  * This will be called automatically in SDL_Libretro_PhysFS_LoadGame()
- * if PhysFS was not initiatlized. Cores can then read content directly
- * from the mounted archive through the VFS. Safe to call repeatedly.
+ * if PhysFS was not initialized. Cores can then read content directly
+ * from the mounted archive through the VFS, with anything outside PhysFS
+ * falling through to the SDL VFS. Safe to call repeatedly.
+ *
+ * Requires the implementation to be compiled with
+ * SDL_LIBRETRO_ENABLE_PHYSFS; otherwise it always fails.
  *
  * @param lr the libretro context to install the VFS overrides on.
- * @return true on success, false if PhysFS failed to initialize.
+ * @returns true on success, false if lr is NULL or PhysFS failed to
+ *          initialize; call SDL_GetError() for more information.
  *
  * @see SDL_Libretro_PhysFS_Quit()
  */
@@ -188,6 +198,11 @@ bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
 /**
  * Tear down PhysFS, unmounting any active archive and restoring the plain SDL
  * VFS on the given context.
+ *
+ * Unload the game first, since a game loaded from an archive still reads
+ * from the mount. Safe to call when PhysFS was never initialized.
+ *
+ * @param lr the libretro context. NULL is ignored.
  *
  * @see SDL_Libretro_PhysFS_Init()
  */
@@ -259,8 +274,10 @@ static void SDL_Libretro_PhysFS_CollectFiles(const char* dir, SDL_Libretro_PhysF
  *
  * Subdirectories are searched recursively.
  *
+ * @param lr the libretro context, for the loaded core and core library.
  * @param archivePath the OS path of the archive (used for the base name).
  * @param dst receives the virtual path of the pick.
+ * @param dstSize the size of dst in bytes.
  * @return true if a candidate was found and copied into `dst`.
  *
  * @internal
@@ -349,12 +366,22 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archiv
  * loaded, when the first core in the library that lists "zip" sets
  * block_extract in its .info file.
  *
+ * Any running game is unloaded and any previous archive unmounted first.
+ * PhysFS is initialized on demand; if that or mounting the archive fails, the
+ * .zip falls back to a plain SDL_Libretro_LoadGame()-style load. Without a
+ * loaded core, the core is picked from the library based on the chosen
+ * content file.
+ *
  * SDL_Libretro_LoadGame() will call this automatically when loading an archive,
- * so there is no need to call it directly.
+ * so there is no need to call it directly. Requires the implementation to be
+ * compiled with SDL_LIBRETRO_ENABLE_PHYSFS; otherwise it always fails.
  *
  * @param lr the libretro context.
  * @param gamePath the OS path of the content or archive. May be NULL for a
  *                 content-less core load.
+ * @returns true when the game loaded, false on failure, including when lr is
+ *          NULL, no suitable content is found inside the archive, or no core
+ *          can run it; call SDL_GetError() for more information.
  *
  * @see SDL_Libretro_LoadGame()
  */
