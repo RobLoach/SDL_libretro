@@ -18,7 +18,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -29,22 +29,22 @@ jobs:
         run: doxygen .Doxyfile
 
       - name: Setup Emscripten
-        uses: mymindstorm/setup-emsdk@v14
+        uses: emscripten-core/setup-emsdk@v16
         with:
-          version: 6.0.2
+          version: 6.0.12
           actions-cache-folder: emsdk-cache
 
       - name: Cache SDL3 (Emscripten)
         id: sdl3-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: sdl3-install
-          key: sdl3-emscripten-3.4.12
+          key: sdl3-emscripten-3.4.18
 
       - name: Build SDL3 with Emscripten
         if: steps.sdl3-cache.outputs.cache-hit != 'true'
         run: |
-          git clone --depth 1 --branch release-3.4.12 https://github.com/libsdl-org/SDL.git sdl3-src
+          git clone --depth 1 --branch release-3.4.18 https://github.com/libsdl-org/SDL.git sdl3-src
           emcmake cmake -B sdl3-build -S sdl3-src \
             -DCMAKE_BUILD_TYPE=Release \
             -DSDL_SHARED=OFF \
@@ -72,7 +72,7 @@ jobs:
           mv docs/demo/SDL_libretro_demo.html docs/demo/index.html
           touch docs/.nojekyll
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: docs
 
@@ -84,4 +84,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

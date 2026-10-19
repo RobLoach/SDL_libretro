@@ -16,7 +16,7 @@ endif()
 FetchContent_Declare(
     physfs
     GIT_REPOSITORY https://github.com/icculus/physfs.git
-    GIT_TAG 23d0b5696445d86262221519c3db3ae351376da0
+    GIT_TAG c30aa9086d4caf7548ee76655376aa7aa9098ffc
 )
 FetchContent_GetProperties(physfs)
 if(NOT physfs_POPULATED)

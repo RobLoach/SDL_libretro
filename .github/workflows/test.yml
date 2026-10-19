@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           submodules: true
 
@@ -18,7 +18,7 @@ jobs:
         id: sdl
         uses: libsdl-org/setup-sdl@a966470e7d9b6a5c93eec3f08d5dac370325c860
         with:
-          version: 3.4.12
+          version: 3.4.18
           sdl-test: true
           build-type: Release
           install-linux-dependencies: true
