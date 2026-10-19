@@ -63,6 +63,8 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
 
 /**
  * Expires old on-screen-display messages from the OSD queue.
+ *
+ * @internal
  */
 static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
     Uint64 now = SDL_GetTicks();
@@ -86,6 +88,8 @@ static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
  * Gets the message index of the highest priority message.
  *
  * @returns the message index, or -1 if none.
+ *
+ * @internal
  */
 static int SDL_Libretro_OsdFindTop(const SDL_Libretro* lr) {
     Uint64 now = SDL_GetTicks();
@@ -115,9 +119,14 @@ static void SDL_Libretro_FreeMessages(SDL_Libretro* lr) {
 /**
  * Add a message to be displayed within the libretro context.
  *
- * @param the libretro context.
- * @param msg The message to display.
- * @param duration The amount of time in seconds to display the message.
+ * The message is copied. Setting a message that is already queued refreshes
+ * its duration instead of adding a duplicate.
+ *
+ * @param lr the libretro context.
+ * @param msg the message to display, or NULL or an empty string to clear all queued messages.
+ * @param duration the amount of time in seconds to display the message.
+ *
+ * @see SDL_Libretro_GetMessage()
  */
 void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration) {
     if (!lr) return;
@@ -132,9 +141,16 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
 }
 
 /**
- * Gets the most relevent libretro message to display from the queue.
+ * Gets the most relevant libretro message to display from the queue.
  *
- * @return A string for the message, or NULL if there isn't a message to display.
+ * This is the highest priority message that has not yet expired. The string is
+ * owned by the context and stays valid until the message expires or is replaced.
+ *
+ * @param lr the libretro context.
+ * @returns a string for the message, or NULL if there isn't a message to display.
+ *
+ * @see SDL_Libretro_GetMessageProgress()
+ * @see SDL_Libretro_GetMessageType()
  */
 const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
     if (!lr || lr->osdQueueCount == 0) return NULL;
@@ -143,6 +159,15 @@ const char* SDL_Libretro_GetMessage(SDL_Libretro* lr) {
     return lr->osdQueue[top].msg;
 }
 
+/**
+ * Gets the progress of the message returned by SDL_Libretro_GetMessage().
+ *
+ * @param lr the libretro context.
+ * @returns the progress as a percentage from 0 to 100, or -1 when the message
+ *          has no progress indicator or there is no message to display.
+ *
+ * @see SDL_Libretro_GetMessage()
+ */
 int SDL_Libretro_GetMessageProgress(SDL_Libretro* lr) {
     if (!lr || lr->osdQueueCount == 0) return -1;
     int top = SDL_Libretro_OsdFindTop(lr);
@@ -150,6 +175,16 @@ int SDL_Libretro_GetMessageProgress(SDL_Libretro* lr) {
     return lr->osdQueue[top].progress;
 }
 
+/**
+ * Gets the type of the message returned by SDL_Libretro_GetMessage().
+ *
+ * @param lr the libretro context.
+ * @returns the message's `enum retro_message_type` value, such as
+ *          RETRO_MESSAGE_TYPE_NOTIFICATION or RETRO_MESSAGE_TYPE_PROGRESS; 0
+ *          (RETRO_MESSAGE_TYPE_NOTIFICATION) when there is no message.
+ *
+ * @see SDL_Libretro_GetMessage()
+ */
 int SDL_Libretro_GetMessageType(SDL_Libretro* lr) {
     if (!lr || lr->osdQueueCount == 0) return 0;
     int top = SDL_Libretro_OsdFindTop(lr);
@@ -162,7 +197,10 @@ int SDL_Libretro_GetMessageType(SDL_Libretro* lr) {
  *
  * Will expire any old messages to make sure the count is correct.
  *
- * @return The number of queued messages.
+ * @param lr the libretro context.
+ * @returns the number of queued messages.
+ *
+ * @see SDL_Libretro_GetMessageByIndex()
  */
 unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr) {
     if (!lr || lr->osdQueueCount == 0) return 0;
@@ -173,7 +211,14 @@ unsigned SDL_Libretro_GetMessageCount(SDL_Libretro* lr) {
 /**
  * Retrieves all message details for the given message index.
  *
- * @param index The index of the message to retrieve. If -1, will get the most relevent message.
+ * @param lr the libretro context.
+ * @param index the index of the message to retrieve, from 0 to SDL_Libretro_GetMessageCount() - 1. If negative, gets the most relevant message.
+ * @param msg a pointer filled in with the message string, owned by the context, or NULL.
+ * @param progress a pointer filled in with the progress percentage (0-100, or -1 for none), or NULL.
+ * @param type a pointer filled in with the message's `enum retro_message_type`, or NULL.
+ * @returns true if the message exists, false otherwise.
+ *
+ * @see SDL_Libretro_GetMessageCount()
  */
 bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index, const char** msg, int* progress, int* type) {
     if (!lr) return false;

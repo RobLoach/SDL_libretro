@@ -7,12 +7,6 @@
 #define SDL_LIBRETRO_INPUT_IMPL_ONCE
 
 /**
- * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
- *
- * @see RETRO_DEVICE_ID_JOYPAD_B
- * @see SDL_GAMEPAD_BUTTON_SOUTH
- */
-/**
  * The default SDL button for each RETRO_DEVICE_ID_JOYPAD_* id; seeds
  * SDL_Libretro::gamepadButtons at creation.
  *
@@ -37,6 +31,13 @@ static const SDL_GamepadButton SDL_Libretro_DefaultGamepadButtons[SDL_LIBRETRO_M
     SDL_GAMEPAD_BUTTON_RIGHT_STICK, // R3
 };
 
+/**
+ * Ports a RETRO_DEVICE_ID_JOYPAD_* to a SDL_GamepadButton.
+ *
+ * @internal
+ * @see RETRO_DEVICE_ID_JOYPAD_B
+ * @see SDL_GAMEPAD_BUTTON_SOUTH
+ */
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(const SDL_Libretro* lr, unsigned port, unsigned button) {
     return port < SDL_LIBRETRO_MAX_USERS && button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS
         ? lr->gamepadButtons[port][button] : SDL_GAMEPAD_BUTTON_INVALID;
@@ -70,6 +71,7 @@ static bool SDL_Libretro_AnalogToDigitalPressed(const SDL_Libretro* lr, unsigned
  * Ports a RETROK_* to a SDL_SCANCODE_*
  *
  * @see RETROK_BACKSPACE
+ * @internal
  * @see SDL_SCANCODE_BACKSPACE
  * @see SDL_Libretro_ScancodeToRetroKey()
  */
@@ -200,6 +202,7 @@ static SDL_Scancode SDL_Libretro_RetroKeyToScancode(unsigned key) {
  * Ports a SDL physical key to a RETROK_*.
  *
  * @see SDL_SCANCODE_BACKSPACE
+ * @internal
  * @see RETROK_BACKSPACE
  * @see SDL_Libretro_RetroKeyToScancode()
  */
@@ -368,6 +371,8 @@ static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
  * along with the rotation applied by SDL_Libretro_Render().
  *
  * @returns true if the cursor is inside the on-screen image, false if offscreen.
+ *
+ * @internal
  */
 static bool SDL_Libretro_PointerCoords(const SDL_Libretro* lr, int16_t* outX, int16_t* outY) {
     float mx = lr->core.inputMouseX;
@@ -649,6 +654,12 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
 
 /**
  * Call this function within the SDL_PollEvent() loop to ensure libretro knows of important events.
+ *
+ * Tracks the mouse, opens and closes gamepads as they're connected, and
+ * forwards keyboard events to cores that listen for them.
+ *
+ * @param lr the libretro context.
+ * @param event the event to handle.
  */
 void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
     if (!lr || !event) return;
@@ -735,6 +746,20 @@ void SDL_Libretro_HandleEvent(SDL_Libretro* lr, const SDL_Event* event) {
     }
 }
 
+/**
+ * Assign a device type to a controller port.
+ *
+ * The device is passed to the core right away when one is loaded, and applied
+ * again once a game finishes loading. Unloading the core resets every port
+ * back to RETRO_DEVICE_JOYPAD.
+ *
+ * @param lr the libretro context.
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_USERS.
+ * @param device the RETRO_DEVICE_* type, or a subclass from RETRO_DEVICE_SUBCLASS(), such as one reported by the core's controller info.
+ * @returns true on success, false on an invalid context or port.
+ *
+ * @see SDL_Libretro_GetPortDevice()
+ */
 bool SDL_Libretro_SetPortDevice(SDL_Libretro* lr, unsigned port, unsigned device) {
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return false;
     lr->core.portDeviceMap[port] = device;
@@ -762,6 +787,18 @@ unsigned SDL_Libretro_GetPortDevice(const SDL_Libretro* lr, unsigned port) {
     return lr->core.portDeviceMap[port];
 }
 
+/**
+ * Maps a keyboard key to a RETRO_DEVICE_ID_JOYPAD_* button for Player 1
+ * (controller port 0).
+ *
+ * The key works alongside any gamepad on that port. Invalid arguments are ignored.
+ *
+ * @param lr the libretro context.
+ * @param retroButton the RETRO_DEVICE_ID_JOYPAD_* button to rebind, from RETRO_DEVICE_ID_JOYPAD_B to RETRO_DEVICE_ID_JOYPAD_R3.
+ * @param scancode the physical key that presses it, or SDL_SCANCODE_UNKNOWN to unbind the button.
+ *
+ * @see SDL_Libretro_SetGamepadMapping()
+ */
 void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scancode scancode) {
     if (!lr || retroButton < 0 || retroButton > RETRO_DEVICE_ID_JOYPAD_R3) return;
     lr->keyboardPlayer1[retroButton] = scancode;
@@ -808,6 +845,10 @@ void SDL_Libretro_SetAnalogToDigital(SDL_Libretro* lr, unsigned port, SDL_Libret
  * Get the analog stick that also registers D-Pad presses on a controller
  * port. Invalid arguments return SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE.
  *
+ * @param lr the libretro context.
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_USERS.
+ * @returns the stick that drives the D-Pad, or SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE.
+ *
  * @see SDL_Libretro_SetAnalogToDigital()
  */
 SDL_LibretroAnalogToDigital SDL_Libretro_GetAnalogToDigital(const SDL_Libretro* lr, unsigned port) {
@@ -833,12 +874,28 @@ void SDL_Libretro_SetMousePort(SDL_Libretro* lr, unsigned port) {
 /**
  * Get the controller port that the mouse drives. NULL returns port 0.
  *
+ * @param lr the libretro context.
+ * @returns the controller port the mouse drives.
+ *
  * @see SDL_Libretro_SetMousePort()
  */
 unsigned SDL_Libretro_GetMousePort(const SDL_Libretro* lr) {
     return lr ? lr->mousePort : 0;
 }
 
+/**
+ * Press or release a joypad button from code, such as from an on-screen
+ * touch control.
+ *
+ * The button stays held until released with `pressed` set to false, and works
+ * alongside the keyboard and gamepad. All virtual buttons are released when
+ * the core is unloaded. Invalid arguments are ignored.
+ *
+ * @param lr the libretro context.
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_USERS.
+ * @param button the RETRO_DEVICE_ID_JOYPAD_* button, below SDL_LIBRETRO_MAX_JOYPAD_BUTTONS.
+ * @param pressed true to hold the button down, false to release it.
+ */
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed) {
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS ||
         button < 0 || button >= SDL_LIBRETRO_MAX_JOYPAD_BUTTONS) {
@@ -852,7 +909,8 @@ void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, 
 /**
  * Retrieve the number of input descriptors provided by a Libretro core.
  *
- * @param lr Pointer to an initialized SDL_Libretro instance. Must not be NULL.
+ * @param lr the libretro context.
+ * @returns the number of descriptors, or 0 if the core is not ready or provided none.
  *
  * @see SDL_Libretro_GetInputDescriptor()
  */

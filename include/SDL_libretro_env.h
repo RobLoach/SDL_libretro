@@ -11,6 +11,8 @@
 
 /**
  * Callback for when the libretro core writes to the log.
+ *
+ * @internal
  */
 static void SDL_Libretro_Logger(enum retro_log_level level, const char* fmt, ...) {
     if (SDL_Libretro_active && level < SDL_Libretro_active->logLevel) {
@@ -100,6 +102,8 @@ static void SDL_Libretro_PerfStop(struct retro_perf_counter* counter) {
 
 /**
  * Displays the active performance timers in the log.
+ *
+ * @internal
  */
 static void SDL_Libretro_PerfLog(void) {
     SDL_Libretro* lr = SDL_Libretro_active;
@@ -121,6 +125,8 @@ static void SDL_Libretro_PerfLog(void) {
  * Push a port's rumble state to its gamepad.
  *
  * Libretro rumble persists until the core sets it to 0, while SDL rumble expires, so this is re-applied every frame from SDL_Libretro_Update(). The duration only bounds how long it keeps going if the frontend stops updating.
+ *
+ * @internal
  */
 static void SDL_Libretro_ApplyRumble(SDL_Libretro* lr, unsigned port) {
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS || !lr->gamepads[port]) return;
@@ -131,6 +137,8 @@ static void SDL_Libretro_ApplyRumble(SDL_Libretro* lr, unsigned port) {
 
 /**
  * Stop rumble on every port and forget the core's rumble state.
+ *
+ * @internal
  */
 static void SDL_Libretro_StopRumble(SDL_Libretro* lr) {
     if (!lr) return;
@@ -193,6 +201,8 @@ static const char* SDL_Libretro_GetDirectory(SDL_Libretro* lr, unsigned cmd) {
 /**
  * The refresh rate the frontend is presenting at, in Hz. Taken from the
  * current display mode of the core's window, defaulting to 60 when unknown.
+ *
+ * @internal
  */
 static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
     float rate = 60.0f;
@@ -212,6 +222,8 @@ static float SDL_Libretro_GetTargetRefreshRate(SDL_Libretro* lr) {
  * Picks the text a categorizing frontend should show. libretro provides a
  * `*_categorized` variant for use when an option sits inside a category; it falls
  * back to the base text when there's no category or the variant is empty.
+ *
+ * @internal
  */
 static const char* SDL_Libretro_PickCoreOptionText(const char* base, const char* categorized, const char* categoryKey) {
     if (categoryKey && categoryKey[0] && categorized && categorized[0]) {

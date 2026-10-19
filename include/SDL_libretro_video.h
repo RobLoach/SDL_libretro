@@ -173,6 +173,19 @@ SDL_Renderer* SDL_Libretro_GetRenderer(const SDL_Libretro* lr) {
     return lr ? lr->renderer : NULL;
 }
 
+/**
+ * Get the streaming texture that holds the core's most recent video frame.
+ *
+ * The texture is owned by the libretro context; do not destroy it. It is
+ * recreated when the core's frame size changes, the renderer changes, or a new
+ * game is loaded, so fetch it again rather than caching the pointer.
+ *
+ * @param lr the libretro context.
+ * @returns the frame texture, or NULL if no video has been initialized yet.
+ *
+ * @see SDL_Libretro_Render()
+ * @see SDL_Libretro_CreateSurface()
+ */
 SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
     return (lr && lr->core.texture) ? lr->core.texture : NULL;
 }
@@ -180,7 +193,14 @@ SDL_Texture* SDL_Libretro_GetTexture(const SDL_Libretro* lr) {
 /**
  * Creates a new surface from the current libretro context.
  *
- * The Surface must be destroyed after use with SDL_DestroySurface().
+ * The frame is copied at its native size, unscaled and unrotated. The Surface
+ * must be destroyed after use with SDL_DestroySurface().
+ *
+ * @param lr the libretro context.
+ * @returns a new surface holding the current frame, or NULL if there is no
+ *          frame or renderer yet, or if reading the pixels back failed.
+ *
+ * @see SDL_Libretro_SaveScreenshot()
  */
 SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
     if (!lr || !lr->core.texture || !lr->renderer) return NULL;
@@ -211,9 +231,11 @@ SDL_Surface* SDL_Libretro_CreateSurface(const SDL_Libretro* lr) {
 /**
  * Saves a PNG screenshot of the current frame.
  *
- * @param path The destination file, or NULL for "screenshot.png".
+ * @param lr the libretro context.
+ * @param path the destination file, or NULL for "screenshot.png".
+ * @returns true when the file was written, false on failure.
  *
- * @return true when the file was written.
+ * @see SDL_Libretro_CreateSurface()
  */
 bool SDL_Libretro_SaveScreenshot(const SDL_Libretro* lr, const char* path) {
     SDL_Surface* screenshot = SDL_Libretro_CreateSurface(lr);
@@ -332,7 +354,11 @@ bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRe
 }
 
 /**
- * Gets the width and heigh tof the given libretro context.
+ * Gets the width and height of the core's current video frame.
+ *
+ * @param lr the libretro context.
+ * @param w a pointer filled in with the frame width in pixels, or NULL; 0 when `lr` is NULL.
+ * @param h a pointer filled in with the frame height in pixels, or NULL; 0 when `lr` is NULL.
  */
 void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h) {
     if (w) *w = lr ? (int)lr->core.width : 0;
@@ -341,21 +367,47 @@ void SDL_Libretro_GetSize(const SDL_Libretro* lr, int* w, int* h) {
 
 /**
  * Gets the aspect ratio for the libretro context.
+ *
+ * @param lr the libretro context.
+ * @returns the display aspect ratio reported by the core (width / height), or
+ *          0.0f or less when the core did not provide one, in which case the
+ *          frame's width / height ratio applies.
  */
 float SDL_Libretro_GetAspectRatio(const SDL_Libretro* lr) {
     return lr ? lr->core.aspectRatio : 0.0f;
 }
 
+/**
+ * Gets the frame rate the core expects to run at.
+ *
+ * @param lr the libretro context.
+ * @returns the core's reported frames per second, or 0.0 if unknown.
+ */
 double SDL_Libretro_GetFPS(const SDL_Libretro* lr) {
     return lr ? lr->core.fps : 0.0;
 }
 
+/**
+ * Gets the screen rotation requested by the core.
+ *
+ * SDL_Libretro_Render() applies this rotation automatically.
+ *
+ * @param lr the libretro context.
+ * @returns the rotation in degrees counter-clockwise: 0, 90, 180 or 270.
+ */
 int SDL_Libretro_GetRotation(const SDL_Libretro* lr) {
     return lr ? lr->core.rotation * 90 : 0;
 }
 
 /**
- * Sets the desired scale mode for the libretro context when it's displayed.
+ * Sets how the frame is fit into the destination rectangle when rendered.
+ *
+ * @param lr the libretro context.
+ * @param mode the fit mode to use.
+ * @returns true on success, false on an invalid context or fit mode.
+ *
+ * @see SDL_Libretro_GetFitMode()
+ * @see SDL_Libretro_Render()
  */
 bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode) {
     if (!lr) return false;
@@ -366,6 +418,14 @@ bool SDL_Libretro_SetFitMode(SDL_Libretro* lr, SDL_LibretroFitMode mode) {
     return true;
 }
 
+/**
+ * Gets how the frame is fit into the destination rectangle when rendered.
+ *
+ * @param lr the libretro context.
+ * @returns the current fit mode, or SDL_LIBRETRO_FIT_ASPECT when `lr` is NULL.
+ *
+ * @see SDL_Libretro_SetFitMode()
+ */
 SDL_LibretroFitMode SDL_Libretro_GetFitMode(const SDL_Libretro* lr) {
     return lr ? lr->fitMode : SDL_LIBRETRO_FIT_ASPECT;
 }
@@ -396,6 +456,14 @@ bool SDL_Libretro_SetScaleMode(SDL_Libretro* lr, SDL_ScaleMode mode) {
     return true;
 }
 
+/**
+ * Gets the texture scale mode used when the libretro frame is scaled.
+ *
+ * @param lr the libretro context.
+ * @returns the current scale mode, or SDL_SCALEMODE_NEAREST when `lr` is NULL.
+ *
+ * @see SDL_Libretro_SetScaleMode()
+ */
 SDL_ScaleMode SDL_Libretro_GetScaleMode(const SDL_Libretro* lr) {
     return lr ? lr->scaleMode : SDL_SCALEMODE_NEAREST;
 }

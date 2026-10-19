@@ -13,6 +13,8 @@ static char* SDL_Libretro_Strdup(const char* s) {
 
 /**
  * Whether the value is one the option declared. Options with no declared values accept anything.
+ *
+ * @internal
  */
 static bool SDL_Libretro_IsOptionValueValid(const SDL_LibretroOption* opt, const char* value) {
     if (!opt || !value) return false;
@@ -27,6 +29,8 @@ static bool SDL_Libretro_IsOptionValueValid(const SDL_LibretroOption* opt, const
 
 /**
  * Free an option's declared values.
+ *
+ * @internal
  */
 static void SDL_Libretro_FreeOptionValues(SDL_LibretroOptionValue* values, unsigned count) {
     if (!values) return;
@@ -41,6 +45,8 @@ static void SDL_Libretro_FreeOptionValues(SDL_LibretroOptionValue* values, unsig
  * Deep-copy the core's NULL-terminated value list into an owned array.
  *
  * @returns false when out of memory.
+ *
+ * @internal
  */
 static bool SDL_Libretro_CopyOptionValues(const struct retro_core_option_value* values, SDL_LibretroOptionValue** outValues, unsigned* outCount) {
     *outValues = NULL;
@@ -233,6 +239,11 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
 
 /**
  * Get the number of core options that have been set.
+ *
+ * @param lr the libretro context.
+ * @returns the number of options the core registered, or 0 if none.
+ *
+ * @see SDL_Libretro_GetOptionByIndex()
  */
 unsigned SDL_Libretro_GetOptionCount(const SDL_Libretro* lr) {
     return lr ? lr->core.optionCount : 0;
@@ -240,6 +251,16 @@ unsigned SDL_Libretro_GetOptionCount(const SDL_Libretro* lr) {
 
 /**
  * Retrieve details about a given core option.
+ *
+ * The returned option is owned by the context and stays valid until the core
+ * is unloaded or registers more options.
+ *
+ * @param lr the libretro context.
+ * @param key the option's key.
+ * @returns the option, or NULL if there's no such option.
+ *
+ * @see SDL_Libretro_GetOptionByIndex()
+ * @see SDL_Libretro_GetOptionValue()
  */
 const SDL_LibretroOption* SDL_Libretro_GetOption(const SDL_Libretro* lr, const char* key) {
     if (!lr || !key) return NULL;
@@ -252,7 +273,16 @@ const SDL_LibretroOption* SDL_Libretro_GetOption(const SDL_Libretro* lr, const c
 }
 
 /**
- * Retrieve a core option by its registration index, or NULL if out of range.
+ * Retrieve a core option by its registration index.
+ *
+ * The returned option is owned by the context and stays valid until the core
+ * is unloaded or registers more options.
+ *
+ * @param lr the libretro context.
+ * @param index the option index, from 0 to SDL_Libretro_GetOptionCount() - 1.
+ * @returns the option, or NULL if out of range.
+ *
+ * @see SDL_Libretro_GetOptionCount()
  */
 const SDL_LibretroOption* SDL_Libretro_GetOptionByIndex(const SDL_Libretro* lr, unsigned index) {
     if (!lr || index >= lr->core.optionCount) return NULL;
@@ -261,6 +291,17 @@ const SDL_LibretroOption* SDL_Libretro_GetOptionByIndex(const SDL_Libretro* lr, 
 
 /**
  * Set a core option's value; fails if the value isn't one the core declared.
+ *
+ * Options that declare no values accept any value. The value is copied, and the
+ * core sees the change the next time it checks for updated variables.
+ *
+ * @param lr the libretro context.
+ * @param key the option's key.
+ * @param value the new value.
+ * @returns true on success, false if there's no such option, the value isn't valid for it, or on invalid arguments.
+ *
+ * @see SDL_Libretro_GetOptionValue()
+ * @see SDL_Libretro_CycleOptionValue()
  */
 bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* value) {
     if (!lr || !key || !value) {
@@ -292,7 +333,16 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
 }
 
 /**
- * Get a core option's current value, or NULL if there's no such option.
+ * Get a core option's current value.
+ *
+ * The string is owned by the context and stays valid until the option's value changes.
+ *
+ * @param lr the libretro context.
+ * @param key the option's key.
+ * @returns the current value, or NULL if there's no such option.
+ *
+ * @see SDL_Libretro_SetOptionValue()
+ * @see SDL_Libretro_GetOptionValueLabel()
  */
 const char* SDL_Libretro_GetOptionValue(SDL_Libretro* lr, const char* key) {
     const SDL_LibretroOption* opt = SDL_Libretro_GetOption(lr, key);
@@ -305,6 +355,12 @@ const char* SDL_Libretro_GetOptionValue(SDL_Libretro* lr, const char* key) {
  *
  * Falls back to the raw value when the core supplied no label, like in
  * core option variables API version 0 or 1.
+ *
+ * @param lr the libretro context.
+ * @param key the option's key.
+ * @returns the label for the current value, or NULL if there's no such option.
+ *
+ * @see SDL_Libretro_GetOptionValue()
  */
 const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key) {
     const SDL_LibretroOption* opt = SDL_Libretro_GetOption(lr, key);
@@ -319,6 +375,15 @@ const char* SDL_Libretro_GetOptionValueLabel(SDL_Libretro* lr, const char* key) 
 
 /**
  * Advance a core option to the next (+1) or previous (-1) value.
+ *
+ * Wraps around at either end of the option's declared values.
+ *
+ * @param lr the libretro context.
+ * @param key the option's key.
+ * @param direction a positive number for the next value, or a negative number for the previous value.
+ * @returns true on success, false if `direction` is 0, there's no such option, or it has no declared values.
+ *
+ * @see SDL_Libretro_SetOptionValue()
  */
 bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direction) {
     if (direction == 0) {
@@ -352,6 +417,9 @@ bool SDL_Libretro_CycleOptionValue(SDL_Libretro* lr, const char* key, int direct
  *
  * @param lr the libretro context.
  * @param key the key to revert to the default value.
+ * @returns true on success, false if there's no such option or out of memory.
+ *
+ * @see SDL_Libretro_ResetAllOptions()
  */
 bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
     SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
@@ -371,6 +439,10 @@ bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
 
 /**
  * Reset every core option to its default value.
+ *
+ * @param lr the libretro context.
+ *
+ * @see SDL_Libretro_ResetOption()
  */
 void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
     if (!lr) return;
@@ -387,6 +459,12 @@ void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
 
 /**
  * Retrieves whether the options have been changed since the last time they were checked.
+ *
+ * Checking clears the flag, so the next call returns false until an option
+ * changes again. Useful to know when to persist options.
+ *
+ * @param lr the libretro context.
+ * @returns true if an option changed since the last call, false otherwise.
  */
 bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr) {
     if (!lr) return false;
@@ -395,6 +473,19 @@ bool SDL_Libretro_AreOptionsDirty(SDL_Libretro* lr) {
     return dirty;
 }
 
+/**
+ * Ask the core to refresh which of its options should be displayed.
+ *
+ * Calls the core's update display callback, which may update each option's
+ * `visible` flag based on the current option values. Call this before showing
+ * an options menu, or after changing a value while one is shown.
+ *
+ * @param lr the libretro context.
+ * @returns true if the core reports that the visibility of any option changed,
+ *          false if nothing changed or the core provides no such callback.
+ *
+ * @see SDL_Libretro_GetOptionByIndex()
+ */
 bool SDL_Libretro_UpdateOptionVisibility(SDL_Libretro* lr) {
     if (!lr || !lr->core.optionsUpdateDisplayCallback) return false;
     return lr->core.optionsUpdateDisplayCallback();
@@ -402,13 +493,24 @@ bool SDL_Libretro_UpdateOptionVisibility(SDL_Libretro* lr) {
 
 /**
  * Get the number of option categories registered by the core.
+ *
+ * @param lr the libretro context.
+ * @returns the number of categories, or 0 if none.
+ *
+ * @see SDL_Libretro_GetCategoryByIndex()
  */
 unsigned SDL_Libretro_GetCategoryCount(const SDL_Libretro* lr) {
     return lr ? lr->core.optionCategoriesCount : 0;
 }
 
 /**
- * Retrieve an option category by key, or NULL if there's no such category.
+ * Retrieve an option category by key.
+ *
+ * @param lr the libretro context.
+ * @param key the category's key, as found in SDL_LibretroOption's `category`.
+ * @returns the category, owned by the context, or NULL if there's no such category.
+ *
+ * @see SDL_Libretro_GetCategoryByIndex()
  */
 const SDL_LibretroCategory* SDL_Libretro_GetCategory(const SDL_Libretro* lr, const char* key) {
     if (!lr || !key) return NULL;
@@ -421,7 +523,13 @@ const SDL_LibretroCategory* SDL_Libretro_GetCategory(const SDL_Libretro* lr, con
 }
 
 /**
- * Retrieve an option category by index, or NULL if out of range.
+ * Retrieve an option category by index.
+ *
+ * @param lr the libretro context.
+ * @param index the category index, from 0 to SDL_Libretro_GetCategoryCount() - 1.
+ * @returns the category, owned by the context, or NULL if out of range.
+ *
+ * @see SDL_Libretro_GetCategoryCount()
  */
 const SDL_LibretroCategory* SDL_Libretro_GetCategoryByIndex(const SDL_Libretro* lr, unsigned index) {
     if (!lr || index >= lr->core.optionCategoriesCount) return NULL;

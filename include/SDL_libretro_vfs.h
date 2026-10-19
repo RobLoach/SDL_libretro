@@ -491,11 +491,20 @@ static int SDL_Libretro_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
 }
 
 /**
- * Set the Virtual File System for libretro.
+ * Set the Virtual File System the core uses for file access.
+ *
+ * The interface is copied, so it doesn't need to outlive this call. With the
+ * built-in SDL VFS, any NULL member of the given interface falls back to the
+ * SDL3 implementation, and passing NULL restores the SDL3 VFS entirely. When
+ * built with SDL_LIBRETRO_DISABLE_VFS, the interface is used as-is and NULL
+ * leaves the core without a VFS.
+ *
+ * Call this before loading a core, as cores request the VFS when loading.
  *
  * @param lr the libretro context.
- * @param vfs_interface A void* pointing to `struct retro_vfs_interface`. When set to NULL, will set the SDL3's File System.
+ * @param vfs_interface a pointer to a `struct retro_vfs_interface`, or NULL for the default.
  *
+ * @see SDL_LIBRETRO_DISABLE_VFS
  * @see retro_vfs_interface
  */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
@@ -530,9 +539,24 @@ void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
 
 #else /* SDL_LIBRETRO_DISABLE_VFS */
 
-/*
- * Without the SDL VFS there are no defaults to fall back on: the given
- * interface is used as-is, and NULL leaves the core without a VFS.
+// Without the SDL VFS there are no defaults to fall back on: the given
+// interface is used as-is, and NULL leaves the core without a VFS.
+/**
+ * Set the Virtual File System the core uses for file access.
+ *
+ * The interface is copied, so it doesn't need to outlive this call. With the
+ * built-in SDL VFS, any NULL member of the given interface falls back to the
+ * SDL3 implementation, and passing NULL restores the SDL3 VFS entirely. When
+ * built with SDL_LIBRETRO_DISABLE_VFS, the interface is used as-is and NULL
+ * leaves the core without a VFS.
+ *
+ * Call this before loading a core, as cores request the VFS when loading.
+ *
+ * @param lr the libretro context.
+ * @param vfs_interface a pointer to a `struct retro_vfs_interface`, or NULL for the default.
+ *
+ * @see SDL_LIBRETRO_DISABLE_VFS
+ * @see retro_vfs_interface
  */
 void SDL_Libretro_SetVFS(SDL_Libretro* lr, void* vfs_interface) {
     if (!lr) return;

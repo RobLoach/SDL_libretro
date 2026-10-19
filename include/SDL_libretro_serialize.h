@@ -340,6 +340,16 @@ bool SDL_Libretro_SetInitialDisk(SDL_Libretro* lr, unsigned index, const char* p
 
 /**
  * Set a cheat code either enabled or disabled within the libretro context.
+ *
+ * Requires a loaded game. The code's format is specific to the core.
+ *
+ * @param lr the libretro context.
+ * @param index the cheat slot to set.
+ * @param enabled true to enable the cheat, false to disable it.
+ * @param code the cheat code; must not be NULL.
+ * @returns true if the cheat was passed to the core, false if no game is loaded or `code` is NULL.
+ *
+ * @see SDL_Libretro_ResetCheats()
  */
 bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const char* code) {
     if (!SDL_Libretro_IsGameReady(lr) || !code) {
@@ -350,6 +360,15 @@ bool SDL_Libretro_SetCheat(SDL_Libretro* lr, unsigned index, bool enabled, const
     return true;
 }
 
+/**
+ * Clears all cheats that were set on the core.
+ *
+ * Does nothing when no game is loaded.
+ *
+ * @param lr the libretro context.
+ *
+ * @see SDL_Libretro_SetCheat()
+ */
 void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
     if (!SDL_Libretro_IsGameReady(lr)) return;
     lr->core.symbols.retro_cheat_reset();
@@ -359,6 +378,9 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
 
 /**
  * Retrieves the size of serialized states.
+ *
+ * @param lr the libretro context.
+ * @returns the size in bytes of a save state, or 0 if no game is loaded or the core does not support save states.
  */
 size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
     if (!SDL_Libretro_IsGameReady(lr)) return 0;
@@ -367,6 +389,14 @@ size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
 
 /**
  * Save the current libretro state to the given SDL_IOStream.
+ *
+ * @param lr the libretro context.
+ * @param dst the destination stream.
+ * @param closeio if true, close `dst` before returning (even on failure).
+ * @returns true on success, false if no game is loaded, the core does not support save states, or on a serialize or write error.
+ *
+ * @see SDL_Libretro_LoadState_IO()
+ * @see SDL_Libretro_SaveState()
  */
 bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     bool ok = false;
@@ -401,6 +431,13 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
 
 /**
  * Saves the current libretro state to a file.
+ *
+ * @param lr the libretro context.
+ * @param file the destination file path.
+ * @returns true on success, false on error.
+ *
+ * @see SDL_Libretro_SaveState_IO()
+ * @see SDL_Libretro_LoadState()
  */
 bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
     if (!SDL_Libretro_IsGameReady(lr) || !file) {
@@ -413,6 +450,20 @@ bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
     return SDL_Libretro_SaveState_IO(lr, io, true);
 }
 
+/**
+ * Load a libretro state from the given SDL_IOStream.
+ *
+ * Reads the whole stream and hands it to the core. A successful load clears the
+ * rewind history, since it can't be rewound across.
+ *
+ * @param lr the libretro context.
+ * @param src the source stream.
+ * @param closeio if true, close `src` before returning (even on failure).
+ * @returns true on success, false if no game is loaded, the stream is empty or unreadable, or the core rejected the state.
+ *
+ * @see SDL_Libretro_SaveState_IO()
+ * @see SDL_Libretro_LoadState()
+ */
 bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
     if (!SDL_Libretro_IsGameReady(lr) || !src) {
         SDL_SetError("[SDL_Libretro] Invalid LoadState_IO arguments");
@@ -440,6 +491,13 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
 
 /**
  * Loads the libretro state from the given file.
+ *
+ * @param lr the libretro context.
+ * @param file the source file path.
+ * @returns true on success, false on error.
+ *
+ * @see SDL_Libretro_LoadState_IO()
+ * @see SDL_Libretro_SaveState()
  */
 bool SDL_Libretro_LoadState(SDL_Libretro* lr, const char* file) {
     if (!SDL_Libretro_IsGameReady(lr) || !file) {
@@ -771,23 +829,63 @@ bool SDL_Libretro_LoadMemory(SDL_Libretro* lr, unsigned memoryType, const char* 
 
 // SRAM convenience wrappers (RETRO_MEMORY_SAVE_RAM)
 
+/**
+ * Write the core's battery-backed save RAM to a stream.
+ *
+ * Shorthand for SDL_Libretro_SaveMemory_IO() with RETRO_MEMORY_SAVE_RAM.
+ *
+ * @param lr the libretro context.
+ * @param dst the destination stream.
+ * @param closeio if true, close `dst` before returning (even on failure).
+ * @returns true on success (including when the core has no save RAM), false on a write error or invalid arguments.
+ *
+ * @see SDL_Libretro_LoadSRAM_IO()
+ */
 bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio) {
     return SDL_Libretro_SaveMemory_IO(lr, RETRO_MEMORY_SAVE_RAM, dst, closeio);
 }
 
 /**
  * Saves the current SRAM to the given file.
+ *
+ * Shorthand for SDL_Libretro_SaveMemory() with RETRO_MEMORY_SAVE_RAM. No file is created when the core has no save RAM.
+ *
+ * @param lr the libretro context.
+ * @param file the destination file path.
+ * @returns true on success (including when the core has no save RAM), false on error.
+ *
+ * @see SDL_Libretro_LoadSRAM()
  */
 bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file) {
     return SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_SAVE_RAM, file);
 }
 
+/**
+ * Load the core's battery-backed save RAM from a stream.
+ *
+ * Shorthand for SDL_Libretro_LoadMemory_IO() with RETRO_MEMORY_SAVE_RAM.
+ *
+ * @param lr the libretro context.
+ * @param src the source stream.
+ * @param closeio if true, close `src` before returning (even on failure).
+ * @returns true on success, false if the core has no save RAM, on a read error, or on invalid arguments.
+ *
+ * @see SDL_Libretro_SaveSRAM_IO()
+ */
 bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
     return SDL_Libretro_LoadMemory_IO(lr, RETRO_MEMORY_SAVE_RAM, src, closeio);
 }
 
 /**
- * Loads the current SRAM to the given file.
+ * Loads the SRAM from the given file.
+ *
+ * Shorthand for SDL_Libretro_LoadMemory() with RETRO_MEMORY_SAVE_RAM.
+ *
+ * @param lr the libretro context.
+ * @param file the source file path.
+ * @returns true on success, false if the core has no save RAM or on error.
+ *
+ * @see SDL_Libretro_SaveSRAM()
  */
 bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file) {
     return SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_SAVE_RAM, file);
@@ -1341,6 +1439,8 @@ static bool SDL_Libretro_RewindStepState(SDL_Libretro* lr) {
  *
  * @param lr the libretro context.
  * @returns true if a frame was rewound, false if rewind is unavailable or the buffer is empty.
+ *
+ * @internal
  */
 static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
     if (!SDL_Libretro_IsGameReady(lr) || !lr->rewindEnabled) {
