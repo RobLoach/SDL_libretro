@@ -16,7 +16,7 @@ static uint8_t save_ram[64];
 static uint8_t state_data[128];
 static bool game_loaded;
 
-#define MAX_DISK_IMAGES 8
+#define MAX_DISK_IMAGES 16
 static unsigned disk_count = 1;
 static unsigned disk_index = 0;
 static bool disk_ejected = false;
@@ -39,9 +39,45 @@ static bool RETRO_CALLCONV disk_set_image_index(unsigned index) {
 static unsigned RETRO_CALLCONV disk_get_num_images(void) {
     return disk_count;
 }
+/* Like real cores, keep the frontend's info pointers (not copies) per disk,
+ * so the frontend test can verify they stay valid; see test_core_get_disk(). */
+static const char *disk_paths[MAX_DISK_IMAGES];
+static const void *disk_data[MAX_DISK_IMAGES];
+static size_t disk_sizes[MAX_DISK_IMAGES];
+
 static bool RETRO_CALLCONV disk_replace_image_index(unsigned index, const struct retro_game_info *info) {
-    (void)info;
     if (index >= disk_count) return false;
+    if (!info) {
+        // A NULL info discards the image and shifts the later ones down.
+        for (unsigned i = index; i + 1 < disk_count; i++) {
+            disk_paths[i] = disk_paths[i + 1];
+            disk_data[i] = disk_data[i + 1];
+            disk_sizes[i] = disk_sizes[i + 1];
+        }
+        disk_count--;
+        if (disk_index >= disk_count && disk_index > 0) disk_index--;
+        return true;
+    }
+    // Test hook: images whose path mentions "reject" are refused.
+    if (info->path && strstr(info->path, "reject")) return false;
+    disk_paths[index] = info->path;
+    disk_data[index] = info->data;
+    disk_sizes[index] = info->size;
+    return true;
+}
+
+/* Test hook: copy out what the core holds for a disk image. The path and data
+ * are read through the pointers the frontend handed over. */
+RETRO_API bool test_core_get_disk(unsigned index, char *path, size_t pathSize, void *data, size_t *size) {
+    if (index >= disk_count) return false;
+    path[0] = '\0';
+    if (disk_paths[index] && pathSize > 0) {
+        strncpy(path, disk_paths[index], pathSize - 1);
+        path[pathSize - 1] = '\0';
+    }
+    size_t n = disk_sizes[index] < *size ? disk_sizes[index] : *size;
+    if (disk_data[index] && n > 0) memcpy(data, disk_data[index], n);
+    *size = disk_data[index] ? disk_sizes[index] : 0;
     return true;
 }
 static bool RETRO_CALLCONV disk_add_image_index(void) {

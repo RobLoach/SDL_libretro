@@ -2183,6 +2183,92 @@ static int SDLCALL test_SetRenderer(void *arg) {
 #endif
 }
 
+static int SDLCALL test_DiskImageIO(void *arg) {
+    (void)arg;
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetSaveDirectory(lr, NULL);
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+
+    typedef bool (*GetDiskFn)(unsigned, char*, size_t, void*, size_t*);
+    GetDiskFn getDisk = (GetDiskFn)SDL_LoadFunction(lr->core.symbols.handle, "test_core_get_disk");
+    SDLTest_AssertCheck(getDisk != NULL, "test_core exports test_core_get_disk");
+    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
+    if (!getDisk || !saveDir) {
+        SDL_Libretro_Destroy(lr);
+        return TEST_COMPLETED;
+    }
+
+    // Invalid arguments are rejected.
+    const char bytes[] = "DISK IMAGE BYTES, LONGER THAN A MALLOC HEADER";
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, NULL, "disk.txt", true) == false, "NULL stream rejected");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, SDL_IOFromConstMem(bytes, sizeof(bytes)), NULL, true) == false, "NULL path rejected");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, SDL_IOFromConstMem(bytes, sizeof(bytes)), "disk.txt", true) == false,
+        "Rejected while the tray is closed");
+
+    SDLTest_AssertCheck(SDL_Libretro_EjectDisk(lr) == true, "EjectDisk succeeds");
+    unsigned base = SDL_Libretro_GetDiskCount(lr);
+
+    // Byte-oriented image: the core gets the bytes and the caller's path, and
+    // both stay valid after the call returns.
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, SDL_IOFromConstMem(bytes, sizeof(bytes)), "virtual/disk2.txt", true) == true,
+        "AddDiskImage_IO with a data image succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 1, "Disk count grew by one");
+    char path[1024];
+    char data[128];
+    size_t size = sizeof(data);
+    SDL_memset(data, 0, sizeof(data));
+    SDLTest_AssertCheck(getDisk(base, path, sizeof(path), data, &size) == true, "Core has the new disk");
+    SDLTest_AssertCheck(SDL_strcmp(path, "virtual/disk2.txt") == 0, "Core got the path, got '%s'", path);
+    SDLTest_AssertCheck(size == sizeof(bytes) && SDL_memcmp(data, bytes, sizeof(bytes)) == 0,
+        "Core's data buffer is still valid after the call");
+
+    // Full-path image: spilled to the temp directory, which the core gets.
+    char tmpDir[1024], spillPath[1024];
+    SDL_snprintf(tmpDir, sizeof(tmpDir), "%s/tmp/", saveDir);
+    SDL_snprintf(spillPath, sizeof(spillPath), "%sdisk3.vfs", tmpDir);
+    SDL_RemovePath(spillPath);
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, SDL_IOFromConstMem(bytes, sizeof(bytes)), "virtual/disk3.vfs", true) == true,
+        "AddDiskImage_IO with a full-path image succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 2, "Disk count grew by two");
+    size = sizeof(data);
+    SDLTest_AssertCheck(getDisk(base + 1, path, sizeof(path), data, &size) == true, "Core has the full-path disk");
+    SDLTest_AssertCheck(SDL_strcmp(path, spillPath) == 0, "Core got the temp file '%s', got '%s'", spillPath, path);
+    SDLTest_AssertCheck(size == 0, "Full-path disk has no data buffer");
+    size_t spilledSize = 0;
+    void* spilled = SDL_LoadFile(spillPath, &spilledSize);
+    SDLTest_AssertCheck(spilled != NULL && spilledSize == sizeof(bytes) && SDL_memcmp(spilled, bytes, sizeof(bytes)) == 0,
+        "Temp file holds the image bytes");
+    SDL_free(spilled);
+
+    // A rejected image doesn't leave an empty slot behind, nor a temp file.
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, SDL_IOFromConstMem(bytes, sizeof(bytes)), "reject.txt", true) == false,
+        "Core-rejected data image fails");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 2, "Rejected data image left no slot");
+    char rejectSpill[1024];
+    SDL_snprintf(rejectSpill, sizeof(rejectSpill), "%sreject.vfs", tmpDir);
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage_IO(lr, SDL_IOFromConstMem(bytes, sizeof(bytes)), "reject.vfs", true) == false,
+        "Core-rejected full-path image fails");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 2, "Rejected full-path image left no slot");
+    SDLTest_AssertCheck(SDL_GetPathInfo(rejectSpill, NULL) == false, "Rejected image's temp file removed");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, "reject.bin") == false, "Core-rejected path image fails");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 2, "Rejected path image left no slot");
+
+    // The temp file lives until the game unloads.
+    SDL_Libretro_InsertDisk(lr);
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, NULL) == false, "Temp disk image removed on unload");
+    SDLTest_AssertCheck(lr->core.diskImageCount == 0, "Disk images freed on unload");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_DiskControl(void *arg) {
     (void)arg;
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -3184,6 +3270,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
     LIBRETRO_TEST_CASE(test_PortDeviceOnLoad, "Port devices re-applied after game load"),
     LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
+    LIBRETRO_TEST_CASE(test_DiskImageIO,      "Disk images from streams keep a path and buffer"),
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
     LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),
     LIBRETRO_TEST_CASE(test_AudioZeroSampleRate, "Audio falls back to default sample rate when core reports 0"),

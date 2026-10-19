@@ -542,6 +542,9 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     }
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
+    // Images added with SDL_Libretro_AddDiskImage_IO() belong to the game.
+    SDL_Libretro_FreeDiskImages(lr);
+
     // The disk control interface is core-lifetime state (registered from
     // retro_set_environment/retro_init), so it's kept until SDL_Libretro_UnloadCore().
 }

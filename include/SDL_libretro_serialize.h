@@ -105,9 +105,77 @@ bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
 }
 
 /**
+ * Free the disk images added with SDL_Libretro_AddDiskImage_IO().
+ *
+ * Removes any temp files and frees the buffers. Called when the game unloads,
+ * after retro_unload_game(), so the core no longer references them.
+ *
+ * @internal
+ */
+static void SDL_Libretro_FreeDiskImages(SDL_Libretro* lr) {
+    if (!lr) return;
+    for (unsigned i = 0; i < lr->core.diskImageCount; i++) {
+        SDL_LibretroDiskImage* image = &lr->core.diskImages[i];
+        if (image->temp && image->path) {
+            SDL_RemovePath(image->path);
+        }
+        SDL_free(image->path);
+        SDL_free(image->data);
+    }
+    SDL_free(lr->core.diskImages);
+    lr->core.diskImages = NULL;
+    lr->core.diskImageCount = 0;
+}
+
+/**
+ * Validate the disk control state for adding an image.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_CanAddDiskImage(SDL_Libretro* lr) {
+    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index || !lr->core.disk_control.get_num_images) {
+        SDL_SetError("[SDL_Libretro] Disk control not available");
+        return false;
+    }
+    if (!lr->core.disk_control.get_eject_state || !lr->core.disk_control.get_eject_state()) {
+        SDL_SetError("[SDL_Libretro] Disk tray must be ejected before adding a disk image");
+        return false;
+    }
+    return true;
+}
+
+/**
+ * Append a disk slot and fill it with `info`.
+ *
+ * When the core rejects the image, the new slot is discarded again (a NULL
+ * replace_image_index removes the index), so no empty slot is left behind.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_AppendDiskImage(SDL_Libretro* lr, const struct retro_game_info* info) {
+    unsigned before = lr->core.disk_control.get_num_images();
+    if (!lr->core.disk_control.add_image_index()) {
+        SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
+        return false;
+    }
+    unsigned count = lr->core.disk_control.get_num_images();
+    if (count == 0 || count <= before) {
+        SDL_SetError("[SDL_Libretro] Core reported no new disk image after add");
+        return false;
+    }
+    if (!lr->core.disk_control.replace_image_index(count - 1, info)) {
+        lr->core.disk_control.replace_image_index(count - 1, NULL);
+        SDL_SetError("[SDL_Libretro] Core rejected the disk image");
+        return false;
+    }
+    return true;
+}
+
+/**
  * Appends a new disk image from a file path.
  *
- * The disk tray must be ejected before calling this function.
+ * The disk tray must be ejected before calling this function. If the core
+ * rejects the image, the slot added for it is removed again.
  *
  * @param lr The libretro instance.
  * @param path File path to the disk image.
@@ -118,78 +186,91 @@ bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
         SDL_SetError("[SDL_Libretro] Invalid AddDiskImage arguments");
         return false;
     }
-    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index || !lr->core.disk_control.get_num_images) {
-        SDL_SetError("[SDL_Libretro] Disk control not available");
-        return false;
-    }
-    if (!lr->core.disk_control.get_eject_state || !lr->core.disk_control.get_eject_state()) {
-        SDL_SetError("[SDL_Libretro] Disk tray must be ejected before adding a disk image");
-        return false;
-    }
-    if (!lr->core.disk_control.add_image_index()) {
-        SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
-        return false;
-    }
-    unsigned count = lr->core.disk_control.get_num_images();
-    if (count == 0) {
-        SDL_SetError("[SDL_Libretro] Core reported no disk images after add");
+    if (!SDL_Libretro_CanAddDiskImage(lr)) {
         return false;
     }
     struct retro_game_info info;
     SDL_memset(&info, 0, sizeof(info));
     info.path = path;
-    return lr->core.disk_control.replace_image_index(count - 1, &info);
+    return SDL_Libretro_AppendDiskImage(lr, &info);
 }
 
 /**
  * Appends a new disk image from an SDL_IOStream.
  *
- * The disk tray must be ejected before calling this function.
+ * The disk tray must be ejected before calling this function. The `path` is
+ * the path the image is known by (e.g. a virtual path inside an archive); it
+ * picks need_fullpath handling by its extension and is passed to the core.
+ * When the core needs a full path, the stream is spilled to the temp
+ * directory and that file is passed instead. Otherwise the bytes are passed
+ * along with `path`. Either way, the file or buffer is kept until the game
+ * unloads. If the core rejects the image, the slot added for it is removed
+ * again.
  *
  * @param lr The libretro instance.
  * @param src IOStream containing the disk image data.
- * @param closeio If true, the IOStream is closed after reading.
+ * @param path The path the disk image is known by.
+ * @param closeio If true, close `src` before returning, even on failure.
  * @return true on success, false on failure.
+ *
+ * @see SDL_Libretro_LoadGame_IO()
  */
-bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio) {
-    if (!SDL_Libretro_IsGameReady(lr) || !src) {
+bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio) {
+    if (!SDL_Libretro_IsGameReady(lr) || !src || !path) {
         SDL_SetError("[SDL_Libretro] Invalid AddDiskImage_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
         return false;
     }
-    if (!lr->core.disk_control.add_image_index || !lr->core.disk_control.replace_image_index || !lr->core.disk_control.get_num_images) {
-        SDL_SetError("[SDL_Libretro] Disk control not available");
+    if (!SDL_Libretro_CanAddDiskImage(lr)) {
         if (closeio) SDL_CloseIO(src);
         return false;
     }
-    if (!lr->core.disk_control.get_eject_state || !lr->core.disk_control.get_eject_state()) {
-        SDL_SetError("[SDL_Libretro] Disk tray must be ejected before adding a disk image");
+
+    // Make room to keep the image alive until the game unloads.
+    SDL_LibretroDiskImage* images = (SDL_LibretroDiskImage*)SDL_realloc(lr->core.diskImages, (lr->core.diskImageCount + 1) * sizeof(SDL_LibretroDiskImage));
+    if (!images) {
         if (closeio) SDL_CloseIO(src);
         return false;
     }
-    // Load the image data before mutating the core's disk list, so a failed
-    // read does not leave a dangling empty slot behind.
-    size_t size = 0;
-    void* data = SDL_LoadFile_IO(src, &size, closeio);
-    if (!data) return false;
-    if (!lr->core.disk_control.add_image_index()) {
-        SDL_SetError("[SDL_Libretro] Core rejected add_image_index");
-        SDL_free(data);
-        return false;
-    }
-    unsigned count = lr->core.disk_control.get_num_images();
-    if (count == 0) {
-        SDL_SetError("[SDL_Libretro] Core reported no disk images after add");
-        SDL_free(data);
-        return false;
-    }
+    lr->core.diskImages = images;
+    SDL_LibretroDiskImage image = {0};
     struct retro_game_info info;
     SDL_memset(&info, 0, sizeof(info));
-    info.data = data;
-    info.size = size;
-    bool ok = lr->core.disk_control.replace_image_index(count - 1, &info);
-    SDL_free(data);
-    return ok;
+
+    // Read or spill the image before mutating the core's disk list, so a
+    // failed read does not leave an empty slot behind.
+    if (SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(path))) {
+        char tempPath[SDL_LIBRETRO_MAX_PATH];
+        if (!SDL_Libretro_SpillToTempFile(lr, src, path, closeio, tempPath, sizeof(tempPath))) {
+            return false;
+        }
+        image.temp = true;
+        image.path = SDL_strdup(tempPath);
+        if (!image.path) {
+            SDL_RemovePath(tempPath);
+            return false;
+        }
+    }
+    else {
+        image.data = SDL_LoadFile_IO(src, &info.size, closeio);
+        if (!image.data) return false;
+        image.path = SDL_strdup(path);
+        if (!image.path) {
+            SDL_free(image.data);
+            return false;
+        }
+    }
+    info.path = image.path;
+    info.data = image.data;
+
+    if (!SDL_Libretro_AppendDiskImage(lr, &info)) {
+        if (image.temp) SDL_RemovePath(image.path);
+        SDL_free(image.path);
+        SDL_free(image.data);
+        return false;
+    }
+    lr->core.diskImages[lr->core.diskImageCount++] = image;
+    return true;
 }
 
 /**

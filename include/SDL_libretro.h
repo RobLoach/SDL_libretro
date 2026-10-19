@@ -309,7 +309,7 @@ bool SDL_Libretro_SetDiskIndex(SDL_Libretro* lr, unsigned index);
 bool SDL_Libretro_EjectDisk(SDL_Libretro* lr);
 bool SDL_Libretro_InsertDisk(SDL_Libretro* lr);
 bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path);
-bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
+bool SDL_Libretro_AddDiskImage_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio);
 bool SDL_Libretro_GetDiskLabel(const SDL_Libretro* lr, unsigned index, char* label, size_t len);
 bool SDL_Libretro_SetInitialDisk(SDL_Libretro* lr, unsigned index, const char* path);
 
@@ -606,6 +606,15 @@ typedef struct SDL_LibretroMicrophone {
     SDL_Libretro* lr; /**< A pointer back to the libretro data, used to dereference itself in case the core doesn't close for us. */
 } SDL_LibretroMicrophone;
 
+/**
+ * A disk image added by SDL_Libretro_AddDiskImage_IO(), kept alive until the game unloads.
+ */
+typedef struct SDL_LibretroDiskImage {
+    char* path; /**< The path handed to the core (the temp file, or the caller's path). */
+    void* data; /**< The image bytes handed to the core, or NULL when passed by path. */
+    bool temp; /**< `path` is a temp file to remove when the game unloads. */
+} SDL_LibretroDiskImage;
+
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
@@ -724,6 +733,8 @@ typedef struct SDL_LibretroCoreData {
 
     // Disk control
     struct retro_disk_control_ext_callback disk_control;
+    SDL_LibretroDiskImage* diskImages; /**< Images from SDL_Libretro_AddDiskImage_IO(); freed when the game unloads. */
+    unsigned diskImageCount;
 
     // Memory Maps
     struct retro_memory_descriptor* memoryMapDescriptors;
@@ -897,6 +908,9 @@ static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemByName(const 
 // Content
 
 static bool SDL_Libretro_GetPrefDirectory(char* dst, size_t dstSize);
+static void SDL_Libretro_FreeDiskImages(SDL_Libretro* lr);
+static const char* SDL_Libretro_GetExtension(const char* path);
+static bool SDL_Libretro_ContentNeedsFullpath(const SDL_Libretro* lr, const char* ext);
 static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio, char* tempPath, size_t tempPathSize);
 
 // Directory
