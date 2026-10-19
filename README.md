@@ -5,15 +5,14 @@ A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libs
 ## Features
 
 - Header-only C99 library
-- Audio via `SDL_AudioStream` with dynamic rate control
+- Audio input and dynamic rate control output
 - Input with gamepad, keyboard, mouse, lightgun, or pointer
-- Save states and SRAM
-- Core options
-- Fast-forward, slow-motion, rewind
 - Rumble, accelerometer, gyroscope
-- Microphone input
+- Save states and SRAM
+- Fast-forward, slow-motion, rewind
 - Disk control for multi-disc games
 - Virtual file system
+- Core options
 - Config system for saving and loading settings
 - On-screen display messages
 - Zip loading with [PhysicsFS](https://icculus.org/physfs/) (optional)
