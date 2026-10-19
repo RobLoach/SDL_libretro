@@ -12,6 +12,13 @@ function(sdl_libretro_download_cores)
         get_filename_component(ARCHIVE_NAME "${URL}" NAME)
         set(ARCHIVE_PATH "${PROJECT_BINARY_DIR}/${ARCHIVE_NAME}")
 
+        # Each archive holds a single core named after it, minus the .zip.
+        get_filename_component(CORE_NAME "${URL}" NAME_WLE)
+        if(EXISTS "${SDL_LIBRETRO_CORES_DIR}/${CORE_NAME}")
+            message(STATUS "Core ${CORE_NAME} already present, skipping")
+            continue()
+        endif()
+
         if(NOT EXISTS "${ARCHIVE_PATH}")
             message(STATUS "Downloading ${URL}")
             file(DOWNLOAD "${URL}" "${ARCHIVE_PATH}"
