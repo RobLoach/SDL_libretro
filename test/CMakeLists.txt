@@ -1,6 +1,14 @@
 # SDL_libretro unit tests. Added from the top-level CMakeLists.txt via
 # add_subdirectory() when SDL_LIBRETRO_BUILD_TESTS is on.
 
+# The tests use SDL's test framework, which an installed SDL3 may not ship.
+if(NOT TARGET SDL3::SDL3_test)
+    message(WARNING "SDL3::SDL3_test was not found, so the SDL_libretro tests "
+        "are skipped. Install SDL3 with SDL_TEST_LIBRARY=ON, or set "
+        "SDL_LIBRETRO_BUILD_TESTS=OFF to silence this warning.")
+    return()
+endif()
+
 set(LIBRETRO_COMMON_INCLUDE ${PROJECT_SOURCE_DIR}/vendor/libretro-common/include)
 
 add_library(test_core SHARED test_core.c)
