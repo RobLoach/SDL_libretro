@@ -13,14 +13,21 @@ if(NOT TARGET SDL_libretro_app)
     return()
 endif()
 
-# Preload the Core Files
-set(SDL_LIBRETRO_PRELOAD_FLAGS "")
+# Preload the Core Files. DownloadCores only warns when a download fails, so
+# skip any core file that's missing rather than failing the link. Each flag
+# is a SHELL: group so the repeated --preload-file isn't de-duplicated.
 foreach(CORE IN LISTS SDL_LIBRETRO_CORES)
-    list(APPEND SDL_LIBRETRO_PRELOAD_FLAGS
-        "--preload-file \"${SDL_LIBRETRO_CORES_DIR}/${CORE}_libretro.info@/cores/\""
-        "--preload-file \"${SDL_LIBRETRO_CORES_DIR}/${CORE}_libretro.wasm@/cores/\"")
+    foreach(SDL_LIBRETRO_PRELOAD_FILE
+            "${SDL_LIBRETRO_CORES_DIR}/${CORE}_libretro.info"
+            "${SDL_LIBRETRO_CORES_DIR}/${CORE}_libretro.wasm")
+        if(EXISTS "${SDL_LIBRETRO_PRELOAD_FILE}")
+            target_link_options(SDL_libretro_app PRIVATE
+                "SHELL:--preload-file \"${SDL_LIBRETRO_PRELOAD_FILE}@/cores/\"")
+        else()
+            message(WARNING "Not preloading missing core file: ${SDL_LIBRETRO_PRELOAD_FILE}")
+        endif()
+    endforeach()
 endforeach()
-target_link_libraries(SDL_libretro_app PRIVATE ${SDL_LIBRETRO_PRELOAD_FLAGS})
 
 # The prebuilt cores are SIDE_MODULEs that import libretro-common
 # helpers (file streams, VFS, string/path, etc) from the frontend
