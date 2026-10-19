@@ -433,6 +433,59 @@ static int SDLCALL test_SetVariablesLegacy(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* A core re-registering an option replaces its values, default, and text,
+   keeping the current value only while it's still declared. */
+static int SDLCALL test_OptionReregister(void *arg) {
+    (void)arg;
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+    bool updated = false;
+
+    struct retro_variable first[] = { { "re_opt", "Re; a|b|c" }, { NULL, NULL } };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_VARIABLES, first);
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "re_opt", "b") == true, "Set b on the first registration");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "re_opt", "d") == false, "d isn't declared yet");
+    SDL_Libretro_AreOptionsDirty(lr);
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+
+    // New values that still include the current one keep it.
+    struct retro_variable second[] = { { "re_opt", "Re New; d|b" }, { NULL, NULL } };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_VARIABLES, second);
+    const SDL_LibretroOption* opt = SDL_Libretro_GetOption(lr, "re_opt");
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 1, "Re-registration doesn't add an option");
+    SDLTest_AssertCheck(opt && SDL_strcmp(opt->desc, "Re New") == 0, "Description updated");
+    SDLTest_AssertCheck(opt && SDL_strcmp(opt->defaultValue, "d") == 0, "Default updated");
+    SDLTest_AssertCheck(opt && opt->valuesCount == 2, "Values replaced");
+    SDLTest_AssertCheck(opt && SDL_strcmp(opt->value, "b") == 0, "Still-valid current value kept");
+    SDLTest_AssertCheck(lr->core.optionsDirtyCore == false, "Kept value isn't an update to the core");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "App told to refresh the option");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "re_opt", "d") == true, "Newly declared value accepted");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "re_opt", "a") == false, "Dropped value rejected");
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+
+    // A current value that's no longer declared resets to the new default.
+    static const struct retro_core_option_v2_definition defs[] = {
+        { "re_opt", "Re V2", NULL, "Re info", NULL, "re_cat",
+          { {"e", "E"}, {"f", "F"}, {NULL, NULL} }, "f" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static const struct retro_core_options_v2 opts = { NULL, (struct retro_core_option_v2_definition *)defs };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)&opts);
+    opt = SDL_Libretro_GetOption(lr, "re_opt");
+    SDLTest_AssertCheck(opt && SDL_strcmp(opt->value, "f") == 0, "Invalid current value reset to the new default");
+    SDLTest_AssertCheck(opt && SDL_strcmp(opt->info, "Re info") == 0, "Info updated");
+    SDLTest_AssertCheck(opt && SDL_strcmp(opt->category, "re_cat") == 0, "Category updated");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValueLabel(lr, "re_opt"), "F") == 0, "Value labels updated");
+    updated = false;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+    SDLTest_AssertCheck(updated == true, "Core told the value changed");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_Libretro_active = prevActive;
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_Rewind(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -2980,6 +3033,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
+    LIBRETRO_TEST_CASE(test_OptionReregister, "Re-registering an option updates it"),
     LIBRETRO_TEST_CASE(test_LateOptionConfig, "Late-registered options get their saved values"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),

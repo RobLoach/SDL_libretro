@@ -25,16 +25,56 @@ static bool SDL_Libretro_IsOptionValueValid(const SDL_LibretroOption* opt, const
     return false;
 }
 
+/**
+ * Free an option's declared values.
+ */
+static void SDL_Libretro_FreeOptionValues(SDL_LibretroOptionValue* values, unsigned count) {
+    if (!values) return;
+    for (unsigned v = 0; v < count; v++) {
+        SDL_free((void*)values[v].value);
+        SDL_free((void*)values[v].label);
+    }
+    SDL_free(values);
+}
+
+/**
+ * Deep-copy the core's NULL-terminated value list into an owned array.
+ *
+ * @returns false when out of memory.
+ */
+static bool SDL_Libretro_CopyOptionValues(const struct retro_core_option_value* values, SDL_LibretroOptionValue** outValues, unsigned* outCount) {
+    *outValues = NULL;
+    *outCount = 0;
+    if (!values) return true;
+
+    // Count how many values there are available for the option.
+    unsigned count = 0;
+    while (values[count].value) count++;
+    if (count == 0) return true;
+
+    SDL_LibretroOptionValue* copy = (SDL_LibretroOptionValue*)SDL_calloc(count, sizeof(SDL_LibretroOptionValue));
+    if (!copy) return false;
+    for (unsigned v = 0; v < count; v++) {
+        copy[v].value = SDL_strdup(values[v].value);
+        copy[v].label = values[v].label ? SDL_strdup(values[v].label) : NULL;
+        if (!copy[v].value || (values[v].label && !copy[v].label)) {
+            SDL_Libretro_FreeOptionValues(copy, v + 1);
+            return false;
+        }
+    }
+    *outValues = copy;
+    *outCount = count;
+    return true;
+}
+
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, const char* info, const char* categoryKey) {
     if (!lr || !key) return;
 
-    // Check if already registered. Ignore any duplicate registrations.
-    if (SDL_Libretro_GetOption(lr, key)) {
-        return;
-    }
+    SDL_LibretroOption* slot = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
+    bool reregistered = slot != NULL;
 
     // Grow array if needed
-    if (lr->core.optionCount >= lr->core.optionCapacity) {
+    if (!reregistered && lr->core.optionCount >= lr->core.optionCapacity) {
         unsigned newCap = lr->core.optionCapacity ? lr->core.optionCapacity * 2 : 16;
         SDL_LibretroOption* newOpts = (SDL_LibretroOption*)SDL_realloc(lr->core.options, newCap * sizeof(SDL_LibretroOption));
         if (!newOpts) return;
@@ -42,70 +82,68 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
         lr->core.optionCapacity = newCap;
     }
 
-    // Set the option; strings are deep-copied and owned by the context.
-    SDL_LibretroOption* slot = &lr->core.options[lr->core.optionCount];
-    slot->key = SDL_Libretro_Strdup(key);
-    slot->value = SDL_Libretro_Strdup(defaultValue);
-    slot->defaultValue = SDL_Libretro_Strdup(defaultValue);
-    slot->desc = SDL_Libretro_Strdup(desc);
-    slot->info = SDL_Libretro_Strdup(info);
-    slot->category = SDL_Libretro_Strdup(categoryKey);
-    slot->visible = true;
+    // Copy everything up front, so running out of memory leaves any existing
+    // option untouched. Strings are deep-copied and owned by the context.
+    SDL_LibretroOption copy = {0};
+    copy.key = reregistered ? NULL : SDL_Libretro_Strdup(key);
+    copy.defaultValue = SDL_Libretro_Strdup(defaultValue);
+    copy.desc = SDL_Libretro_Strdup(desc);
+    copy.info = SDL_Libretro_Strdup(info);
+    copy.category = SDL_Libretro_Strdup(categoryKey);
+    bool ok = (reregistered || copy.key) && copy.defaultValue && copy.desc && copy.info && copy.category;
+    ok = ok && SDL_Libretro_CopyOptionValues(values, &copy.values, &copy.valuesCount);
+    copy.valuesCapacity = copy.valuesCount;
 
-    // The available values.
-    slot->values = NULL;
-    slot->valuesCount = 0;
-    slot->valuesCapacity = 0;
-    bool oom = !slot->key || !slot->value || !slot->defaultValue || !slot->desc || !slot->info || !slot->category;
-    if (!oom && values) {
-        // Count how many values there are available for the option.
-        unsigned count = 0;
-        while (values[count].value) count++;
-
-        // Build the available values.
-        if (count > 0) {
-            slot->values = (SDL_LibretroOptionValue*)SDL_calloc(count, sizeof(SDL_LibretroOptionValue));
-            oom = !slot->values;
-            if (!oom) slot->valuesCapacity = count;
-            for (unsigned v = 0; !oom && v < count; v++) {
-                slot->values[v].value = SDL_Libretro_Strdup(values[v].value);
-                slot->values[v].label = values[v].label ? SDL_Libretro_Strdup(values[v].label) : NULL;
-                slot->valuesCount++;
-                oom = !slot->values[v].value || (values[v].label && !slot->values[v].label);
-            }
-        }
+    // Pick the value: a re-registered option keeps its current value while
+    // it's still valid. Otherwise use the saved value, since cores may register
+    // options after the saved core config was loaded (in retro_init() or
+    // retro_load_game()), falling back to the default.
+    const char* current = reregistered ? slot->value : NULL;
+    bool keepCurrent = current && SDL_Libretro_IsOptionValueValid(&copy, current);
+    if (ok && !keepCurrent) {
+        const char* saved = SDL_Libretro_GetSavedCoreOption(lr, key);
+        copy.value = SDL_strdup((saved && SDL_Libretro_IsOptionValueValid(&copy, saved)) ? saved : copy.defaultValue);
+        ok = copy.value != NULL;
     }
 
-    if (oom) {
-        // When out of memory, make sure to clear the rest of the slot.
-        for (unsigned v = 0; v < slot->valuesCount; v++) {
-            SDL_free((void*)slot->values[v].value);
-            SDL_free((void*)slot->values[v].label);
-        }
-        SDL_free(slot->values);
-        SDL_free((void*)slot->key);
-        SDL_free((void*)slot->value);
-        SDL_free((void*)slot->defaultValue);
-        SDL_free((void*)slot->desc);
-        SDL_free((void*)slot->info);
-        SDL_free((void*)slot->category);
+    if (!ok) {
+        SDL_free((void*)copy.key);
+        SDL_free((void*)copy.value);
+        SDL_free((void*)copy.defaultValue);
+        SDL_free((void*)copy.desc);
+        SDL_free((void*)copy.info);
+        SDL_free((void*)copy.category);
+        SDL_Libretro_FreeOptionValues(copy.values, copy.valuesCount);
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Out of memory registering option '%s'", key);
         return;
     }
 
-    // Cores may register options after the saved core config was loaded (in
-    // retro_init() or retro_load_game()), so apply the saved value here. The
-    // core hasn't read this option yet, so don't flag it as updated.
-    const char* saved = SDL_Libretro_GetSavedCoreOption(lr, key);
-    if (saved && SDL_Libretro_IsOptionValueValid(slot, saved)) {
-        char* dup = SDL_strdup(saved);
-        if (dup) {
-            SDL_free((void*)slot->value);
-            slot->value = dup;
-        }
+    if (!reregistered) {
+        // The core hasn't read a new option yet, so it isn't flagged as updated.
+        copy.visible = true;
+        lr->core.options[lr->core.optionCount++] = copy;
+        return;
     }
 
-    lr->core.optionCount++;
+    // Re-registration: the core may have changed the values, default, or text.
+    SDL_free((void*)slot->defaultValue);
+    SDL_free((void*)slot->desc);
+    SDL_free((void*)slot->info);
+    SDL_free((void*)slot->category);
+    SDL_Libretro_FreeOptionValues(slot->values, slot->valuesCount);
+    slot->defaultValue = copy.defaultValue;
+    slot->desc = copy.desc;
+    slot->info = copy.info;
+    slot->category = copy.category;
+    slot->values = copy.values;
+    slot->valuesCount = copy.valuesCount;
+    slot->valuesCapacity = copy.valuesCapacity;
+    if (!keepCurrent) {
+        SDL_free((void*)slot->value);
+        slot->value = copy.value;
+        lr->core.optionsDirtyCore = true;
+    }
+    lr->core.optionsDirtyApp = true;
 }
 
 static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key, const char* desc, const char* info) {
@@ -156,11 +194,7 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
             SDL_free((void*)opt->desc);
             SDL_free((void*)opt->info);
             SDL_free((void*)opt->category);
-            for (unsigned v = 0; v < opt->valuesCount; v++) {
-                SDL_free((void*)opt->values[v].value);
-                SDL_free((void*)opt->values[v].label);
-            }
-            SDL_free(opt->values);
+            SDL_Libretro_FreeOptionValues(opt->values, opt->valuesCount);
         }
         SDL_free(lr->core.options);
         lr->core.options = NULL;
