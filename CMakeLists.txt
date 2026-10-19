@@ -24,6 +24,8 @@ if(SDL_LIBRETRO_DOWNLOAD_CORES)
     include(DownloadCores)
 endif()
 
+include(GNUInstallDirs)
+
 # Header-only (INTERFACE) library. Consumers define SDL_LIBRETRO_IMPLEMENTATION
 # in exactly one translation unit before including <SDL_libretro.h>.
 add_library(SDL_libretro INTERFACE)
@@ -32,7 +34,7 @@ target_include_directories(SDL_libretro INTERFACE
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/libretro-common/include>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/SDL_ini>
-    $<INSTALL_INTERFACE:include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/SDL_libretro>
 )
 
 # SDL3::SDL3 resolves to the shared or static SDL3, whichever is available,
@@ -113,21 +115,23 @@ endif()
 # Install (only when this is the top-level project)
 if(PROJECT_IS_TOP_LEVEL)
     include(CMakePackageConfigHelpers)
-    include(GNUInstallDirs)
 
     install(TARGETS SDL_libretro EXPORT SDL_libretroTargets)
 
     # Implementation fragments + the libretro API header are part of the
-    # shipped header set (needed by the TU that defines the macro).
+    # shipped header set (needed by the TU that defines the macro). They go
+    # in their own directory so libretro.h and SDL_ini.h don't collide with
+    # other copies in the include root; consumers still #include
+    # <SDL_libretro.h>.
     install(
         DIRECTORY include/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SDL_libretro
         FILES_MATCHING PATTERN "SDL_*.h"
     )
     install(FILES
         vendor/libretro-common/include/libretro.h
         vendor/SDL_ini/SDL_ini.h
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/SDL_libretro)
 
     install(EXPORT SDL_libretroTargets
         NAMESPACE SDL_libretro::
