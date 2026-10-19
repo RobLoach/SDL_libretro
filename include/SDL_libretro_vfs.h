@@ -198,7 +198,7 @@ static int SDL_Libretro_VFS_Rename(const char* old_path, const char* new_path) {
 /**
  * Truncate a file to a specified size.
  *
- * @param path A null-terminated string specifying the path of the file to be truncated. Must refer to a file that the caller is permitted to modify.
+ * @param stream An open handle with write access. Stays usable afterwards, even on failure where possible.
  * @param length The target size of the file in bytes. Must be non-negative.
  *
  * @return 0 on success. On error, -1 is returned.
@@ -234,37 +234,73 @@ static int64_t SDL_Libretro_VFS_Truncate(struct retro_vfs_file_handle* stream, i
         return 0;
     }
 
-
-    // Shrink: read the bytes we're keeping into memory, then recreate the file
-    // with just them. Portable (no OS-specific truncate call) at the cost of
-    // buffering the kept prefix.
-    bool canWrite = (stream->mode & RETRO_VFS_FILE_ACCESS_WRITE) != 0;
-
+    // Shrink: read the bytes we're keeping into memory, write them to a sibling
+    // temp file, then rename it over the original. Portable (no OS-specific
+    // truncate call) at the cost of buffering the kept prefix, and the original
+    // is only replaced once the new contents are fully on disk.
     void* kept = SDL_malloc(length > 0 ? (size_t)length : 1);
     if (!kept) return -1;
     if (length > 0) {
         if (SDL_SeekIO(stream->io, 0, SDL_IO_SEEK_SET) < 0 ||
             SDL_ReadIO(stream->io, kept, (size_t)length) != (size_t)length) {
             SDL_free(kept);
+            if (orig_pos >= 0) SDL_SeekIO(stream->io, orig_pos, SDL_IO_SEEK_SET);
             return -1;
         }
     }
 
-    // Recreate the file from scratch holding only the kept bytes (SDL_SaveFile
-    // opens with "wb", so this both discards the old contents and writes back).
-    SDL_CloseIO(stream->io);
-    bool ok = SDL_SaveFile(stream->path, kept, (size_t)length);
+    char* tmpPath = NULL;
+    if (SDL_asprintf(&tmpPath, "%s.tmp", stream->path) < 0 || !tmpPath) {
+        SDL_free(kept);
+        if (orig_pos >= 0) SDL_SeekIO(stream->io, orig_pos, SDL_IO_SEEK_SET);
+        return -1;
+    }
+    bool saved = SDL_SaveFile(tmpPath, kept, (size_t)length);
     SDL_free(kept);
+    if (!saved) {
+        // The original file and handle are untouched.
+        SDL_RemovePath(tmpPath);
+        SDL_free(tmpPath);
+        if (orig_pos >= 0) SDL_SeekIO(stream->io, orig_pos, SDL_IO_SEEK_SET);
+        return -1;
+    }
 
-    // Reopen in the original mode for continued use.
-    stream->io = SDL_IOFromFile(stream->path, canWrite ? "r+b" : "rb");
-    if (!ok || !stream->io) return -1;
+    // POSIX can rename over a file that is still open, which keeps the old
+    // handle alive as a fallback until the new one opens. Windows refuses to
+    // replace an open file, so close the handle and retry.
+    bool renamed = SDL_RenamePath(tmpPath, stream->path);
+    if (!renamed) {
+        SDL_CloseIO(stream->io);
+        stream->io = NULL;
+        renamed = SDL_RenamePath(tmpPath, stream->path);
+        if (!renamed) SDL_RemovePath(tmpPath);
+    }
+    SDL_free(tmpPath);
+
+    // Reopen for continued use, falling back to read-only rather than leaving
+    // the handle without a stream.
+    SDL_IOStream* io = SDL_IOFromFile(stream->path, "r+b");
+    if (!io) io = SDL_IOFromFile(stream->path, "rb");
+    if (io) {
+        if (stream->io) SDL_CloseIO(stream->io);
+        stream->io = io;
+    }
+    if (!stream->io) {
+        SDL_SetError("[SDL_Libretro] VFS truncate could not reopen '%s'", stream->path);
+        return -1;
+    }
+
+    if (!renamed) {
+        // The original contents survived; put the position back as it was.
+        if (orig_pos >= 0) SDL_SeekIO(stream->io, orig_pos, SDL_IO_SEEK_SET);
+        return -1;
+    }
 
     // Restore the position, clamped to the new (smaller) length.
     if (orig_pos >= 0) {
         SDL_SeekIO(stream->io, orig_pos < length ? orig_pos : length, SDL_IO_SEEK_SET);
     }
-    return 0;
+    return io ? 0 : -1;
 }
 
 /**

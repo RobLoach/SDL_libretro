@@ -2290,6 +2290,76 @@ static int SDLCALL test_OSD(void *arg) {
     return TEST_COMPLETED;
 }
 
+static int SDLCALL test_VFSTruncate(void *arg) {
+    (void)arg;
+#ifdef SDL_LIBRETRO_DISABLE_VFS
+    return TEST_SKIPPED;
+#else
+    char path[1024], tmpPath[1024];
+    SDL_snprintf(path, sizeof(path), "%stest_vfs_truncate.bin", SDL_GetBasePath());
+    SDL_snprintf(tmpPath, sizeof(tmpPath), "%s.tmp", path);
+    SDLTest_AssertCheck(SDL_SaveFile(path, "0123456789", 10) == true, "Seed file written");
+
+    unsigned mode = RETRO_VFS_FILE_ACCESS_READ_WRITE | RETRO_VFS_FILE_ACCESS_UPDATE_EXISTING;
+    struct retro_vfs_file_handle* h = SDL_Libretro_VFS_Open(path, mode, 0);
+    SDLTest_AssertCheck(h != NULL, "VFS open succeeded");
+    if (!h) return TEST_ABORTED;
+
+    // Read-only handles refuse to truncate.
+    struct retro_vfs_file_handle* ro = SDL_Libretro_VFS_Open(path, RETRO_VFS_FILE_ACCESS_READ, 0);
+    SDLTest_AssertCheck(ro != NULL && SDL_Libretro_VFS_Truncate(ro, 2) == -1, "Read-only truncate fails");
+    SDL_Libretro_VFS_Close(ro);
+
+    // Shrink with the position past the new end: position clamps to the length.
+    SDL_Libretro_VFS_Seek(h, 8, RETRO_VFS_SEEK_POSITION_START);
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Truncate(h, 4) == 0, "Shrink to 4 succeeds");
+    SDLTest_AssertCheck(h->io != NULL, "Handle keeps a stream after shrink");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Size(h) == 4, "Size is 4 after shrink");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Tell(h) == 4, "Position clamped to 4");
+    SDLTest_AssertCheck(SDL_GetPathInfo(tmpPath, NULL) == false, "No temp file left behind");
+
+    // The handle stays writable and readable.
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Write(h, "AB", 2) == 2, "Write after shrink succeeds");
+    char buf[16] = {0};
+    SDL_Libretro_VFS_Seek(h, 0, RETRO_VFS_SEEK_POSITION_START);
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Read(h, buf, sizeof(buf)) == 6, "Read 6 bytes back");
+    SDLTest_AssertCheck(SDL_memcmp(buf, "0123AB", 6) == 0, "Contents are '0123AB'");
+
+    // Shrink with the position inside the kept range: position is preserved.
+    SDL_Libretro_VFS_Seek(h, 1, RETRO_VFS_SEEK_POSITION_START);
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Truncate(h, 3) == 0, "Shrink to 3 succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Tell(h) == 1, "Position 1 preserved");
+
+    // Grow pads with zeros and keeps the position.
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Truncate(h, 5) == 0, "Grow to 5 succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Tell(h) == 1, "Position 1 preserved after grow");
+
+    // Shrink to empty.
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Truncate(h, 0) == 0, "Shrink to 0 succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Size(h) == 0, "Size is 0");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Write(h, "Z", 1) == 1, "Write after shrink to 0 succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Truncate(h, -1) == -1, "Negative length fails");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Close(h) == 0, "Close succeeds");
+
+    size_t size = 0;
+    char* data = (char*)SDL_LoadFile(path, &size);
+    SDLTest_AssertCheck(data != NULL && size == 1 && data[0] == 'Z', "File on disk is 'Z'");
+    SDL_free(data);
+
+    // A mid-file shrink leaves exactly the kept prefix on disk.
+    SDL_SaveFile(path, "0123456789", 10);
+    h = SDL_Libretro_VFS_Open(path, mode, 0);
+    SDLTest_AssertCheck(h != NULL && SDL_Libretro_VFS_Truncate(h, 7) == 0, "Shrink to 7 succeeds");
+    SDL_Libretro_VFS_Close(h);
+    data = (char*)SDL_LoadFile(path, &size);
+    SDLTest_AssertCheck(data != NULL && size == 7 && SDL_memcmp(data, "0123456", 7) == 0, "File on disk is '0123456'");
+    SDL_free(data);
+
+    SDL_RemovePath(path);
+    return TEST_COMPLETED;
+#endif
+}
+
 /**
  * Drains the SDL event queue, counting events of the given type and keeping
  * the last one seen in *last (when non-NULL).
@@ -2882,6 +2952,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
+    LIBRETRO_TEST_CASE(test_VFSTruncate,      "VFS truncate keeps the handle usable"),
     LIBRETRO_TEST_CASE(test_Events,           "SDL event pushes: env dispatch, watches, and lifecycle"),
 #ifdef SDL_LIBRETRO_ENABLE_MENU
     LIBRETRO_TEST_CASE(test_Menu,             "Menu create/toggle/update/render lifecycle"),
