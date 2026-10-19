@@ -1524,6 +1524,12 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
 
 /**
  * Sets the associated libretro core directory, where the default set of cores will be loaded from.
+ *
+ * The path is stored even when it can't be scanned, so it can still be shown or saved.
+ *
+ * @param lr the libretro context.
+ * @param path the core directory, or NULL/empty to clear it.
+ * @returns true when the directory was scanned (or cleared), false when it doesn't exist, isn't a directory, or the scan failed; call SDL_GetError() for more information.
  */
 bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
@@ -1534,10 +1540,13 @@ bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     SDL_Libretro_FreeCoreLibrary(lr);
     if (lr->coreDirectory[0] == '\0') return true;
 
-    // A directory that doesn't exist (yet) simply has no cores; anything else
-    // that stops the scan, like being unreadable or out of memory, is an error.
+    SDL_PathInfo info;
+    if (!SDL_GetPathInfo(lr->coreDirectory, &info) || info.type != SDL_PATHTYPE_DIRECTORY) {
+        SDL_SetError("[SDL_Libretro] Core directory '%s' is not a directory", lr->coreDirectory);
+        return false;
+    }
+
     if (!SDL_EnumerateDirectory(lr->coreDirectory, &SDL_Libretro_SetCoreDirectory_Iterator, (void*)lr)) {
-        if (!SDL_GetPathInfo(lr->coreDirectory, NULL)) return true;
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to scan core directory '%s': %s", lr->coreDirectory, SDL_GetError());
         return false;
     }

@@ -114,8 +114,17 @@ static int SDLCALL test_NullSafety(void *arg) {
 static int SDLCALL test_DirectorySetters(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
-    SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, "/tmp/cores") == true, "SetCoreDirectory returns true");
-    SDLTest_AssertCheck(SDL_strcmp(lr->coreDirectory, "/tmp/cores") == 0, "CoreDirectory stored correctly");
+    SDL_RemovePath("/tmp/sdl_libretro_no_cores");
+    SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, "/tmp/sdl_libretro_no_cores") == false, "SetCoreDirectory fails for a missing directory");
+    SDLTest_AssertCheck(SDL_strcmp(lr->coreDirectory, "/tmp/sdl_libretro_no_cores") == 0, "Missing CoreDirectory is still stored");
+    SDL_CreateDirectory("/tmp/sdl_libretro_cores");
+    SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, "/tmp/sdl_libretro_cores") == true, "SetCoreDirectory returns true");
+    SDLTest_AssertCheck(SDL_strcmp(lr->coreDirectory, "/tmp/sdl_libretro_cores") == 0, "CoreDirectory stored correctly");
+    SDL_RemovePath("/tmp/sdl_libretro_cores");
+    SDL_IOStream* notDir = SDL_IOFromFile("/tmp/sdl_libretro_cores_file", "wb");
+    if (notDir) SDL_CloseIO(notDir);
+    SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, "/tmp/sdl_libretro_cores_file") == false, "SetCoreDirectory fails for a file");
+    SDL_RemovePath("/tmp/sdl_libretro_cores_file");
     // Leftovers from prior runs would mask the "not created" checks below.
     SDL_RemovePath("/tmp/saves");
     SDL_RemovePath("/tmp/system");
