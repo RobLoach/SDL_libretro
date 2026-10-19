@@ -100,14 +100,18 @@ if(SDL_LIBRETRO_BUILD_EXAMPLES)
     target_link_libraries(SDL_libretro_basic PRIVATE SDL_libretro)
 
     if(SDL_LIBRETRO_MENU)
-        # The demo assumes the menu; SDL_libretro_basic is the menu-less example.
-        add_executable(SDL_libretro_demo example/SDL_libretro_demo.c)
-        target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro SDL_libretro_menu)
+        # The SDL_libretro app assumes the menu; SDL_libretro_basic is the
+        # menu-less example. The target is SDL_libretro_app because the
+        # library already owns the SDL_libretro target name, but the built
+        # binary is named SDL_libretro.
+        add_executable(SDL_libretro_app example/SDL_libretro.c)
+        set_target_properties(SDL_libretro_app PROPERTIES OUTPUT_NAME SDL_libretro)
+        target_link_libraries(SDL_libretro_app PRIVATE SDL_libretro SDL_libretro_menu)
         if(SDL_LIBRETRO_PHYSFS)
-            target_link_libraries(SDL_libretro_demo PRIVATE SDL_libretro_physfs)
+            target_link_libraries(SDL_libretro_app PRIVATE SDL_libretro_physfs)
         else()
-            # The demo opts into PhysFS in source; turn it back off.
-            target_compile_definitions(SDL_libretro_demo PRIVATE SDL_LIBRETRO_DISABLE_PHYSFS)
+            # The app opts into PhysFS in source; turn it back off.
+            target_compile_definitions(SDL_libretro_app PRIVATE SDL_LIBRETRO_DISABLE_PHYSFS)
         endif()
     endif()
 endif()

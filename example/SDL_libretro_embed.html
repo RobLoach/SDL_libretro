@@ -23,15 +23,15 @@
 <body>
     <h1>SDL_libretro embed example</h1>
     <p>
-        The emulator below is embedded with <code>SDL_libretro.js</code>:
+        The emulator below is embedded with <code>SDL_libretro_embed.js</code>:
         a <code>&lt;div&gt;</code>, one script include, and one call.
         Drag and drop a game onto it to play.
     </p>
     <div id="player"></div>
-    <script src="SDL_libretro.js"></script>
+    <script src="SDL_libretro_embed.js"></script>
     <script>
         SDL_libretro.embed('#player', {
-            script: 'SDL_libretro_demo.js',
+            script: 'SDL_libretro.js',
             onReady: function () {
                 console.log('SDL_libretro is running.');
             }

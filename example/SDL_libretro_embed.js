@@ -1,21 +1,21 @@
 /**
- * SDL_libretro.js: embeds the SDL_libretro web (Emscripten) build into any
+ * SDL_libretro_embed.js: embeds the SDL_libretro web (Emscripten) build into any
  * element on a webpage.
  *
- * Serve the files produced by the Emscripten build (SDL_libretro_demo.js,
- * SDL_libretro_demo.wasm and SDL_libretro_demo.data) next to this script,
+ * Serve the files produced by the Emscripten build (SDL_libretro.js,
+ * SDL_libretro.wasm and SDL_libretro.data) next to this script,
  * include it, and point it at an element:
  *
  *     <div id="player" style="width: 640px; height: 480px"></div>
- *     <script src="SDL_libretro.js"></script>
+ *     <script src="SDL_libretro_embed.js"></script>
  *     <script>
  *         SDL_libretro.embed('#player');
  *     </script>
  *
  * Options for SDL_libretro.embed(target, options):
  *
- *     script     URL of the Emscripten-generated script ('SDL_libretro_demo.js').
- *     arguments  Argument list for the demo, e.g. ['/cores/core.wasm', '/game.rom'].
+ *     script     URL of the Emscripten-generated script ('SDL_libretro.js').
+ *     arguments  Argument list for SDL_libretro, e.g. ['/cores/core.wasm', '/game.rom'].
  *     pixelated  Keep upscaled pixels crisp instead of smoothed (true).
  *     canvasId   id for the created canvas, matching SDL's selector ('canvas').
  *     onReady    Called with the handle once the runtime is initialized.
@@ -81,7 +81,7 @@
         global.Module = handle.module;
 
         var script = document.createElement('script');
-        script.src = options.script || 'SDL_libretro_demo.js';
+        script.src = options.script || 'SDL_libretro.js';
         script.async = true;
         script.onerror = function () {
             var error = new Error('SDL_libretro.embed: failed to load ' + script.src);

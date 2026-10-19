@@ -1,7 +1,7 @@
 /**
- * Drag & drop support for the Emscripten (web) build of SDL_libretro_demo.
+ * Drag & drop support for the Emscripten (web) build of SDL_libretro.
  */
-Module.installDemoDrop = function (appPtr) {
+Module.installAppDrop = function (appPtr) {
     function loadDroppedFile(file) {
         var reader = new FileReader();
         reader.onload = function () {
@@ -12,7 +12,7 @@ Module.installDemoDrop = function (appPtr) {
                 console.error('SDL_libretro: failed to write dropped file to FS:', err);
                 return;
             }
-            Module.ccall('SDL_Libretro_DemoDropFile', null, ['number', 'string'], [appPtr, path]);
+            Module.ccall('SDL_Libretro_AppDropFile', null, ['number', 'string'], [appPtr, path]);
         };
         reader.onerror = function () {
             console.error('SDL_libretro: failed to read dropped file:', reader.error);

@@ -3,11 +3,13 @@ set(CMAKE_EXECUTABLE_SUFFIX ".html")
 
 # Ship the embed loader and its example page next to the build output, so the
 # build directory is directly servable.
-configure_file("${CMAKE_SOURCE_DIR}/example/SDL_libretro.js" "${CMAKE_BINARY_DIR}/SDL_libretro.js" COPYONLY)
+configure_file("${CMAKE_SOURCE_DIR}/example/SDL_libretro_embed.js" "${CMAKE_BINARY_DIR}/SDL_libretro_embed.js" COPYONLY)
 configure_file("${CMAKE_SOURCE_DIR}/example/SDL_libretro_embed.html" "${CMAKE_BINARY_DIR}/SDL_libretro_embed.html" COPYONLY)
 
-# Everything below configures the demo, which needs the menu and examples.
-if(NOT TARGET SDL_libretro_demo)
+# Everything below configures the SDL_libretro app, which needs the menu and
+# examples. It builds SDL_libretro.html, SDL_libretro.js, SDL_libretro.wasm
+# and SDL_libretro.data.
+if(NOT TARGET SDL_libretro_app)
     return()
 endif()
 
@@ -18,7 +20,7 @@ foreach(CORE IN LISTS CORES)
         "--preload-file \"${CORES_DIR}/${CORE}_libretro.info@/cores/\""
         "--preload-file \"${CORES_DIR}/${CORE}_libretro.wasm@/cores/\"")
 endforeach()
-target_link_libraries(SDL_libretro_demo PRIVATE ${PRELOAD_FLAGS})
+target_link_libraries(SDL_libretro_app PRIVATE ${PRELOAD_FLAGS})
 
 # The prebuilt cores are SIDE_MODULEs that import libretro-common
 # helpers (file streams, VFS, string/path, etc) from the frontend
@@ -26,7 +28,7 @@ target_link_libraries(SDL_libretro_demo PRIVATE ${PRELOAD_FLAGS})
 # compile those in and force-export them (--export): the frontend never
 # calls them, so the linker would otherwise garbage-collect the objects.
 set(LIBRETRO_COMMON "${CMAKE_SOURCE_DIR}/vendor/libretro-common")
-target_sources(SDL_libretro_demo PRIVATE
+target_sources(SDL_libretro_app PRIVATE
     "${LIBRETRO_COMMON}/compat/compat_strl.c"
     "${LIBRETRO_COMMON}/compat/compat_posix_string.c"
     "${LIBRETRO_COMMON}/string/stdstring.c"
@@ -61,7 +63,7 @@ set(CORE_EXPORTS
 list(TRANSFORM CORE_EXPORTS PREPEND "-Wl,--export=")
 
 # Confiugure the Emscripten options
-target_link_options(SDL_libretro_demo PRIVATE
+target_link_options(SDL_libretro_app PRIVATE
     -sMAIN_MODULE=1 # Enables dynamic linking with dlopen()
     -sGL_ENABLE_GET_PROC_ADDRESS=1 # Allows cores to resolve GL at runtime
 
@@ -79,6 +81,6 @@ target_link_options(SDL_libretro_demo PRIVATE
 
      # Used for the Drag & Drop exposure in the JS handler
     -sEXPORTED_RUNTIME_METHODS=ccall,FS
-    "--post-js=${CMAKE_SOURCE_DIR}/example/SDL_libretro_demo_web.js"
-    "--shell-file=${CMAKE_SOURCE_DIR}/example/SDL_libretro_demo.html" # Minimal canvas-only page
+    "--post-js=${CMAKE_SOURCE_DIR}/example/SDL_libretro_web.js"
+    "--shell-file=${CMAKE_SOURCE_DIR}/example/SDL_libretro.html" # Minimal canvas-only page
     ${CORE_EXPORTS})

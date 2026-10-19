@@ -59,7 +59,7 @@ SDL_Libretro_Destroy(lr);
 
 - [API Documentation](https://robloach.github.io/SDL_libretro/)
 - [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
-- [Demo](https://robloach.github.io/SDL_libretro/demo/)
+- [SDL_libretro](example/SDL_libretro.c): The full-featured app, with the menu ([try it online](https://robloach.github.io/SDL_libretro/demo/))
 
 ### Zip Loading
 
@@ -169,11 +169,11 @@ cmake --build build-web
 
 ## Embedding on the Web
 
-The Emscripten build embeds into any webpage with [`SDL_libretro.js`](example/SDL_libretro.js). Serve the build output (`SDL_libretro_demo.js`, `SDL_libretro_demo.wasm` and `SDL_libretro_demo.data`) together with `SDL_libretro.js`, include the script, and point it at an element on the page:
+The Emscripten build embeds into any webpage with [`SDL_libretro_embed.js`](example/SDL_libretro_embed.js). Serve the build output (`SDL_libretro.js`, `SDL_libretro.wasm` and `SDL_libretro.data`) together with `SDL_libretro_embed.js`, include the script, and point it at an element on the page:
 
 ```html
 <div id="player" style="width: 640px; height: 480px"></div>
-<script src="SDL_libretro.js"></script>
+<script src="SDL_libretro_embed.js"></script>
 <script>
     SDL_libretro.embed('#player');
 </script>
@@ -181,8 +181,8 @@ The Emscripten build embeds into any webpage with [`SDL_libretro.js`](example/SD
 
 `SDL_libretro.embed(target, options)` accepts a CSS selector or an element, creates the canvas inside it, and starts the emulator. Options:
 
-- `script`: URL of the Emscripten-generated script (default `SDL_libretro_demo.js`)
-- `arguments`: Argument list for the demo, e.g. `['/cores/core.wasm', '/game.rom']`
+- `script`: URL of the Emscripten-generated script (default `SDL_libretro.js`)
+- `arguments`: Argument list for SDL_libretro, e.g. `['/cores/core.wasm', '/game.rom']`
 - `pixelated`: Keep upscaled pixels crisp instead of smoothed (default `true`)
 - `onReady`: Called with the embed handle once the runtime is initialized
 - `onError`: Called with an `Error` when the script fails to load

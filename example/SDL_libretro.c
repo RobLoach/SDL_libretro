@@ -1,8 +1,8 @@
 /*
- * SDL_libretro_demo: A fully-featured example of what SDL_libretro can do.
+ * SDL_libretro: A fully-featured example of what SDL_libretro can do.
  *
- * Usage: SDL_libretro_demo [core.so] [game.rom]
- *        SDL_libretro_demo core.so --subsystem <ident> "path1" ["path2" ...]
+ * Usage: SDL_libretro [core.so] [game.rom]
+ *        SDL_libretro core.so --subsystem <ident> "path1" ["path2" ...]
  */
 
 #define SDL_MAIN_USE_CALLBACKS
@@ -28,13 +28,13 @@ typedef struct {
  * Names the window "Game Name — SDL_libretro" after the loaded game, or
  * "Core Name — SDL_libretro" when a core runs without content.
  */
-static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
+static void SDL_Libretro_AppUpdateWindowTitle(AppContext* app) {
     const char* name = SDL_Libretro_GetGameName(app->lr);
     if (name[0] == '\0') {
         name = SDL_Libretro_GetCoreName(app->lr);
     }
     if (name[0] == '\0') {
-        SDL_SetWindowTitle(app->window, "SDL_libretro_demo");
+        SDL_SetWindowTitle(app->window, "SDL_libretro");
         return;
     }
     char title[1024];
@@ -50,30 +50,30 @@ static void SDL_Libretro_DemoUpdateWindowTitle(AppContext* app) {
  * SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_* events report environment
  * commands that SDL_libretro doesn't handle itself. Implementing one of
  * those would take an SDL_AddEventWatch() callback instead, so the core's
- * data pointer in user.data2 is still valid; this demo only logs them.
+ * data pointer in user.data2 is still valid; this app only logs them.
  *
  * @return true when the event was an SDL_libretro event.
  */
-static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Event* event) {
+static bool SDL_Libretro_AppHandleLibretroEvent(AppContext* app, const SDL_Event* event) {
     switch (event->type) {
         // A core loaded; when it runs without content the core name titles the window.
         case SDL_EVENT_LIBRETRO_CORE_LOADED:
             SDL_Log("Core loaded: %s", (const char*)event->user.data2);
-            SDL_Libretro_DemoUpdateWindowTitle(app);
+            SDL_Libretro_AppUpdateWindowTitle(app);
             return true;
 
         // A game loaded, from the command line, the menu, or drag & drop.
         // Close the menu so the game is visible.
         case SDL_EVENT_LIBRETRO_GAME_LOADED:
             SDL_Log("Game loaded: %s", (const char*)event->user.data2);
-            SDL_Libretro_DemoUpdateWindowTitle(app);
+            SDL_Libretro_AppUpdateWindowTitle(app);
             SDL_Libretro_SetMenuOpen(app->menu, false);
             return true;
 
         // The core or game went away; retitle the window.
         case SDL_EVENT_LIBRETRO_CORE_UNLOADED:
         case SDL_EVENT_LIBRETRO_GAME_UNLOADED:
-            SDL_Libretro_DemoUpdateWindowTitle(app);
+            SDL_Libretro_AppUpdateWindowTitle(app);
             return true;
 
         // The core asked to shut down; SDL_AppIterate() quits through
@@ -100,10 +100,10 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
         // commands OR onto SDL_EVENT_LIBRETRO; experimental ones need their
         // flag masked off, since it doesn't fit the SDL event range.
         case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
-            SDL_Log("Core asked for location services; not available in this demo");
+            SDL_Log("Core asked for location services; not available in this app");
             return true;
         case SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL):
-            SDL_Log("Core asked for a camera interface; not available in this demo");
+            SDL_Log("Core asked for a camera interface; not available in this app");
             return true;
 
         // Any other environment command: log the number for diagnostics.
@@ -119,7 +119,7 @@ static bool SDL_Libretro_DemoHandleLibretroEvent(AppContext* app, const SDL_Even
 /**
  * Called when dragging and dropping a game onto the window.
  */
-static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) {
+static void SDL_Libretro_AppLoadDroppedGame(AppContext* app, const char* path) {
     SDL_Libretro_UnloadCore(app->lr);
     // On success the queued GAME_LOADED event closes the menu and retitles
     // the window.
@@ -130,12 +130,12 @@ static void SDL_Libretro_DemoLoadDroppedGame(AppContext* app, const char* path) 
 
 #ifdef __EMSCRIPTEN__
 /**
- * Called from SDL_libretro_demo_web.js to pass over to DemoLoadDroppedGame()
+ * Called from SDL_libretro_web.js to pass over to AppLoadDroppedGame()
  */
 EMSCRIPTEN_KEEPALIVE
-void SDL_Libretro_DemoDropFile(AppContext* app, const char* path) {
+void SDL_Libretro_AppDropFile(AppContext* app, const char* path) {
     if (app && path) {
-        SDL_Libretro_DemoLoadDroppedGame(app, path);
+        SDL_Libretro_AppLoadDroppedGame(app, path);
     }
 }
 #endif
@@ -178,7 +178,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     // Create the Window
     SDL_Window* window;
     SDL_Renderer* renderer;
-    if (!SDL_CreateWindowAndRenderer("SDL_libretro_demo", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
+    if (!SDL_CreateWindowAndRenderer("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
         SDL_Log("Failed to create window: %s", SDL_GetError());
         return SDL_APP_FAILURE;
     }
@@ -193,14 +193,14 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
     // Create the libretro environment. Everything it reports — core/game
     // loads, the menu, environment commands it doesn't handle — arrives
-    // through the SDL event queue; see DemoHandleLibretroEvent().
+    // through the SDL event queue; see AppHandleLibretroEvent().
     SDL_Libretro* lr = SDL_Libretro_Create();
     app->lr = lr;
 
     SDL_Libretro_SetCoreDirectory(lr, "cores");
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");
-    SDL_Libretro_InitConfigFile(lr, "SDL_libretro_demo.cfg");
+    SDL_Libretro_InitConfigFile(lr, "SDL_libretro.cfg");
 
     // Load the core
     if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {
@@ -229,7 +229,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
 
 #ifdef __EMSCRIPTEN__
     // Hand the app pointer to the drag & drop bridge; it passes it back on drop.
-    EM_ASM({ Module.installDemoDrop($0); }, app);
+    EM_ASM({ Module.installAppDrop($0); }, app);
 #else
     // Don't have rewind on Web
     SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
@@ -247,7 +247,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     }
 
     // Events SDL_libretro pushed onto the queue.
-    if (SDL_Libretro_DemoHandleLibretroEvent(app, event)) {
+    if (SDL_Libretro_AppHandleLibretroEvent(app, event)) {
         return SDL_APP_CONTINUE;
     }
 
@@ -312,7 +312,7 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
 
     // Drag and drop a file to unload the current core and load the dropped game.
     else if (event->type == SDL_EVENT_DROP_FILE) {
-        SDL_Libretro_DemoLoadDroppedGame(app, event->drop.data);
+        SDL_Libretro_AppLoadDroppedGame(app, event->drop.data);
     }
 
     // Pass all events to SDL_Libretro.
