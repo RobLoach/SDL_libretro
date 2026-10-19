@@ -130,6 +130,18 @@
 #define SDL_LIBRETRO_MENU_STYLE_NAMES "Mocha|Latte|Frappe|Macchiato|Dracula|Dark"
 
 /**
+ * The Language combobox entries, separated by a |: Auto, then the
+ * RETRO_LANGUAGE_* values in enum order.
+ */
+#define SDL_LIBRETRO_MENU_LANGUAGE_NAMES                                              \
+    "Auto|English|Japanese|French|Spanish|German|Italian|Dutch|"                      \
+    "Portuguese (Brazil)|Portuguese (Portugal)|Russian|Korean|"                       \
+    "Chinese (Traditional)|Chinese (Simplified)|Esperanto|Polish|Vietnamese|Arabic|"  \
+    "Greek|Turkish|Slovak|Persian|Hebrew|Asturian|Finnish|Indonesian|Swedish|"        \
+    "Ukrainian|Czech|Catalan (Valencia)|Catalan|British English|Hungarian|"           \
+    "Belarusian|Galician|Norwegian|Irish|Thai"
+
+/**
  * Per-option UI state for the "Core Options" submenu.
  *
  * The comboboxes and checkboxes write directly into these fields, so the array
@@ -229,6 +241,9 @@ struct SDL_LibretroMenu {
     nk_bool muteChecked;
     nk_bool rewindChecked;
     int rewindBufferMB; /**< Rewind memory limit in MB; 0 for no limit. */
+    int mousePortIndex; /**< The controller port the mouse drives. */
+    char mousePortList[16 * SDL_LIBRETRO_MAX_USERS]; /**< "Port 1|Port 2|..." for the Mouse Port combobox. */
+    int languageIndex; /**< 0 = Auto (system locale), else RETRO_LANGUAGE_* + 1. */
     float preMuteVolume; /**< Volume to restore when unmuting. */
 
     // Load Game
@@ -805,6 +820,24 @@ static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdat
     // Keep the capacity and interval the app configured.
     SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true,
                                   menu->lr->rewindCapacity, menu->lr->rewindCaptureInterval);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuMousePortChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetMousePort(menu->lr, (unsigned)menu->mousePortIndex);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuLanguageChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetLanguage(menu->lr, menu->languageIndex - 1);
 }
 
 /**
@@ -2061,6 +2094,9 @@ static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
     // rendering, and the CHANGED writeback would shrink a larger app budget.
     size_t rewindLimitMB = SDL_Libretro_GetRewindMemoryLimit(lr) >> 20;
     menu->rewindBufferMB = rewindLimitMB > 1024 ? 1024 : (int)rewindLimitMB;
+    menu->mousePortIndex = (int)SDL_Libretro_GetMousePort(lr);
+    // The raw override, so a locale-detected language still shows as Auto.
+    menu->languageIndex = lr->language >= 0 ? lr->language + 1 : 0;
 }
 
 /**
@@ -2178,6 +2214,10 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuOnChanged(nk_console_property_int(general, "Rewind Buffer (MB)", 0, &menu->rewindBufferMB, 1024, 8, 1.0f),
                                    &SDL_Libretro_MenuRewindBufferChanged, menu),
         "Memory the rewind buffer may use; 0 for no limit");
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(general, "Language", SDL_LIBRETRO_MENU_LANGUAGE_NAMES, '|', &menu->languageIndex),
+                                   &SDL_Libretro_MenuLanguageChanged, menu),
+        "Reported to cores; applies when the next core loads. Auto follows the system locale");
 
     // Audio & Video
     nk_console* audioVideo = SDL_Libretro_MenuAddSubmenu(settings, "Audio & Video", NK_SYMBOL_TRIANGLE_RIGHT);
@@ -2216,8 +2256,21 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
 
     // Keyboard bindings for player 1's virtual controller.
     nk_console* keyboard = SDL_Libretro_MenuAddSubmenu(settings, "Keyboard", NK_SYMBOL_TRIANGLE_RIGHT);
-    nk_console_set_tooltip(keyboard, "Keyboard keys for Player 1's controller");
+    nk_console_set_tooltip(keyboard, "Keyboard keys for Player 1's controller, and the mouse's port");
     SDL_Libretro_MenuSyncKeyBinds(menu);
+
+    // The port the mouse, pointer and lightgun answer on.
+    menu->mousePortList[0] = '\0';
+    for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
+        char item[16];
+        SDL_snprintf(item, sizeof(item), port == 0 ? "Port %u" : "|Port %u", port + 1);
+        SDL_strlcat(menu->mousePortList, item, sizeof(menu->mousePortList));
+    }
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(keyboard, "Mouse Port", menu->mousePortList, '|', &menu->mousePortIndex),
+                                   &SDL_Libretro_MenuMousePortChanged, menu),
+        "The controller port the mouse, pointer and lightgun drive");
+
     for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
         menu->keyBinds[i].menu = menu;
         menu->keyBinds[i].button = i;

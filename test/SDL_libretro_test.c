@@ -3724,6 +3724,40 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(menu->padPorts[1].analogIndex == (int)SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
             "SyncPadBinds refreshes the Analog to Digital choice");
 
+        // The Mouse Port combobox lists every port and writes back through the setter.
+        SDLTest_AssertCheck(menu->mousePortIndex == 0, "Mouse Port starts on Port 1");
+        int mousePortEntries = 1;
+        for (const char* c = menu->mousePortList; *c != '\0'; c++) {
+            mousePortEntries += *c == '|';
+        }
+        SDLTest_AssertCheck(SDL_strncmp(menu->mousePortList, "Port 1", 6) == 0 && mousePortEntries == SDL_LIBRETRO_MAX_USERS,
+            "Mouse Port lists one entry per port");
+        menu->mousePortIndex = 2;
+        SDL_Libretro_MenuMousePortChanged(NULL, menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetMousePort(lr) == 2, "The Mouse Port choice applies");
+        SDL_Libretro_SetMousePort(lr, 1);
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDLTest_AssertCheck(menu->mousePortIndex == 1, "SyncSettings refreshes the Mouse Port choice");
+        SDL_Libretro_SetMousePort(lr, 0);
+
+        // The Language combobox is Auto, then every RETRO_LANGUAGE_* in order.
+        int languageEntries = 1;
+        for (const char* c = SDL_LIBRETRO_MENU_LANGUAGE_NAMES; *c != '\0'; c++) {
+            languageEntries += *c == '|';
+        }
+        SDLTest_AssertCheck(languageEntries == RETRO_LANGUAGE_LAST + 1, "Language lists Auto and every RETRO_LANGUAGE_*");
+        SDLTest_AssertCheck(menu->languageIndex == 0, "Language starts on Auto");
+        menu->languageIndex = RETRO_LANGUAGE_FRENCH + 1;
+        SDL_Libretro_MenuLanguageChanged(NULL, menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetLanguage(lr) == RETRO_LANGUAGE_FRENCH, "The Language choice applies");
+        menu->languageIndex = 0;
+        SDL_Libretro_MenuLanguageChanged(NULL, menu);
+        SDLTest_AssertCheck(lr->language == -1, "Auto drops the language override");
+        SDL_Libretro_SetLanguage(lr, RETRO_LANGUAGE_JAPANESE);
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDLTest_AssertCheck(menu->languageIndex == RETRO_LANGUAGE_JAPANESE + 1, "SyncSettings refreshes the Language choice");
+        SDL_Libretro_SetLanguage(lr, -1);
+
         // The Gamepad page holds one sub-page per player.
         SDLTest_AssertCheck(cvector_size(menu->gamepadButton->children) == (size_t)(SDL_LIBRETRO_MAX_USERS + 1),
             "The Gamepad page lists a sub-page per player after the back button");
@@ -3842,6 +3876,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Libretro_SetGamepadMapping(lrSave, 1, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
     SDL_Libretro_SetAnalogToDigital(lrSave, 1, SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT);
     SDL_Libretro_SetMousePort(lrSave, 1);
+    SDL_Libretro_SetLanguage(lrSave, RETRO_LANGUAGE_GERMAN);
     SDL_Libretro_SetRewindMemoryLimit(lrSave, (size_t)48 << 20);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
@@ -3866,6 +3901,9 @@ static int SDLCALL test_Menu(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lrLoad, 0) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
         "Analog to Digital elsewhere stays None");
     SDLTest_AssertCheck(SDL_Libretro_GetMousePort(lrLoad) == 1, "Mouse port persists through the config file");
+    SDLTest_AssertCheck(lrLoad->language == RETRO_LANGUAGE_GERMAN, "Language persists through the config file");
+    SDLTest_AssertCheck(menuLoad != NULL && menuLoad->languageIndex == RETRO_LANGUAGE_GERMAN + 1,
+        "The Language combobox reflects the persisted language");
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lrLoad) == (size_t)48 << 20,
         "Rewind memory limit persists through the config file");
     if (menuLoad != NULL) {

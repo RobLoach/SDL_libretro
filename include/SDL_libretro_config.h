@@ -89,6 +89,11 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
         SDL_Libretro_SetRewindMemoryLimit(lr, (size_t)INI_GetInt(ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr)));
     if (INI_HasValue(ini, NULL, "mouseport"))
         SDL_Libretro_SetMousePort(lr, (unsigned)INI_GetInt(ini, NULL, "mouseport", (Sint64)SDL_Libretro_GetMousePort(lr)));
+    if (INI_HasValue(ini, NULL, "language")) {
+        // -1 (or anything out of range) detects it from the system locale.
+        Sint64 language = INI_GetInt(ini, NULL, "language", (Sint64)lr->language);
+        SDL_Libretro_SetLanguage(lr, (language >= 0 && language < RETRO_LANGUAGE_LAST) ? (int)language : -1);
+    }
     if (INI_HasValue(ini, NULL, "filebrowserdirectory"))
         SDL_strlcpy(lr->fileBrowserStartDirectory, INI_GetString(ini, NULL, "filebrowserdirectory", ""), sizeof(lr->fileBrowserStartDirectory));
 
@@ -236,6 +241,8 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetInt(lr->ini, NULL, "rewindinterval", (Sint64)lr->rewindCaptureInterval);
     INI_SetInt(lr->ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr));
     INI_SetInt(lr->ini, NULL, "mouseport", (Sint64)SDL_Libretro_GetMousePort(lr));
+    // The raw override, so -1 keeps following the system locale.
+    INI_SetInt(lr->ini, NULL, "language", (Sint64)lr->language);
     INI_SetString(lr->ini, NULL, "filebrowserdirectory", lr->fileBrowserStartDirectory);
 
     for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {
