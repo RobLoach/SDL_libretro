@@ -165,7 +165,7 @@ void SDL_Libretro_Destroy(SDL_Libretro* lr) {
  *
  * @param lr the libretro context.
  * @param coreName the name of the core to retrieve the path for.
- * @returns the path to the core, or NULL if it wasn't found or the coreName is a path.
+ * @returns the path to the core, or NULL if it wasn't found or the coreName is a path. When several cores share a name, the first in sorted order wins.
  */
 static const char* SDL_Libretro_GetCorePathFromName(const SDL_Libretro* lr, const char* coreName) {
     if (!lr || !coreName || !lr->coreLibrary || SDL_strrchr(coreName, '.') != NULL) {
@@ -695,6 +695,10 @@ static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char*
 
 /**
  * Given a game path, load the core that supported its file extension.
+ *
+ * Cores are tried in core library order (sorted by core name, then path; see
+ * SDL_Libretro_SetCoreDirectory()), and the first match in sorted order that
+ * loads wins.
  *
  * @return True if the core was successfully loaded.
  */
@@ -1594,7 +1598,24 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
 }
 
 /**
+ * Orders core library entries by case-insensitive core name, then by path, so
+ * the library is the same on every machine regardless of directory order.
+ *
+ * @internal
+ */
+static int SDLCALL SDL_Libretro_CompareCoreInfo(const void* a, const void* b) {
+    const SDL_Libretro_CoreInfo* left = (const SDL_Libretro_CoreInfo*)a;
+    const SDL_Libretro_CoreInfo* right = (const SDL_Libretro_CoreInfo*)b;
+    int result = SDL_strcasecmp(left->corename, right->corename);
+    return result != 0 ? result : SDL_strcmp(left->path, right->path);
+}
+
+/**
  * Sets the associated libretro core directory, where the default set of cores will be loaded from.
+ *
+ * The discovered cores are sorted by case-insensitive core name, then by path,
+ * so lookups that take the first match (such as picking a core for a game's
+ * extension) behave the same on every machine.
  *
  * The path is stored even when it can't be scanned, so it can still be shown or saved.
  *
@@ -1620,6 +1641,11 @@ bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     if (!SDL_EnumerateDirectory(lr->coreDirectory, &SDL_Libretro_SetCoreDirectory_Iterator, (void*)lr)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to scan core directory '%s': %s", lr->coreDirectory, SDL_GetError());
         return false;
+    }
+
+    // Directory order varies by platform and filesystem, so sort for a stable pick.
+    if (lr->coreLibraryCount > 1) {
+        SDL_qsort(lr->coreLibrary, lr->coreLibraryCount, sizeof(SDL_Libretro_CoreInfo), SDL_Libretro_CompareCoreInfo);
     }
     return true;
 }

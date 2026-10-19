@@ -171,6 +171,79 @@ static int SDLCALL test_DirectorySetters(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Writes a minimal .info file into a fake core directory. */
+static void test_WriteCoreInfo(const char* dir, const char* base, const char* corename, const char* extensions, const char* extra) {
+    char path[SDL_LIBRETRO_MAX_PATH];
+    char text[512];
+    SDL_snprintf(path, sizeof(path), "%s/%s.info", dir, base);
+    SDL_snprintf(text, sizeof(text), "corename = \"%s\"\nsupported_extensions = \"%s\"\n%s", corename, extensions, extra ? extra : "");
+    SDL_SaveFile(path, text, SDL_strlen(text));
+}
+
+/* Removes a fake core directory and the files the tests put in it. */
+static void test_RemoveCoreDir(const char* dir) {
+    int count = 0;
+    char** files = SDL_GlobDirectory(dir, NULL, 0, &count);
+    for (int i = 0; files && i < count; i++) {
+        char path[SDL_LIBRETRO_MAX_PATH];
+        SDL_snprintf(path, sizeof(path), "%s/%s", dir, files[i]);
+        SDL_RemovePath(path);
+    }
+    SDL_free(files);
+    SDL_RemovePath(dir);
+}
+
+static int SDLCALL test_CoreLibrarySorted(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    const char* dir = "/tmp/sdl_libretro_sorted_cores";
+    test_RemoveCoreDir(dir);
+    SDL_CreateDirectory(dir);
+
+    // File names run opposite to the core names, so neither directory order
+    // nor file name order matches the expected library order.
+    test_WriteCoreInfo(dir, "f", "Alpha", "none", NULL);
+    test_WriteCoreInfo(dir, "e", "bravo", "none", NULL);
+    test_WriteCoreInfo(dir, "d", "Charlie", "none", NULL);
+    test_WriteCoreInfo(dir, "c", "delta", "none", NULL);
+    test_WriteCoreInfo(dir, "b", "Echo", "none", NULL);
+    test_WriteCoreInfo(dir, "a", "Echo", "none", NULL);
+
+    // Two real cores claiming the same extension; "Aardvark" must win.
+    test_WriteCoreInfo(dir, "acore", "Zebra", "sortext", NULL);
+    test_WriteCoreInfo(dir, "zcore", "Aardvark", "sortext", NULL);
+    char acore[SDL_LIBRETRO_MAX_PATH], zcore[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(acore, sizeof(acore), "%s/acore%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_snprintf(zcore, sizeof(zcore), "%s/zcore%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_CopyFile(TEST_CORE_PATH, acore);
+    SDL_CopyFile(TEST_CORE_PATH, zcore);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, dir) == true, "SetCoreDirectory scans the fake cores");
+    SDLTest_AssertCheck(lr->coreLibraryCount == 8, "Core library has 8 entries, got %u", lr->coreLibraryCount);
+
+    // Case-insensitive by name, ties broken by path.
+    static const char* expectedNames[] = {"Aardvark", "Alpha", "bravo", "Charlie", "delta", "Echo", "Echo", "Zebra"};
+    static const char* expectedFiles[] = {"zcore", "f", "e", "d", "c", "a", "b", "acore"};
+    for (unsigned i = 0; i < lr->coreLibraryCount && i < SDL_arraysize(expectedNames); i++) {
+        char file[SDL_LIBRETRO_MAX_PATH];
+        SDL_Libretro_GetFileName(file, sizeof(file), lr->coreLibrary[i].path, false);
+        SDLTest_AssertCheck(SDL_strcmp(lr->coreLibrary[i].corename, expectedNames[i]) == 0 && SDL_strcmp(file, expectedFiles[i]) == 0,
+            "Entry %u is %s (%s), got %s (%s)", i, expectedNames[i], expectedFiles[i], lr->coreLibrary[i].corename, file);
+    }
+
+    // The first match in sorted order wins.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/tmp/game.sortext") == true, "LoadCoreForGame finds a core");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, zcore) == 0, "Sorted first core was loaded, got '%s'", lr->core.corePath);
+
+    SDL_Libretro_Destroy(lr);
+    test_RemoveCoreDir(dir);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_VolumeSpeed(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -3736,6 +3809,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_StateQueries,     "Query getters on fresh context"),
     LIBRETRO_TEST_CASE(test_NullSafety,       "All getters handle NULL without crashing"),
     LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
+    LIBRETRO_TEST_CASE(test_CoreLibrarySorted, "Core library is sorted by name"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_DRCDisable,       "Disabling DRC unwinds the ratio nudge"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),

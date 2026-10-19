@@ -858,7 +858,7 @@ struct SDL_Libretro {
     SDL_ini* ini;
 
     // Core Library
-    SDL_Libretro_CoreInfo* coreLibrary; /**< The list of cores that were discovered in the "cores" directory. */
+    SDL_Libretro_CoreInfo* coreLibrary; /**< The list of cores that were discovered in the "cores" directory, sorted by case-insensitive core name, then path. Lookups take the first match in sorted order. */
     unsigned coreLibraryCount; /**< The number of core libraries represented in coreLibrary. */
 
     void* userData; /**< Generic data available to the implementation. */
