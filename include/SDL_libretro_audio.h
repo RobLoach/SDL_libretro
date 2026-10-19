@@ -298,7 +298,11 @@ static void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
 /**
  * Set the desired minimum audio latency for the audio stream.
  *
+ * @param lr the libretro context.
+ * @param latencyMs the minimum latency in milliseconds, or 0 for SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS.
+ *
  * @see SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS
+ * @see SDL_Libretro_GetAudioLatency()
  */
 void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs) {
     if (!lr) return;
@@ -310,11 +314,28 @@ void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs) {
     }
 }
 
+/**
+ * Get the minimum audio latency for the audio stream.
+ *
+ * @param lr the libretro context.
+ * @returns the latency in milliseconds set with SDL_Libretro_SetAudioLatency(), SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS when none was set, or 0 when lr is NULL.
+ *
+ * @see SDL_Libretro_SetAudioLatency()
+ */
 unsigned SDL_Libretro_GetAudioLatency(const SDL_Libretro* lr) {
     if (!lr) return 0;
     return lr->core.minimumAudioLatencyMs ? lr->core.minimumAudioLatencyMs : SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS;
 }
 
+/**
+ * Get the audio sample rate the loaded core outputs at.
+ *
+ * Reported by the core through retro_get_system_av_info() when the game loads,
+ * and updated by RETRO_ENVIRONMENT_SET_SYSTEM_AV_INFO.
+ *
+ * @param lr the libretro context.
+ * @returns the sample rate in Hz, or SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE when lr is NULL or the core hasn't reported one.
+ */
 double SDL_Libretro_GetSampleRate(const SDL_Libretro* lr) {
     return (lr && lr->core.sampleRate > 0.0) ? lr->core.sampleRate : SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE;
 }

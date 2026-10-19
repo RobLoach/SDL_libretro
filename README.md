@@ -103,7 +103,7 @@ Cores that set `block_extract` in their `.info` file, or that list `zip` as a su
 
 To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
 
-The menu reports what it does through SDL events (see [Events](#events)). Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`, and jump straight to a page with `SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video")`.
+The menu reports what it does through SDL events (see the Events section below). Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`, and jump straight to a page with `SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video")`.
 
 Besides loading games and core options, the menu rebinds Player 1's keyboard (Settings > Keyboard) and each player's gamepad buttons and analog-to-digital D-Pad (Settings > Gamepad, or `SDL_Libretro_SetGamepadMapping()` and `SDL_Libretro_SetAnalogToDigital()` from code), swaps disks for multi-disk games (Disks), and shows core-reported progress messages.
 

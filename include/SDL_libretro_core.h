@@ -84,6 +84,19 @@ static void SDL_Libretro_ReserveEvents(void) {
     }
 }
 
+/**
+ * Creates a new libretro context.
+ *
+ * The context starts with default settings: full volume, normal speed, the
+ * default keyboard and gamepad mappings, and "SDL_libretro" as the username.
+ * The first call in a process also reserves the SDL_EVENT_LIBRETRO event range.
+ * Only one context can have a core loaded at a time.
+ *
+ * @returns the new context, or NULL on allocation failure; call SDL_GetError() for more information. Free it with SDL_Libretro_Destroy().
+ *
+ * @see SDL_Libretro_Destroy()
+ * @see SDL_Libretro_LoadCore()
+ */
 SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro* lr = (SDL_Libretro*)SDL_calloc(1, sizeof(SDL_Libretro));
     if (!lr) {
@@ -131,7 +144,13 @@ SDL_Libretro* SDL_Libretro_Create(void) {
 /**
  * Destroys the given libretro context.
  *
- * Will also unload the active game and core if needed.
+ * Will also unload the active game and core if needed, save the config set up
+ * with SDL_Libretro_InitConfig(), and drop any SDL_libretro events still in
+ * the queue, since they point into the context.
+ *
+ * @param lr the libretro context to destroy. NULL is ignored.
+ *
+ * @see SDL_Libretro_Create()
  */
 void SDL_Libretro_Destroy(SDL_Libretro* lr) {
     if (!lr) return;
@@ -188,6 +207,7 @@ static const char* SDL_Libretro_GetCorePathFromName(const SDL_Libretro* lr, cons
  *
  * @param lr the libretro context.
  * @param core Either the path to the core to load, or a name of the core within the core directory.
+ * @returns true when the core was loaded and initialized, false on invalid arguments, when another context already has a core loaded, or when the core fails to load; call SDL_GetError() for more information.
  *
  * @see SDL_Libretro_Create()
  * @see SDL_Libretro_UnloadCore()
@@ -304,7 +324,9 @@ bool SDL_Libretro_LoadCore(SDL_Libretro* lr, const char* core) {
  *
  * Will also unload the game if it's still loaded.
  *
- * @see SD_Libretro_UnloadGame()
+ * @param lr the libretro context. NULL is ignored.
+ *
+ * @see SDL_Libretro_UnloadGame()
  */
 void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (!lr) return;
@@ -343,6 +365,15 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     }
 }
 
+/**
+ * Indicates whether a core is loaded.
+ *
+ * @param lr the libretro context.
+ * @returns true when a core is loaded, false otherwise or when lr is NULL.
+ *
+ * @see SDL_Libretro_LoadCore()
+ * @see SDL_Libretro_IsGameReady()
+ */
 bool SDL_Libretro_IsCoreReady(const SDL_Libretro* lr) {
     return lr && lr->core.symbols.handle != NULL;
 }
@@ -1018,6 +1049,7 @@ static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, co
  * @param path the path the content is known by. Could be a virtual path
  * if the loading from an archive.
  * @param closeio if true, close `src` before returning, even on failure.
+ * @returns true when the game is running; call SDL_GetError() for more information on failure.
  *
  * @see SDL_Libretro_LoadGame()
  */
@@ -1211,7 +1243,11 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const
 /**
  * Unloads the actively loaded game.
  *
- * @see SD_Libretro_UnloadCore()
+ * The core stays loaded.
+ *
+ * @param lr the libretro context. NULL, or no game loaded, is ignored.
+ *
+ * @see SDL_Libretro_UnloadCore()
  */
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded) return;
@@ -1231,6 +1267,17 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GAME_UNLOADED, NULL);
 }
 
+/**
+ * Indicates whether a game is loaded and running.
+ *
+ * This is also true for a core started without content.
+ *
+ * @param lr the libretro context.
+ * @returns true when a game is loaded, false otherwise or when lr is NULL.
+ *
+ * @see SDL_Libretro_LoadGame()
+ * @see SDL_Libretro_IsCoreReady()
+ */
 bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
     return lr && lr->core.gameLoaded;
 }
@@ -1252,6 +1299,14 @@ bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
     return lr && !lr->core.supportNoGame;
 }
 
+/**
+ * Resets the loaded game, like pressing the console's reset button.
+ *
+ * Also clears the rewind buffer and any queued audio.
+ *
+ * @param lr the libretro context.
+ * @returns true when the game was reset, false when no game is loaded; call SDL_GetError() for more information.
+ */
 bool SDL_Libretro_Reset(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded) {
         SDL_SetError("[SDL_Libretro] No game loaded");
@@ -1318,6 +1373,20 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t frameTimeUsec) {
     }
 }
 
+/**
+ * Runs the loaded game; call it once per frame of the application's loop.
+ *
+ * The core is paced to its own frame rate scaled by the speed, so this may run
+ * zero, one, or several core frames per call. Pending video and audio
+ * reinitializations happen here. Nothing runs while the speed is 0, and a
+ * negative speed steps backwards through the rewind buffer when rewind is
+ * enabled.
+ *
+ * @param lr the libretro context. Does nothing when lr is NULL or no game is loaded.
+ *
+ * @see SDL_Libretro_SetSpeed()
+ * @see SDL_Libretro_Render()
+ */
 void SDL_Libretro_Update(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded) return;
 
@@ -1444,12 +1513,23 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
 /**
  * Indicates whether or not the core has requested to shutdown.
  *
+ * @param lr the libretro context.
+ * @returns true when the core requested to shut down, false otherwise or when lr is NULL.
+ *
  * @see RETRO_ENVIRONMENT_SHUTDOWN
+ * @see SDL_EVENT_LIBRETRO_SHUTDOWN
  */
 bool SDL_Libretro_ShouldQuit(const SDL_Libretro* lr) {
     return lr && lr->core.shutdown;
 }
 
+/**
+ * Get the version of SDL_libretro the implementation was compiled with.
+ *
+ * @returns the version as SDL_LIBRETRO_VERSION, packed with SDL_VERSIONNUM().
+ *
+ * @see SDL_LIBRETRO_VERSION
+ */
 int SDL_Libretro_GetVersion(void) {
     return SDL_LIBRETRO_VERSION;
 }
@@ -1709,7 +1789,10 @@ static bool SDL_Libretro_GetPrefDirectory(char* dst, size_t dstSize) {
  *
  * @param lr The libretro context.
  * @param path The path to where save data should be placed, NULL for the
- * default, or "" for none.
+ * default ("saves" inside the app's pref path), or "" for none.
+ * @returns true when the directory was set, false when lr is NULL.
+ *
+ * @see SDL_Libretro_GetSaveDirectory()
  */
 bool SDL_Libretro_SetSaveDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
@@ -1736,7 +1819,10 @@ bool SDL_Libretro_SetSaveDirectory(SDL_Libretro* lr, const char* path) {
  * The directory is created when a core is loaded.
  *
  * @param lr The libretro context.
- * @param path The system directory, NULL for the default, or "" for none.
+ * @param path The system directory, NULL for the default ("system" inside the app's pref path), or "" for none.
+ * @returns true when the directory was set, false when lr is NULL.
+ *
+ * @see SDL_Libretro_GetSystemDirectory()
  */
 bool SDL_Libretro_SetSystemDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
@@ -1757,38 +1843,98 @@ bool SDL_Libretro_SetSystemDirectory(SDL_Libretro* lr, const char* path) {
     return true;
 }
 
+/**
+ * Sets where cores look for their assets, reported through RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY.
+ *
+ * @param lr the libretro context.
+ * @param path the core assets directory, or NULL/empty for none. The string is copied.
+ * @returns true when the directory was set, false when lr is NULL.
+ *
+ * @see SDL_Libretro_GetCoreAssetsDirectory()
+ */
 bool SDL_Libretro_SetCoreAssetsDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
     SDL_strlcpy(lr->coreAssetsDirectory, path ? path : "", sizeof(lr->coreAssetsDirectory));
     return true;
 }
 
+/**
+ * Get the core directory.
+ *
+ * @param lr the libretro context.
+ * @returns the core directory, or NULL when none is set or lr is NULL. The string is owned by the context and stays valid until the directory changes or the context is destroyed.
+ *
+ * @see SDL_Libretro_SetCoreDirectory()
+ */
 const char* SDL_Libretro_GetCoreDirectory(SDL_Libretro* lr) {
     if (!lr) return NULL;
     return lr->coreDirectory[0] ? lr->coreDirectory : NULL;
 }
 
+/**
+ * Get the save directory.
+ *
+ * @param lr the libretro context.
+ * @returns the save directory, or NULL when none is set or lr is NULL. The string is owned by the context and stays valid until the directory changes or the context is destroyed.
+ *
+ * @see SDL_Libretro_SetSaveDirectory()
+ */
 const char* SDL_Libretro_GetSaveDirectory(SDL_Libretro* lr) {
     if (!lr) return NULL;
     return lr->saveDirectory[0] ? lr->saveDirectory : NULL;
 }
 
+/**
+ * Get the system directory.
+ *
+ * @param lr the libretro context.
+ * @returns the system directory, or NULL when none is set or lr is NULL. The string is owned by the context and stays valid until the directory changes or the context is destroyed.
+ *
+ * @see SDL_Libretro_SetSystemDirectory()
+ */
 const char* SDL_Libretro_GetSystemDirectory(SDL_Libretro* lr) {
     if (!lr) return NULL;
     return lr->systemDirectory[0] ? lr->systemDirectory : NULL;
 }
 
+/**
+ * Get the core assets directory.
+ *
+ * @param lr the libretro context.
+ * @returns the core assets directory, or NULL when none is set or lr is NULL. The string is owned by the context and stays valid until the directory changes or the context is destroyed.
+ *
+ * @see SDL_Libretro_SetCoreAssetsDirectory()
+ */
 const char* SDL_Libretro_GetCoreAssetsDirectory(SDL_Libretro* lr) {
     if (!lr) return NULL;
     return lr->coreAssetsDirectory[0] ? lr->coreAssetsDirectory : NULL;
 }
 
+/**
+ * Sets the username reported to cores through RETRO_ENVIRONMENT_GET_USERNAME.
+ *
+ * Defaults to "SDL_libretro". Names longer than 63 bytes are truncated.
+ *
+ * @param lr the libretro context.
+ * @param username the username, or NULL for an empty one. The string is copied.
+ * @returns true when the username was set, false when lr is NULL.
+ *
+ * @see SDL_Libretro_GetUsername()
+ */
 bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username) {
     if (!lr) return false;
     SDL_strlcpy(lr->username, username ? username : "", sizeof(lr->username));
     return true;
 }
 
+/**
+ * Get the username reported to cores.
+ *
+ * @param lr the libretro context.
+ * @returns the username, or NULL when lr is NULL. The string is owned by the context and stays valid until the username changes or the context is destroyed.
+ *
+ * @see SDL_Libretro_SetUsername()
+ */
 const char* SDL_Libretro_GetUsername(SDL_Libretro* lr) {
     if (!lr) return NULL;
     return lr->username;
@@ -1805,10 +1951,36 @@ void SDL_Libretro_SetVolume(SDL_Libretro* lr, float volume) {
     }
 }
 
+/**
+ * Get the audio volume.
+ *
+ * @param lr the libretro context.
+ * @returns the volume, from 0.0f (muted) to 1.0f (full), or 0.0f when lr is NULL.
+ *
+ * @see SDL_Libretro_SetVolume()
+ */
 float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
     return lr ? lr->volume : 0.0f;
 }
 
+/**
+ * Sets how fast the game runs, as a multiple of its normal speed.
+ *
+ * 1.0f is normal speed, values above it fast-forward (e.g. 2.0f), values
+ * between 0 and 1 run in slow motion, and 0.0f pauses. A negative value
+ * rewinds at that rate (-1.0f is real time) when rewind is enabled with
+ * SDL_Libretro_SetRewindEnabled(); otherwise it is clamped to 0.0f (paused).
+ * Audio is pitched to match. The speed resets to 1.0f whenever a core is
+ * loaded, and the call is ignored while the core has a fast-forward override
+ * active that inhibits toggling.
+ *
+ * @param lr the libretro context.
+ * @param speed the speed multiplier.
+ *
+ * @see SDL_Libretro_GetSpeed()
+ * @see SDL_Libretro_IsFastforwardOverrideActive()
+ * @see SDL_Libretro_Update()
+ */
 void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     if (!lr) return;
 
@@ -1836,10 +2008,31 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
     }
 }
 
+/**
+ * Get how fast the game runs, as a multiple of its normal speed.
+ *
+ * This includes a speed set by the core's fast-forward override.
+ *
+ * @param lr the libretro context.
+ * @returns the speed multiplier (0.0f paused, negative rewinding), or 1.0f when lr is NULL.
+ *
+ * @see SDL_Libretro_SetSpeed()
+ */
 float SDL_Libretro_GetSpeed(const SDL_Libretro* lr) {
     return lr ? lr->core.speed : 1.0f;
 }
 
+/**
+ * Indicates whether the core is forcing fast-forward through RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE.
+ *
+ * While active, the core controls the speed; if it also inhibits toggling,
+ * SDL_Libretro_SetSpeed() is ignored.
+ *
+ * @param lr the libretro context.
+ * @returns true while the core's fast-forward override is active, false otherwise or when lr is NULL.
+ *
+ * @see SDL_Libretro_SetSpeed()
+ */
 bool SDL_Libretro_IsFastforwardOverrideActive(const SDL_Libretro* lr) {
     return lr && lr->core.fastforwardOverrideActive;
 }
@@ -1847,6 +2040,10 @@ bool SDL_Libretro_IsFastforwardOverrideActive(const SDL_Libretro* lr) {
 /**
  * Sets the threshold for logs to be posted.
  *
+ * @param lr the libretro context.
+ * @param level the minimum priority of core log messages to post. Priorities below SDL_LOG_PRIORITY_INFO (and unknown ones) post everything from debug up; SDL_LOG_PRIORITY_CRITICAL behaves like SDL_LOG_PRIORITY_ERROR.
+ *
+ * @see SDL_Libretro_GetLogLevel()
  * @see SDL_LOG_PRIORITY_INVALID
  */
 void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level) {
@@ -1862,6 +2059,11 @@ void SDL_Libretro_SetLogLevel(SDL_Libretro* lr, SDL_LogPriority level) {
 
 /**
  * Retrieve the threshold for logs that will be posted.
+ *
+ * @param lr the libretro context.
+ * @returns the minimum priority of core log messages that are posted, or SDL_LOG_PRIORITY_INVALID when lr is NULL.
+ *
+ * @see SDL_Libretro_SetLogLevel()
  */
 SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
     if (!lr) return SDL_LOG_PRIORITY_INVALID;
@@ -1876,6 +2078,9 @@ SDL_LogPriority SDL_Libretro_GetLogLevel(const SDL_Libretro* lr) {
 
 /**
  * Retrieve the name of the libretro core that's actively loaded.
+ *
+ * @param lr the libretro context.
+ * @returns the core's library name, or "" when no core is loaded. The string is owned by the context and stays valid until the core is unloaded.
  */
 const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
     return SDL_Libretro_IsCoreReady(lr) ? lr->core.libraryName : "";
@@ -1885,8 +2090,10 @@ const char* SDL_Libretro_GetCoreName(const SDL_Libretro* lr) {
  * Retrieve the human-readable name of the loaded game.
  *
  * This is the content file's base name without its extension. When the core
- * runs without content, it falls back to the core's name. Returns an empty
- * string when no game is loaded.
+ * runs without content, it falls back to the core's name.
+ *
+ * @param lr the libretro context.
+ * @returns the game name, or "" when no game is loaded. The string is owned by the context and stays valid until the game is unloaded.
  */
 const char* SDL_Libretro_GetGameName(const SDL_Libretro* lr) {
     return SDL_Libretro_IsGameReady(lr) ? lr->core.contentName : "";
@@ -1894,6 +2101,9 @@ const char* SDL_Libretro_GetGameName(const SDL_Libretro* lr) {
 
 /**
  * Retrieves the version of the libretro core that's actively loaded.
+ *
+ * @param lr the libretro context.
+ * @returns the core's library version, or "" when no core is loaded. The string is owned by the context and stays valid until the core is unloaded.
  */
 const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr) {
     return SDL_Libretro_IsCoreReady(lr) ? lr->core.libraryVersion : "";
@@ -1901,6 +2111,9 @@ const char* SDL_Libretro_GetCoreVersion(const SDL_Libretro* lr) {
 
 /**
  * Gets the default set of valid extensions associated with the core, seperated by a "|".
+ *
+ * @param lr the libretro context.
+ * @returns the extensions without leading dots (e.g. "nes|fds"), or "" when no core is loaded. The string is owned by the context and stays valid until the core is unloaded.
  */
 const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
     return SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : "";
@@ -1918,10 +2131,33 @@ unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr) {
     return lr ? lr->core.performanceLevel : 0;
 }
 
+/**
+ * Get the savestate context reported to cores through RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT.
+ *
+ * @param lr the libretro context.
+ * @returns the context set with SDL_Libretro_SetSavestateContext(), or RETRO_SAVESTATE_CONTEXT_NORMAL when none was set or lr is NULL.
+ *
+ * @see SDL_Libretro_SetSavestateContext()
+ */
 enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro* lr) {
     return lr ? lr->core.savestateContext : RETRO_SAVESTATE_CONTEXT_NORMAL;
 }
 
+/**
+ * Sets the savestate context reported to cores through RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT.
+ *
+ * Tells the core what upcoming save states are for, such as
+ * RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_INSTANCE for run-ahead or
+ * RETRO_SAVESTATE_CONTEXT_ROLLBACK_NETPLAY for netplay, so it can skip work
+ * that isn't needed. It stays set until changed, and resets to
+ * RETRO_SAVESTATE_CONTEXT_NORMAL when the core is unloaded.
+ *
+ * @param lr the libretro context. NULL is ignored.
+ * @param context the savestate context.
+ *
+ * @see SDL_Libretro_GetSavestateContext()
+ * @see SDL_Libretro_SaveState()
+ */
 void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context) {
     if (lr) lr->core.savestateContext = context;
 }

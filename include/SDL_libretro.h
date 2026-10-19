@@ -77,6 +77,18 @@
  */
 #define SDL_LIBRETRO_VERSION_ATLEAST(X, Y, Z) (SDL_LIBRETRO_VERSION >= SDL_VERSIONNUM(X, Y, Z))
 
+/**
+ * A libretro frontend context: one loaded core, its game, and the settings
+ * that carry across cores.
+ *
+ * Treat it as an opaque handle. It is created with SDL_Libretro_Create() and
+ * freed with SDL_Libretro_Destroy(). Its fields are only visible in the
+ * translation unit that defines SDL_LIBRETRO_IMPLEMENTATION, and they are
+ * implementation details that may change at any time; applications should
+ * only use the SDL_Libretro_* functions to read or change its state.
+ *
+ * @see SDL_Libretro_Create()
+ */
 typedef struct SDL_Libretro SDL_Libretro;
 
 /**
@@ -424,13 +436,13 @@ typedef struct SDL_LibretroMenu SDL_LibretroMenu;
  * @see SDL_Libretro_SetMenuStyle()
  */
 typedef enum SDL_LibretroMenuStyle {
-    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA = 0,
-    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE,
-    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE,
-    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO,
-    SDL_LIBRETRO_MENU_STYLE_DRACULA,
-    SDL_LIBRETRO_MENU_STYLE_DARK,
-    SDL_LIBRETRO_MENU_STYLE_COUNT
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA = 0, /**< Catppuccin Mocha, the darkest Catppuccin flavor. The default style. */
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE, /**< Catppuccin Latte, the light Catppuccin flavor. */
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE, /**< Catppuccin Frappe, a muted dark Catppuccin flavor. */
+    SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO, /**< Catppuccin Macchiato, a dark Catppuccin flavor between Frappe and Mocha. */
+    SDL_LIBRETRO_MENU_STYLE_DRACULA, /**< The Dracula dark theme. */
+    SDL_LIBRETRO_MENU_STYLE_DARK, /**< Nuklear's built-in default dark style. */
+    SDL_LIBRETRO_MENU_STYLE_COUNT /**< The number of menu styles. */
 } SDL_LibretroMenuStyle;
 
 SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr);
@@ -445,6 +457,8 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu);
  * The toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button
  * flip the menu open or closed, and are always consumed.
  *
+ * @param menu the menu.
+ * @param event the event to route.
  * @return true when the menu consumed the event: do not forward it to
  *         SDL_Libretro_HandleEvent(). This happens for the toggle inputs
  *         above, and for gameplay input swallowed while the menu is open.
@@ -463,6 +477,8 @@ bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
  * Opens the menu and navigates to a page by its slash-separated label path,
  * e.g. "Settings/Audio & Video", "Settings/Core Options" or "Disks".
  *
+ * \param menu the menu.
+ * \param path the slash-separated labels of the page to open.
  * \return true when the path resolved; the menu stays open either way.
  */
 bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path);
@@ -482,6 +498,15 @@ bool SDL_Libretro_AddMenuButton(SDL_LibretroMenu* menu, const char* label, SDL_L
 /**
  * Adds a checkbox to the main menu, just above Quit. The value pointer is
  * written on every toggle, so it must outlive the menu.
+ *
+ * @param menu the menu.
+ * @param label the checkbox label.
+ * @param value the bool the checkbox reads its initial state from and writes on every toggle, or NULL.
+ * @param callback called when the checkbox is toggled, or NULL.
+ * @param userdata passed to the callback.
+ * @return true when the checkbox was added; call SDL_GetError() for more information on failure.
+ *
+ * @see SDL_Libretro_AddMenuButton()
  */
 bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, bool* value, SDL_LibretroMenuCallback callback, void* userdata);
 
@@ -491,6 +516,8 @@ bool SDL_Libretro_AddMenuCheckbox(SDL_LibretroMenu* menu, const char* label, boo
  * Pass it to SDL_Libretro_AddMenuButton(); userdata is the destination path
  * as a const char*, or NULL for "screenshot.png".
  *
+ * \param menu the menu the button belongs to.
+ * \param userdata the destination path as a const char*, or NULL.
  * \see SDL_Libretro_AddMenuButton()
  */
 void SDL_Libretro_MenuScreenshotClicked(SDL_LibretroMenu* menu, void* userdata);
@@ -503,6 +530,8 @@ SDL_Libretro* SDL_Libretro_GetMenuLibretro(const SDL_LibretroMenu* menu);
 /**
  * Attaches generic application data to the menu.
  *
+ * @param menu the menu. NULL is ignored.
+ * @param userData the application data; the menu doesn't take ownership.
  * @see SDL_Libretro_GetMenuUserData()
  */
 void SDL_Libretro_SetMenuUserData(SDL_LibretroMenu* menu, void* userData);
@@ -525,6 +554,10 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
 /* ===================================================================== */
 #ifdef SDL_LIBRETRO_IMPLEMENTATION
 #ifndef SDL_LIBRETRO_IMPLEMENTATION_ONCE
+/**
+ * @internal
+ * Guards against compiling the implementation twice in one translation unit.
+ */
 #define SDL_LIBRETRO_IMPLEMENTATION_ONCE
 
 #include "libretro.h"
@@ -536,13 +569,21 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
 
 #ifndef SDL_LIBRETRO_MAX_PATH
 /**
- * The maximum length for file system paths.
- *
  * @internal
+ * The maximum length for file system paths.
  */
 #define SDL_LIBRETRO_MAX_PATH 4096
 #endif
+/**
+ * @internal
+ * The number of stereo frames buffered from retro_audio_sample_t before they are flushed to the audio stream.
+ */
 #define SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE 512
+
+/**
+ * @internal
+ * The initial capacity of the on-screen display message queue.
+ */
 #define SDL_LIBRETRO_OSD_INITIAL_CAPACITY 4
 
 #ifndef SDL_LIBRETRO_MAX_USERS
@@ -557,20 +598,19 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
 #endif
 
 /**
+ * @internal
  * The number of RETRO_DEVICE_ID_JOYPAD_* button ids (0..R3 inclusive).
  *
  * RETRO_DEVICE_ID_JOYPAD_R3 + 1
  *
  * @see RETRO_DEVICE_ID_JOYPAD_R3
- * @internal
  */
 #define SDL_LIBRETRO_MAX_JOYPAD_BUTTONS 16
 
 /**
+ * @internal
  * Display names for the RETRO_DEVICE_ID_JOYPAD_* buttons, indexed by id.
  * Doubles as the config keys for the player 1 keyboard bindings.
- *
- * @internal
  */
 static const char* SDL_Libretro_JoypadButtonNames[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
     "B", "Y", "Select", "Start", "Up", "Down", "Left", "Right",
@@ -578,24 +618,35 @@ static const char* SDL_Libretro_JoypadButtonNames[SDL_LIBRETRO_MAX_JOYPAD_BUTTON
 };
 
 /**
+ * @internal
  * Display names for the SDL_LibretroAnalogToDigital modes, indexed by mode.
  * Doubles as the config values for the per-port analog-to-digital setting.
- *
- * @internal
  */
 static const char* SDL_Libretro_AnalogToDigitalNames[SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT] = {
     "None", "Left", "Right",
 };
 
+/**
+ * @internal
+ * A core discovered in the core directory, read from its libretro .info file.
+ *
+ * Used to pick a core by name or by content extension.
+ *
+ * @see SDL_Libretro_SetCoreDirectory()
+ */
 typedef struct SDL_Libretro_CoreInfo {
-    char* corename;
-    char* supported_extensions;
-    char* path;
-    bool needs_fullpath;
-    bool supports_no_game;
-    bool block_extract;
+    char* corename; /**< The core's display name (corename in the .info file). */
+    char* supported_extensions; /**< The content extensions the core supports, separated by "|". */
+    char* path; /**< The path to the core's shared library. */
+    bool needs_fullpath; /**< The core loads content from its path rather than from memory. */
+    bool supports_no_game; /**< The core can start without content. */
+    bool block_extract; /**< The core wants archives handed to it unextracted. */
 } SDL_Libretro_CoreInfo;
 
+/**
+ * @internal
+ * A message in the on-screen display queue.
+ */
 typedef struct SDL_LibretroOsdEntry {
     char* msg;
     Uint64 endTimeMs;
@@ -604,6 +655,10 @@ typedef struct SDL_LibretroOsdEntry {
     int8_t progress;
 } SDL_LibretroOsdEntry;
 
+/**
+ * @internal
+ * The libretro API functions resolved from a loaded core's shared library.
+ */
 typedef struct SDL_LibretroCoreSymbols {
     SDL_SharedObject* handle;
     void (*retro_init)(void);
@@ -634,6 +689,9 @@ typedef struct SDL_LibretroCoreSymbols {
 } SDL_LibretroCoreSymbols;
 
 /**
+ * @internal
+ * A microphone opened by the core through the microphone interface.
+ *
  * @see SDL_Libretro_MicOpen()
  */
 typedef struct SDL_LibretroMicrophone {
@@ -644,6 +702,7 @@ typedef struct SDL_LibretroMicrophone {
 } SDL_LibretroMicrophone;
 
 /**
+ * @internal
  * A disk image added by SDL_Libretro_AddDiskImage() or SDL_Libretro_AddDiskImage_IO(), kept alive until the game unloads.
  */
 typedef struct SDL_LibretroDiskImage {
@@ -652,6 +711,10 @@ typedef struct SDL_LibretroDiskImage {
     bool temp; /**< `path` is a temp file to remove when the game unloads. */
 } SDL_LibretroDiskImage;
 
+/**
+ * @internal
+ * The state of the loaded core and its game; zeroed whenever the core unloads.
+ */
 typedef struct SDL_LibretroCoreData {
     SDL_LibretroCoreSymbols symbols;
 
@@ -791,12 +854,23 @@ typedef struct SDL_LibretroCoreData {
     retro_perf_tick_t gameTimeNSEC;
 } SDL_LibretroCoreData;
 
+/**
+ * @internal
+ * One entry of the rewind buffer: an encoded save state delta, or a full state.
+ */
 typedef struct SDL_LibretroRewindDelta {
     unsigned char* data;
     size_t length; /* used bytes of the encoded delta */
     size_t capacity; /* allocated bytes of data (>= length); enables in-place reuse */
 } SDL_LibretroRewindDelta;
 
+/**
+ * @internal
+ * The definition of the SDL_Libretro context.
+ *
+ * Applications should treat SDL_Libretro as opaque and use the SDL_Libretro_*
+ * functions instead of these fields.
+ */
 struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /**< The audio volume. */
@@ -870,12 +944,19 @@ struct SDL_Libretro {
 };
 
 /**
+ * @internal
  * Active context for libretro C callbacks (one per process).
  *
  * libretro currently only allows running one core per thread, so that's what we'll target.
  */
 static SDL_Libretro* SDL_Libretro_active = NULL;
 
+/*
+ * @internal
+ * Forward declarations of the implementation's static helpers, shared between
+ * the implementation fragments included below. None of them are part of the
+ * public API.
+ */
 static bool SDL_Libretro_InitVideo(SDL_Libretro* lr);
 static void SDL_Libretro_CloseVideo(SDL_Libretro* lr);
 static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned height, size_t pitch);

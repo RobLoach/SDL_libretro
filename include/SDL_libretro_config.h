@@ -25,6 +25,12 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
  * Initializes the config system based on the given file.
  *
  * Will load the configuration from the file, and save it when destroying the instance.
+ * A missing file is not an error: it starts out empty and is created on save.
+ * Any previously initialized config is discarded without being saved.
+ *
+ * @param lr the libretro context.
+ * @param file the path of the .ini file to load from and save to. The string is copied.
+ * @returns true when the config was set up, false when lr or file is NULL, or on allocation failure.
  *
  * @see SDL_Libretro_InitConfig()
  */
@@ -139,9 +145,15 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
 /**
  * Sets up the config file to be the default path, accoring to the organization and app name.
  *
- * Will automatically call SDL_Libretro_CloseConfig()
+ * The file is "<app>.cfg" inside SDL_GetPrefPath(org, app). Any previously
+ * initialized config is discarded without being saved.
  *
- * @see SDL_Libretro_InitConfigFile
+ * @param lr the libretro context.
+ * @param org the organization name, or NULL/empty for "SDL_libretro".
+ * @param app the application name, or NULL/empty for "SDL_libretro".
+ * @returns true when the config was set up, false when lr is NULL, no pref path is available, or SDL_Libretro_InitConfigFile() fails.
+ *
+ * @see SDL_Libretro_InitConfigFile()
  * @see SDL_GetPrefPath()
  * @see https://wiki.libsdl.org/SDL3/SDL_GetPrefPath
  */
