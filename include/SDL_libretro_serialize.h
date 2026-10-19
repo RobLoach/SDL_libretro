@@ -105,7 +105,8 @@ bool SDL_Libretro_InsertDisk(SDL_Libretro* lr) {
 }
 
 /**
- * Free the disk images added with SDL_Libretro_AddDiskImage_IO().
+ * Free the disk images kept by SDL_Libretro_AddDiskImage() and
+ * SDL_Libretro_AddDiskImage_IO().
  *
  * Removes any temp files and frees the buffers. Called when the game unloads,
  * after retro_unload_game(), so the core no longer references them.
@@ -174,12 +175,18 @@ static bool SDL_Libretro_AppendDiskImage(SDL_Libretro* lr, const struct retro_ga
 /**
  * Appends a new disk image from a file path.
  *
- * The disk tray must be ejected before calling this function. If the core
- * rejects the image, the slot added for it is removed again.
+ * The disk tray must be ejected before calling this function. Like
+ * SDL_Libretro_LoadGame(), need_fullpath handling is picked by the path's
+ * extension: a core that needs a full path gets just `path`, otherwise the
+ * file is read and the core gets its bytes along with `path`. The buffer is
+ * kept until the game unloads. If the core rejects the image, the slot added
+ * for it is removed again.
  *
  * @param lr The libretro instance.
  * @param path File path to the disk image.
  * @return true on success, false on failure.
+ *
+ * @see SDL_Libretro_AddDiskImage_IO()
  */
 bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
     if (!SDL_Libretro_IsGameReady(lr) || !path) {
@@ -188,6 +195,15 @@ bool SDL_Libretro_AddDiskImage(SDL_Libretro* lr, const char* path) {
     }
     if (!SDL_Libretro_CanAddDiskImage(lr)) {
         return false;
+    }
+    if (!SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(path))) {
+        // The core wants the bytes; the stream loader reads and keeps them.
+        SDL_IOStream* src = SDL_IOFromFile(path, "rb");
+        if (!src) {
+            SDL_SetError("[SDL_Libretro] Failed to open disk image '%s'", path);
+            return false;
+        }
+        return SDL_Libretro_AddDiskImage_IO(lr, src, path, true);
     }
     struct retro_game_info info;
     SDL_memset(&info, 0, sizeof(info));

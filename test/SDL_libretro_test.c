@@ -2665,14 +2665,40 @@ static int SDLCALL test_DiskImageIO(void *arg) {
         "Core-rejected full-path image fails");
     SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 2, "Rejected full-path image left no slot");
     SDLTest_AssertCheck(SDL_GetPathInfo(rejectSpill, NULL) == false, "Rejected image's temp file removed");
-    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, "reject.bin") == false, "Core-rejected path image fails");
-    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 2, "Rejected path image left no slot");
+
+    // A file on disk: a data extension gets the file's bytes along with the
+    // path (kept valid after the call); a full-path extension gets the path only.
+    char dataFile[1024], fullFile[1024], rejectFile[1024];
+    SDL_snprintf(dataFile, sizeof(dataFile), "%s/disk4.txt", saveDir);
+    SDL_snprintf(fullFile, sizeof(fullFile), "%s/disk5.vfs", saveDir);
+    SDL_snprintf(rejectFile, sizeof(rejectFile), "%s/reject4.txt", saveDir);
+    SDLTest_AssertCheck(SDL_SaveFile(dataFile, bytes, sizeof(bytes)) && SDL_SaveFile(fullFile, bytes, sizeof(bytes))
+        && SDL_SaveFile(rejectFile, bytes, sizeof(bytes)), "Disk image files written");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, dataFile) == true, "AddDiskImage with a data file succeeds");
+    size = sizeof(data);
+    SDL_memset(data, 0, sizeof(data));
+    SDLTest_AssertCheck(getDisk(base + 2, path, sizeof(path), data, &size) == true, "Core has the data file disk");
+    SDLTest_AssertCheck(SDL_strcmp(path, dataFile) == 0, "Core got the data file path, got '%s'", path);
+    SDLTest_AssertCheck(size == sizeof(bytes) && SDL_memcmp(data, bytes, sizeof(bytes)) == 0,
+        "Core got the data file's bytes, got %d bytes", (int)size);
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, fullFile) == true, "AddDiskImage with a full-path file succeeds");
+    size = sizeof(data);
+    SDLTest_AssertCheck(getDisk(base + 3, path, sizeof(path), data, &size) == true, "Core has the full-path file disk");
+    SDLTest_AssertCheck(SDL_strcmp(path, fullFile) == 0, "Core got the full-path file, got '%s'", path);
+    SDLTest_AssertCheck(size == 0, "Full-path file disk has no data buffer");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, "missing.txt") == false, "Missing data file fails");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, rejectFile) == false, "Core-rejected data file fails");
+    SDLTest_AssertCheck(SDL_Libretro_AddDiskImage(lr, "reject.vfs") == false, "Core-rejected path image fails");
+    SDLTest_AssertCheck(SDL_Libretro_GetDiskCount(lr) == base + 4, "Rejected file images left no slot");
 
     // The temp file lives until the game unloads.
     SDL_Libretro_InsertDisk(lr);
     SDL_Libretro_UnloadGame(lr);
     SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, NULL) == false, "Temp disk image removed on unload");
     SDLTest_AssertCheck(lr->core.diskImageCount == 0, "Disk images freed on unload");
+    SDL_RemovePath(dataFile);
+    SDL_RemovePath(fullFile);
+    SDL_RemovePath(rejectFile);
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -3688,7 +3714,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_ExtensionInList,   "Extension-in-pipe-list matching"),
     LIBRETRO_TEST_CASE(test_PortDeviceOnLoad, "Port devices re-applied after game load"),
     LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
-    LIBRETRO_TEST_CASE(test_DiskImageIO,      "Disk images from streams keep a path and buffer"),
+    LIBRETRO_TEST_CASE(test_DiskImageIO,      "Disk images keep a path and buffer"),
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
     LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),
     LIBRETRO_TEST_CASE(test_AudioZeroSampleRate, "Audio falls back to default sample rate when core reports 0"),

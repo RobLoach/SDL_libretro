@@ -629,7 +629,7 @@ typedef struct SDL_LibretroMicrophone {
 } SDL_LibretroMicrophone;
 
 /**
- * A disk image added by SDL_Libretro_AddDiskImage_IO(), kept alive until the game unloads.
+ * A disk image added by SDL_Libretro_AddDiskImage() or SDL_Libretro_AddDiskImage_IO(), kept alive until the game unloads.
  */
 typedef struct SDL_LibretroDiskImage {
     char* path; /**< The path handed to the core (the temp file, or the caller's path). */
@@ -758,7 +758,7 @@ typedef struct SDL_LibretroCoreData {
 
     // Disk control
     struct retro_disk_control_ext_callback disk_control;
-    SDL_LibretroDiskImage* diskImages; /**< Images from SDL_Libretro_AddDiskImage_IO(); freed when the game unloads. */
+    SDL_LibretroDiskImage* diskImages; /**< Images kept by SDL_Libretro_AddDiskImage() and SDL_Libretro_AddDiskImage_IO(); freed when the game unloads. */
     unsigned diskImageCount;
 
     // Memory Maps

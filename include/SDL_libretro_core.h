@@ -592,7 +592,7 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
     SDL_Libretro_FreeGameInfoExtArray(lr);
 
-    // Images added with SDL_Libretro_AddDiskImage_IO() belong to the game.
+    // Images kept by SDL_Libretro_AddDiskImage() and _IO() belong to the game.
     SDL_Libretro_FreeDiskImages(lr);
 
     // Restart the frame-time clock, so the first tick of new content reports the core's reference.
