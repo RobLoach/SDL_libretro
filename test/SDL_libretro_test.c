@@ -495,6 +495,50 @@ static int SDLCALL test_OptionReregister(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* A core re-registering a category replaces its text. */
+static int SDLCALL test_CategoryReregister(void *arg) {
+    (void)arg;
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+
+    static struct retro_core_option_v2_category firstCats[] = {
+        { "re_cat", "Old Category", "Old info" },
+        { NULL, NULL, NULL },
+    };
+    static struct retro_core_option_v2_category secondCats[] = {
+        { "re_cat", "New Category", "New info" },
+        { NULL, NULL, NULL },
+    };
+    static struct retro_core_option_v2_definition defs[] = {
+        { "re_cat_opt", "Opt", NULL, "Info", NULL, "re_cat",
+          { {"a", NULL}, {"b", NULL}, {NULL, NULL} }, "a" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static struct retro_core_option_v2_definition noDefs[] = {
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    struct retro_core_options_v2 first = { firstCats, defs };
+    struct retro_core_options_v2 second = { secondCats, noDefs };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &first);
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(lr) == 1, "Category registered");
+    SDL_Libretro_AreOptionsDirty(lr);
+    bool updated = false;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &second);
+    const SDL_LibretroCategory* cat = SDL_Libretro_GetCategory(lr, "re_cat");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(lr) == 1, "Re-registration doesn't add a category");
+    SDLTest_AssertCheck(cat && SDL_strcmp(cat->desc, "New Category") == 0, "Category description updated");
+    SDLTest_AssertCheck(cat && SDL_strcmp(cat->info, "New info") == 0, "Category info updated");
+    SDLTest_AssertCheck(lr->core.optionsDirtyCore == false, "Category text isn't an update to the core");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "App told to refresh the category");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_Libretro_active = prevActive;
+    return TEST_COMPLETED;
+}
+
 /* Language detection, the SetLanguage override, and the *_INTL core option merges. */
 static int SDLCALL test_Language(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -3611,6 +3655,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
     LIBRETRO_TEST_CASE(test_OptionReregister, "Re-registering an option updates it"),
+    LIBRETRO_TEST_CASE(test_CategoryReregister, "Re-registering a category updates it"),
     LIBRETRO_TEST_CASE(test_RewindConfig,     "Rewind settings round-trip through the config"),
     LIBRETRO_TEST_CASE(test_LateOptionConfig, "Late-registered options get their saved values"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),

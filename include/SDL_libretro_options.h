@@ -149,9 +149,24 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
 static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key, const char* desc, const char* info) {
     if (!lr || !key || key[0] == '\0') return;
 
-    // Check if already registered
+    // Re-registration: the core may have changed the text.
     for (unsigned i = 0; i < lr->core.optionCategoriesCount; i++) {
-        if (lr->core.optionCategories[i].key && SDL_strcmp(lr->core.optionCategories[i].key, key) == 0) {
+        SDL_LibretroCategory* existing = &lr->core.optionCategories[i];
+        if (existing->key && SDL_strcmp(existing->key, key) == 0) {
+            // Copy first, so running out of memory leaves the category untouched.
+            char* newDesc = SDL_Libretro_Strdup(desc);
+            char* newInfo = SDL_Libretro_Strdup(info);
+            if (!newDesc || !newInfo) {
+                SDL_free(newDesc);
+                SDL_free(newInfo);
+                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Out of memory registering option category '%s'", key);
+                return;
+            }
+            SDL_free((void*)existing->desc);
+            SDL_free((void*)existing->info);
+            existing->desc = newDesc;
+            existing->info = newInfo;
+            lr->core.optionsDirtyApp = true;
             return;
         }
     }
