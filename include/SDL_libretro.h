@@ -697,7 +697,7 @@ typedef struct SDL_LibretroCoreData {
     char contentName[SDL_LIBRETRO_MAX_PATH]; /**< The human-readable content name. */
     char contentDir[SDL_LIBRETRO_MAX_PATH]; /**< Directory of the content file; backs gameInfoExt.dir. */
     char contentExt[32]; /**< Lower-case content extension; backs gameInfoExt.ext. */
-    char contentTempPath[SDL_LIBRETRO_MAX_PATH]; /**< File spilled to disk by SDL_Libretro_LoadGame_IO() for a need_fullpath core; removed when the content unloads. */
+    char contentTempPath[SDL_LIBRETRO_MAX_PATH]; /**< File spilled to the temp directory by SDL_Libretro_LoadGame_IO() for a need_fullpath core; removed when the content unloads. */
 
     struct retro_game_info_ext gameInfoExt; /**< Extended game info handed to cores via GET_GAME_INFO_EXT. A non-NULL full_path marks it valid; .data owns the content buffer when persistent. */
 
@@ -893,6 +893,11 @@ static void SDL_Libretro_FreeInputDescriptors(SDL_Libretro* lr);
 static void SDL_Libretro_FreeControllerInfo(SDL_Libretro* lr);
 static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemById(const SDL_Libretro* lr, unsigned subsystemId);
 static const struct retro_subsystem_info* SDL_Libretro_GetSubsystemByName(const SDL_Libretro* lr, const char* name);
+
+// Content
+
+static bool SDL_Libretro_GetPrefDirectory(char* dst, size_t dstSize);
+static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio, char* tempPath, size_t tempPathSize);
 
 // Directory
 

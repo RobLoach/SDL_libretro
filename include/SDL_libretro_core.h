@@ -553,6 +553,10 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
  * etc. It gets it from a content file path, and point gameInfoExt's
  * string fields at them.
  *
+ * `path` is the file handed to the core (contentPath / full_path). The name,
+ * directory and extension come from `identityPath` instead when it's not NULL,
+ * so content spilled to a temp file keeps the name it was given.
+ *
  * The caller must have cleared gameInfoExt beforehand and is responsible for
  * gameInfoExt.data / .size / .persistent_data.
  *
@@ -560,18 +564,19 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
  *          need_fullpath / persistent-data lookups.
  * @internal
  */
-static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char* path) {
+static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char* path, const char* identityPath) {
     SDL_strlcpy(lr->core.contentPath, path, sizeof(lr->core.contentPath));
+    if (!identityPath) identityPath = path;
 
     // Content base name (no extension) and lower-case extension.
-    SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), path, false);
+    SDL_Libretro_GetFileName(lr->core.contentName, sizeof(lr->core.contentName), identityPath, false);
     const char* ext = SDL_Libretro_GetContentExtension(lr);
-    SDL_strlcpy(lr->core.contentExt, ext, sizeof(lr->core.contentExt));
+    SDL_strlcpy(lr->core.contentExt, SDL_Libretro_GetExtension(identityPath), sizeof(lr->core.contentExt));
     for (char* c = lr->core.contentExt; *c; c++)
         *c = (char)SDL_tolower((unsigned char)*c);
 
     // Directory containing the content file.
-    SDL_strlcpy(lr->core.contentDir, path, sizeof(lr->core.contentDir));
+    SDL_strlcpy(lr->core.contentDir, identityPath, sizeof(lr->core.contentDir));
     char* sep = SDL_strrchr(lr->core.contentDir, '/');
     if (!sep) sep = SDL_strrchr(lr->core.contentDir, '\\');
     if (sep)
@@ -690,11 +695,12 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
  *
  * Takes ownership of `fileData` (content bytes already read from an IOStream;
  * NULL to read them from `gamePath` when the core wants a data buffer). The
- * core must already be loaded.
+ * content identity (name, dir, ext) comes from `identityPath` when it's not
+ * NULL, otherwise from `gamePath`. The core must already be loaded.
  *
  * @internal
  */
-static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, void* fileData, size_t fileSize) {
+static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, const char* identityPath, void* fileData, size_t fileSize) {
     // Switching content: unload any game that's already running first.
     SDL_Libretro_UnloadGame(lr);
 
@@ -712,7 +718,7 @@ static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, 
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
 
     if (gamePath) {
-        const char* ext = SDL_Libretro_SetContentIdentity(lr, gamePath);
+        const char* ext = SDL_Libretro_SetContentIdentity(lr, gamePath, identityPath);
 
         bool needFullpath = SDL_Libretro_ContentNeedsFullpath(lr, ext);
         persistData = SDL_Libretro_ContentPersistData(lr, ext);
@@ -784,7 +790,7 @@ static bool SDL_Libretro_LoadGameFile(SDL_Libretro* lr, const char* gamePath) {
         }
     }
 
-    return SDL_Libretro_LoadGameCommon(lr, gamePath, NULL, 0);
+    return SDL_Libretro_LoadGameCommon(lr, gamePath, NULL, NULL, 0);
 }
 
 /**
@@ -812,12 +818,84 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 }
 
 /**
+ * Spill a stream to a new file in the frontend's temp directory.
+ *
+ * The temp directory is "<save directory>/tmp", falling back to "<pref
+ * path>/tmp", then "<base path>/tmp", and is created on demand. The file keeps
+ * the file name of `path` (uniquified with a "-<n>" suffix if it's taken), so
+ * cores that look at the name or extension see the original. The caller owns
+ * the file and must remove it once it's no longer needed.
+ *
+ * @param lr the libretro context.
+ * @param src the stream to read.
+ * @param path the path the content is known by; only its file name is used.
+ * @param closeio if true, close `src` before returning, even on failure.
+ * @param tempPath receives the path of the written file.
+ * @param tempPathSize the size of `tempPath` in bytes.
+ * @returns true when the file was written.
+ *
+ * @internal
+ */
+static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio, char* tempPath, size_t tempPathSize) {
+    // Read the content first, so the stream is handled on every path.
+    size_t fileSize = 0;
+    void* fileData = SDL_LoadFile_IO(src, &fileSize, closeio);
+    if (!fileData) return false;
+
+    char name[SDL_LIBRETRO_MAX_PATH];
+    if (!path || SDL_Libretro_GetFileName(name, sizeof(name), path, true) == 0) {
+        SDL_strlcpy(name, "content.bin", sizeof(name));
+    }
+
+    // Pick the temp directory and make sure it exists.
+    char dir[SDL_LIBRETRO_MAX_PATH];
+    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
+    if (saveDir && saveDir[0]) {
+        SDL_snprintf(dir, sizeof(dir), "%s/tmp/", saveDir);
+    }
+    else if (SDL_Libretro_GetPrefDirectory(dir, sizeof(dir))) {
+        SDL_strlcat(dir, "/tmp/", sizeof(dir));
+    }
+    else {
+        const char* base = SDL_GetBasePath();
+        SDL_snprintf(dir, sizeof(dir), "%stmp/", base ? base : "./");
+    }
+    if (!SDL_CreateDirectory(dir)) {
+        SDL_SetError("[SDL_Libretro] Failed to create temp directory '%s': %s", dir, SDL_GetError());
+        SDL_free(fileData);
+        return false;
+    }
+
+    // Find a file name in the directory that doesn't exist yet.
+    SDL_snprintf(tempPath, tempPathSize, "%s%s", dir, name);
+    const char* dot = SDL_strrchr(name, '.');
+    int stemLen = dot ? (int)(dot - name) : (int)SDL_strlen(name);
+    for (int attempt = 1; SDL_GetPathInfo(tempPath, NULL); attempt++) {
+        if (attempt > 99) {
+            SDL_SetError("[SDL_Libretro] Could not find a free file name for '%s' in '%s'", name, dir);
+            SDL_free(fileData);
+            return false;
+        }
+        SDL_snprintf(tempPath, tempPathSize, "%s%.*s-%d%s", dir, stemLen, name, attempt, dot ? dot : "");
+    }
+
+    bool saved = SDL_SaveFile(tempPath, fileData, fileSize);
+    SDL_free(fileData);
+    if (!saved) {
+        SDL_SetError("[SDL_Libretro] Failed to save content to '%s'", tempPath);
+        return false;
+    }
+    return true;
+}
+
+/**
  * Loads a game from an SDL_IOStream.
  *
  * Stream content into memory, and hand it to the core. The `path` only
  * provides the content identity (name, extension, save path, etc). When
- * the core requires a full path (need_fullpath), the stream is saved to
- * the save directory and, loaded from there. It's cleaned up when the game
+ * the core requires a full path (need_fullpath), the stream is saved to a
+ * temp directory ("<save directory>/tmp") and loaded from there, while the
+ * content keeps the identity of `path`. The file is removed when the game
  * unloads.
  *
  * @param lr the libretro context.
@@ -849,55 +927,20 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
         size_t fileSize = 0;
         void* fileData = SDL_LoadFile_IO(src, &fileSize, closeio);
         if (!fileData) return false;
-        return SDL_Libretro_LoadGameCommon(lr, path, fileData, fileSize);
+        return SDL_Libretro_LoadGameCommon(lr, path, NULL, fileData, fileSize);
     }
 
-    // The core wants a real file: spill the stream to the save directory,
-    // load from there, and remove the file again when the game unloads.
-    char name[SDL_LIBRETRO_MAX_PATH];
-    if (SDL_Libretro_GetFileName(name, sizeof(name), path, true) == 0) {
-        SDL_strlcpy(name, "content.bin", sizeof(name));
-    }
-
-    // Find a workable save directory, or use the base path.
-    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
-    char dir[SDL_LIBRETRO_MAX_PATH];
-    if (saveDir && saveDir[0]) {
-        SDL_snprintf(dir, sizeof(dir), "%s/", saveDir);
-    }
-    else {
-        const char* base = SDL_GetBasePath();
-        SDL_strlcpy(dir, base ? base : "./", sizeof(dir));
-    }
+    // The core wants a real file: spill the stream to the temp directory and
+    // load from there. The content keeps the identity of `path`, so save files
+    // are named after it rather than the temp file.
     char tempPath[SDL_LIBRETRO_MAX_PATH];
-    SDL_snprintf(tempPath, sizeof(tempPath), "%s%s", dir, name);
-
-    // Find a temporary file in the directory doesn't exist yet.
-    const char* dot = SDL_strrchr(name, '.');
-    int stemLen = dot ? (int)(dot - name) : (int)SDL_strlen(name);
-    for (int attempt = 1; SDL_GetPathInfo(tempPath, NULL); attempt++) {
-        if (attempt > 99) {
-            if (closeio) SDL_CloseIO(src);
-            SDL_SetError("[SDL_Libretro] Could not find a free file name for '%s' in '%s'", name, dir);
-            return false;
-        }
-        SDL_snprintf(tempPath, sizeof(tempPath), "%s%.*s-%d%s", dir, stemLen, name, attempt, dot ? dot : "");
-    }
-
-    // Save the file.
-    size_t fileSize = 0;
-    void* fileData = SDL_LoadFile_IO(src, &fileSize, closeio);
-    if (!fileData) return false;
-    bool saved = SDL_SaveFile(tempPath, fileData, fileSize);
-    SDL_free(fileData);
-    if (!saved) {
-        SDL_SetError("[SDL_Libretro] Failed to save content to '%s'", tempPath);
+    if (!SDL_Libretro_SpillToTempFile(lr, src, path, closeio, tempPath, sizeof(tempPath))) {
         return false;
     }
 
     // The temp path is recorded only after the load, so the UnloadGame inside
     // SDL_Libretro_LoadGameCommon() doesn't remove the file it's about to use.
-    bool result = SDL_Libretro_LoadGameCommon(lr, tempPath, NULL, 0);
+    bool result = SDL_Libretro_LoadGameCommon(lr, tempPath, path, NULL, 0);
     if (result) {
         SDL_strlcpy(lr->core.contentTempPath, tempPath, sizeof(lr->core.contentTempPath));
     }
@@ -975,7 +1018,7 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
     // GET_GAME_INFO_EXT is valid while loading the game.
     SDL_memset(&lr->core.gameInfoExt, 0, sizeof(lr->core.gameInfoExt));
     if (paths[0]) {
-        SDL_Libretro_SetContentIdentity(lr, paths[0]);
+        SDL_Libretro_SetContentIdentity(lr, paths[0], NULL);
         lr->core.gameInfoExt.data = gameInfos[0].data;
         lr->core.gameInfoExt.size = gameInfos[0].size;
         lr->core.gameInfoExt.persistent_data = false;

@@ -1299,20 +1299,43 @@ static int SDLCALL test_LoadGameIOFullpath(void *arg) {
 
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_SetSaveDirectory(lr, NULL);
     SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
+    SDLTest_AssertCheck(saveDir != NULL, "Default save directory applied");
 
     // The ".vfs" override requires a full path, so the stream is spilled to
-    // disk (no save directory is set on a fresh context, so next to the
-    // executable), loaded from there, and the file removed again on unload.
-    char spillPath[1024];
-    SDL_snprintf(spillPath, sizeof(spillPath), "%stest_io_content.vfs", SDL_GetBasePath());
+    // the "<save>/tmp" directory, loaded from there, and the file removed
+    // again on unload. A file already at the natural name forces a
+    // uniquified temp name, which must not leak into the content identity.
+    char tmpDir[1024], keepPath[1024], spillPath[1024];
+    SDL_snprintf(tmpDir, sizeof(tmpDir), "%s/tmp", saveDir ? saveDir : ".");
+    SDL_snprintf(keepPath, sizeof(keepPath), "%s/test_io_content.vfs", tmpDir);
+    SDL_snprintf(spillPath, sizeof(spillPath), "%s/test_io_content-1.vfs", tmpDir);
+    SDL_CreateDirectory(tmpDir);
+    SDL_RemovePath(spillPath);
+    SDLTest_AssertCheck(SDL_SaveFile(keepPath, "KEEP", 4) == true, "Pre-existing temp file created");
+
     const unsigned char bytes[] = { 'V', 'F', 'S', 'D', 'A', 'T', 'A', '1' };
     SDL_IOStream* io = SDL_IOFromConstMem(bytes, sizeof(bytes));
     SDLTest_AssertCheck(SDL_Libretro_LoadGame_IO(lr, io, "some/dir/test_io_content.vfs", true) == true,
         "LoadGame_IO spills need_fullpath content to disk");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after spilled load");
     SDL_PathInfo info;
-    SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, &info) == true, "Spilled file exists while loaded");
+    SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, &info) == true, "Spilled file exists in the temp directory while loaded");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.contentTempPath, spillPath) == 0,
+        "Temp path is '%s', got '%s'", spillPath, lr->core.contentTempPath);
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.contentPath, spillPath) == 0, "Core was handed the temp file");
+
+    // The content identity comes from the path the caller gave.
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetGameName(lr), "test_io_content") == 0,
+        "Game name from the original path, got '%s'", SDL_Libretro_GetGameName(lr));
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.contentDir, "some/dir") == 0,
+        "Content dir from the original path, got '%s'", lr->core.contentDir);
+    char srmPath[1024], expectedSrm[1024];
+    SDL_Libretro_GetSavePath(lr, ".srm", srmPath, sizeof(srmPath));
+    SDL_snprintf(expectedSrm, sizeof(expectedSrm), "%s/test_io_content.srm", saveDir ? saveDir : ".");
+    SDLTest_AssertCheck(SDL_strcmp(srmPath, expectedSrm) == 0, "Save path is '%s', got '%s'", expectedSrm, srmPath);
 
     // The core received a path (no data buffer) and read it back through the VFS.
     const unsigned char* probe = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SYSTEM_RAM, NULL);
@@ -1332,6 +1355,8 @@ static int SDLCALL test_LoadGameIOFullpath(void *arg) {
 
     SDL_Libretro_UnloadGame(lr);
     SDLTest_AssertCheck(SDL_GetPathInfo(spillPath, &info) == false, "Spilled file removed on unload");
+    SDLTest_AssertCheck(SDL_GetPathInfo(keepPath, &info) == true, "Pre-existing temp file untouched");
+    SDL_RemovePath(keepPath);
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
@@ -1676,9 +1701,11 @@ static int SDLCALL test_PhysFSSpillFallback(void *arg) {
     // A file already sitting at the spill's natural name must survive the
     // load/unload cycle untouched. Clear any leftover from a crashed prior
     // run first so the uniquified name is deterministic.
-    char keepPath[1024], uniquePath[1024];
-    SDL_snprintf(keepPath, sizeof(keepPath), "%s/game.vfs", saveDir);
-    SDL_snprintf(uniquePath, sizeof(uniquePath), "%s/game-1.vfs", saveDir);
+    char tmpDir[1024], keepPath[1024], uniquePath[1024];
+    SDL_snprintf(tmpDir, sizeof(tmpDir), "%s/tmp", saveDir);
+    SDL_snprintf(keepPath, sizeof(keepPath), "%s/game.vfs", tmpDir);
+    SDL_snprintf(uniquePath, sizeof(uniquePath), "%s/game-1.vfs", tmpDir);
+    SDL_CreateDirectory(tmpDir);
     SDL_RemovePath(uniquePath);
     SDLTest_AssertCheck(SDL_SaveFile(keepPath, "KEEP", 4) == true, "Pre-existing 'game.vfs' created");
 
@@ -1687,8 +1714,10 @@ static int SDLCALL test_PhysFSSpillFallback(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after spill-fallback load");
     SDLTest_AssertCheck(lr->core.contentTempPath[0] != '\0',
         "Content was spilled to a real file, not served virtually");
-    SDLTest_AssertCheck(SDL_strstr(lr->core.contentTempPath, "game-1.vfs") != NULL,
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.contentTempPath, uniquePath) == 0,
         "Spill avoided the pre-existing 'game.vfs': %s", lr->core.contentTempPath);
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetGameName(lr), "game") == 0,
+        "Game name ignores the uniquified temp name, got '%s'", SDL_Libretro_GetGameName(lr));
 
     // The core read the spilled file; the bytes match the file that was zipped.
     size_t expectedSize = 0;
