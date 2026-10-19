@@ -125,6 +125,26 @@ const char* SDL_Libretro_GetCoreAssetsDirectory(SDL_Libretro* lr);
 bool SDL_Libretro_SetUsername(SDL_Libretro* lr, const char* username);
 const char* SDL_Libretro_GetUsername(SDL_Libretro* lr);
 
+/**
+ * Override the language reported to cores through RETRO_ENVIRONMENT_GET_LANGUAGE.
+ *
+ * By default the language is detected from the first of SDL_GetPreferredLocales(), falling back to RETRO_LANGUAGE_ENGLISH. Cores usually query the language while loading, so set it before SDL_Libretro_LoadCore().
+ *
+ * @param lr The SDL_Libretro context.
+ * @param language A RETRO_LANGUAGE_* value. A negative value, or RETRO_LANGUAGE_LAST and above, drops the override and goes back to detecting it from the system locale.
+ * @see SDL_Libretro_GetLanguage()
+ */
+void SDL_Libretro_SetLanguage(SDL_Libretro* lr, int language);
+
+/**
+ * Get the language reported to cores through RETRO_ENVIRONMENT_GET_LANGUAGE.
+ *
+ * @param lr The SDL_Libretro context.
+ * @return The RETRO_LANGUAGE_* override set with SDL_Libretro_SetLanguage(), or the one detected from the system locale when there is none. RETRO_LANGUAGE_ENGLISH when lr is NULL.
+ * @see SDL_Libretro_SetLanguage()
+ */
+int SDL_Libretro_GetLanguage(const SDL_Libretro* lr);
+
 // Config
 
 bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app);
@@ -776,6 +796,7 @@ struct SDL_Libretro {
     char playlistDirectory[SDL_LIBRETRO_MAX_PATH];
     char fileBrowserStartDirectory[SDL_LIBRETRO_MAX_PATH];
     char username[64];
+    int language; /**< RETRO_LANGUAGE_* override, or -1 to detect from the system locale. @see SDL_Libretro_SetLanguage() */
 
     // Video
     SDL_Renderer* renderer; /**< The render target. @see SDL_Libretro_SetRenderer() */

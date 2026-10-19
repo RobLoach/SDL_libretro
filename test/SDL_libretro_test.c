@@ -486,6 +486,121 @@ static int SDLCALL test_OptionReregister(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Language detection, the SetLanguage override, and the *_INTL core option merges. */
+static int SDLCALL test_Language(void *arg) {
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+
+    // Locale mapping.
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale(NULL, NULL) == RETRO_LANGUAGE_ENGLISH, "NULL locale is English");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("xx", NULL) == RETRO_LANGUAGE_ENGLISH, "Unknown locale is English");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("en", "US") == RETRO_LANGUAGE_ENGLISH, "en_US is English");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("en", "GB") == RETRO_LANGUAGE_BRITISH_ENGLISH, "en_GB is British English");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("ja", "JP") == RETRO_LANGUAGE_JAPANESE, "ja is Japanese");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("FR", NULL) == RETRO_LANGUAGE_FRENCH, "Language codes are case-insensitive");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("pt", "BR") == RETRO_LANGUAGE_PORTUGUESE_BRAZIL, "pt_BR is Brazilian Portuguese");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("pt", "PT") == RETRO_LANGUAGE_PORTUGUESE_PORTUGAL, "pt_PT is European Portuguese");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("zh", "TW") == RETRO_LANGUAGE_CHINESE_TRADITIONAL, "zh_TW is Traditional Chinese");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("zh", "HK") == RETRO_LANGUAGE_CHINESE_TRADITIONAL, "zh_HK is Traditional Chinese");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("zh", "CN") == RETRO_LANGUAGE_CHINESE_SIMPLIFIED, "zh_CN is Simplified Chinese");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("ca", "ES") == RETRO_LANGUAGE_CATALAN, "ca is Catalan");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("ca", "ES-valencia") == RETRO_LANGUAGE_CATALAN_VALENCIA, "ca-ES-valencia is Valencian");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("nb", "NO") == RETRO_LANGUAGE_NORWEGIAN, "nb is Norwegian");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("ast", NULL) == RETRO_LANGUAGE_ASTURIAN, "ast is Asturian");
+    SDLTest_AssertCheck(SDL_Libretro_LanguageFromLocale("th", NULL) == RETRO_LANGUAGE_THAI, "th is Thai");
+
+    // Default is the detected language; the override wins until reset.
+    int detected = SDL_Libretro_DetectLanguage();
+    SDLTest_AssertCheck(SDL_Libretro_GetLanguage(lr) == detected, "Language defaults to the detected one");
+    SDLTest_AssertCheck(SDL_Libretro_GetLanguage(NULL) == RETRO_LANGUAGE_ENGLISH, "GetLanguage(NULL) is English");
+    SDL_Libretro_SetLanguage(NULL, RETRO_LANGUAGE_FRENCH);
+
+    unsigned language = 0xFFFF;
+    SDL_Libretro_SetLanguage(lr, RETRO_LANGUAGE_JAPANESE);
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_LANGUAGE, &language), "GET_LANGUAGE succeeds");
+    SDLTest_AssertCheck(language == RETRO_LANGUAGE_JAPANESE, "GET_LANGUAGE reports the override, got %u", language);
+    SDL_Libretro_SetLanguage(lr, RETRO_LANGUAGE_LAST);
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_LANGUAGE, &language);
+    SDLTest_AssertCheck(language == (unsigned)detected, "RETRO_LANGUAGE_LAST resets to the detected language");
+    SDL_Libretro_SetLanguage(lr, RETRO_LANGUAGE_GERMAN);
+    SDL_Libretro_SetLanguage(lr, -1);
+    SDLTest_AssertCheck(SDL_Libretro_GetLanguage(lr) == detected, "-1 resets to the detected language");
+
+    // SET_CORE_OPTIONS_V2_INTL: local text overrides us, missing/NULL entries fall back, defaults come from us.
+    static struct retro_core_option_v2_category usCats[] = {
+        { "cat", "Category", "Category info" },
+        { NULL, NULL, NULL },
+    };
+    static struct retro_core_option_v2_definition usDefs[] = {
+        { "intl_a", "Option A", NULL, "Info A", NULL, "cat",
+          { {"on", "On"}, {"off", "Off"}, {NULL, NULL} }, "on" },
+        { "intl_b", "Option B", NULL, "Info B", NULL, NULL,
+          { {"yes", NULL}, {"no", NULL}, {NULL, NULL} }, "yes" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static struct retro_core_option_v2_category localCats[] = {
+        { "cat", "Categorie", NULL },
+        { NULL, NULL, NULL },
+    };
+    static struct retro_core_option_v2_definition localDefs[] = {
+        { "intl_a", "Option A (fr)", NULL, NULL, NULL, NULL,
+          { {"off", "Desactive"}, {NULL, NULL} }, "off" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    struct retro_core_options_v2 usOpts = { usCats, usDefs };
+    struct retro_core_options_v2 localOpts = { localCats, localDefs };
+    struct retro_core_options_v2_intl intl = { &usOpts, &localOpts };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL, &intl), "SET_CORE_OPTIONS_V2_INTL succeeds");
+    const SDL_LibretroOption* a = SDL_Libretro_GetOption(lr, "intl_a");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->desc, "Option A (fr)") == 0, "Local desc overrides us");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->info, "Info A") == 0, "NULL local info falls back to us");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->defaultValue, "on") == 0, "Default comes from us");
+    SDLTest_AssertCheck(a && a->valuesCount == 2 && SDL_strcmp(a->values[0].label, "On") == 0, "Untranslated value label falls back to us");
+    SDLTest_AssertCheck(a && a->valuesCount == 2 && SDL_strcmp(a->values[1].label, "Desactive") == 0, "Local value label overrides us");
+    SDLTest_AssertCheck(a && SDL_strcmp(a->category, "cat") == 0, "Category membership comes from us");
+    const SDL_LibretroOption* b = SDL_Libretro_GetOption(lr, "intl_b");
+    SDLTest_AssertCheck(b && SDL_strcmp(b->desc, "Option B") == 0, "Option missing from local keeps us text");
+    const SDL_LibretroCategory* cat = SDL_Libretro_GetCategory(lr, "cat");
+    SDLTest_AssertCheck(cat && SDL_strcmp(cat->desc, "Categorie") == 0, "Local category desc overrides us");
+    SDLTest_AssertCheck(cat && SDL_strcmp(cat->info, "Category info") == 0, "NULL local category info falls back to us");
+
+    // SET_CORE_OPTIONS_INTL (v1) merges the same way.
+    static struct retro_core_option_definition usV1[] = {
+        { "intl_v1", "V1 Option", "V1 Info", { {"1", "One"}, {"2", "Two"}, {NULL, NULL} }, "2" },
+        { "intl_v1b", "V1 Other", NULL, { {"x", NULL}, {NULL, NULL} }, "x" },
+        { NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static struct retro_core_option_definition localV1[] = {
+        { "intl_v1", "Option V1", NULL, { {"1", "Un"}, {NULL, NULL} }, NULL },
+        { NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    struct retro_core_options_intl intlV1 = { usV1, localV1 };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL, &intlV1), "SET_CORE_OPTIONS_INTL succeeds");
+    const SDL_LibretroOption* v1 = SDL_Libretro_GetOption(lr, "intl_v1");
+    SDLTest_AssertCheck(v1 && SDL_strcmp(v1->desc, "Option V1") == 0, "v1 local desc overrides us");
+    SDLTest_AssertCheck(v1 && SDL_strcmp(v1->info, "V1 Info") == 0, "v1 NULL local info falls back to us");
+    SDLTest_AssertCheck(v1 && SDL_strcmp(v1->defaultValue, "2") == 0, "v1 default comes from us");
+    SDLTest_AssertCheck(v1 && v1->valuesCount == 2 && SDL_strcmp(v1->values[0].label, "Un") == 0 && SDL_strcmp(v1->values[1].label, "Two") == 0,
+        "v1 value labels merge per value");
+    const SDL_LibretroOption* v1b = SDL_Libretro_GetOption(lr, "intl_v1b");
+    SDLTest_AssertCheck(v1b && SDL_strcmp(v1b->desc, "V1 Other") == 0, "v1 option missing from local keeps us text");
+
+    // A NULL local set uses us as-is.
+    static struct retro_core_option_definition usOnly[] = {
+        { "intl_us_only", "US Only", NULL, { {"a", NULL}, {NULL, NULL} }, "a" },
+        { NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    struct retro_core_options_intl intlUs = { usOnly, NULL };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL, &intlUs), "SET_CORE_OPTIONS_INTL with NULL local succeeds");
+    const SDL_LibretroOption* usOpt = SDL_Libretro_GetOption(lr, "intl_us_only");
+    SDLTest_AssertCheck(usOpt && SDL_strcmp(usOpt->desc, "US Only") == 0, "NULL local uses us text");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_Libretro_active = prevActive;
+    return TEST_COMPLETED;
+}
+
 /* Exercises the perf interface directly through a bare active context. */
 static int SDLCALL test_PerfInterface(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -3469,6 +3584,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Options,          "Core options on empty list"),
     LIBRETRO_TEST_CASE(test_SetVariablesLegacy, "Legacy SET_VARIABLES parsing without truncation"),
     LIBRETRO_TEST_CASE(test_PerfInterface,   "Perf interface CPU features and counters"),
+    LIBRETRO_TEST_CASE(test_Language,        "Language detection, override, and INTL option merges"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),

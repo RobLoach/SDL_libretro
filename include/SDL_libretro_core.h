@@ -56,6 +56,7 @@ SDL_Libretro* SDL_Libretro_Create(void) {
     SDL_Libretro_SetVolume(lr, 1.0f);
     SDL_Libretro_SetSpeed(lr, 1.0f);
     SDL_Libretro_SetUsername(lr, "SDL_libretro");
+    SDL_Libretro_SetLanguage(lr, -1);
 
     // Keyboard Mappings
     lr->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] = SDL_SCANCODE_Z;

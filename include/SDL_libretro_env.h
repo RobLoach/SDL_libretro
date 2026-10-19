@@ -220,6 +220,136 @@ static const char* SDL_Libretro_PickCoreOptionText(const char* base, const char*
     return base;
 }
 
+/**
+ * Map an ISO 639 language code and ISO 3166 country code (as found in SDL_Locale) to a RETRO_LANGUAGE_* value.
+ *
+ * @param language The language code, such as "pt". NULL or unknown gives RETRO_LANGUAGE_ENGLISH.
+ * @param country The country code, such as "BR". May be NULL.
+ *
+ * @internal
+ */
+static int SDL_Libretro_LanguageFromLocale(const char* language, const char* country) {
+    if (!language || !language[0]) return RETRO_LANGUAGE_ENGLISH;
+    if (!country) country = "";
+
+    // Catalan's Valencian variant isn't a country, but some platforms tack it on as "ca-ES-valencia" or "ca_ES@valencia".
+    if (SDL_strcasecmp(language, "ca") == 0) {
+        bool valencia = SDL_strcasestr(country, "valencia") != NULL || SDL_strcasestr(language, "valencia") != NULL;
+        return valencia ? RETRO_LANGUAGE_CATALAN_VALENCIA : RETRO_LANGUAGE_CATALAN;
+    }
+    if (SDL_strcasecmp(language, "en") == 0) {
+        return SDL_strcasecmp(country, "GB") == 0 ? RETRO_LANGUAGE_BRITISH_ENGLISH : RETRO_LANGUAGE_ENGLISH;
+    }
+    if (SDL_strcasecmp(language, "pt") == 0) {
+        return SDL_strcasecmp(country, "PT") == 0 ? RETRO_LANGUAGE_PORTUGUESE_PORTUGAL : RETRO_LANGUAGE_PORTUGUESE_BRAZIL;
+    }
+    if (SDL_strcasecmp(language, "zh") == 0) {
+        bool traditional = SDL_strcasecmp(country, "TW") == 0 || SDL_strcasecmp(country, "HK") == 0 || SDL_strcasecmp(country, "MO") == 0;
+        return traditional ? RETRO_LANGUAGE_CHINESE_TRADITIONAL : RETRO_LANGUAGE_CHINESE_SIMPLIFIED;
+    }
+
+    static const struct {
+        const char* code;
+        int language;
+    } languages[] = {
+        {"ja", RETRO_LANGUAGE_JAPANESE},
+        {"fr", RETRO_LANGUAGE_FRENCH},
+        {"es", RETRO_LANGUAGE_SPANISH},
+        {"de", RETRO_LANGUAGE_GERMAN},
+        {"it", RETRO_LANGUAGE_ITALIAN},
+        {"nl", RETRO_LANGUAGE_DUTCH},
+        {"ru", RETRO_LANGUAGE_RUSSIAN},
+        {"ko", RETRO_LANGUAGE_KOREAN},
+        {"eo", RETRO_LANGUAGE_ESPERANTO},
+        {"pl", RETRO_LANGUAGE_POLISH},
+        {"vi", RETRO_LANGUAGE_VIETNAMESE},
+        {"ar", RETRO_LANGUAGE_ARABIC},
+        {"el", RETRO_LANGUAGE_GREEK},
+        {"tr", RETRO_LANGUAGE_TURKISH},
+        {"sk", RETRO_LANGUAGE_SLOVAK},
+        {"fa", RETRO_LANGUAGE_PERSIAN},
+        {"he", RETRO_LANGUAGE_HEBREW},
+        {"iw", RETRO_LANGUAGE_HEBREW}, // Legacy code for Hebrew
+        {"ast", RETRO_LANGUAGE_ASTURIAN},
+        {"fi", RETRO_LANGUAGE_FINNISH},
+        {"id", RETRO_LANGUAGE_INDONESIAN},
+        {"in", RETRO_LANGUAGE_INDONESIAN}, // Legacy code for Indonesian
+        {"sv", RETRO_LANGUAGE_SWEDISH},
+        {"uk", RETRO_LANGUAGE_UKRAINIAN},
+        {"cs", RETRO_LANGUAGE_CZECH},
+        {"hu", RETRO_LANGUAGE_HUNGARIAN},
+        {"be", RETRO_LANGUAGE_BELARUSIAN},
+        {"gl", RETRO_LANGUAGE_GALICIAN},
+        {"no", RETRO_LANGUAGE_NORWEGIAN},
+        {"nb", RETRO_LANGUAGE_NORWEGIAN},
+        {"nn", RETRO_LANGUAGE_NORWEGIAN},
+        {"ga", RETRO_LANGUAGE_IRISH},
+        {"th", RETRO_LANGUAGE_THAI},
+    };
+    for (size_t i = 0; i < SDL_arraysize(languages); i++) {
+        if (SDL_strcasecmp(language, languages[i].code) == 0) {
+            return languages[i].language;
+        }
+    }
+    return RETRO_LANGUAGE_ENGLISH;
+}
+
+/**
+ * Detect the RETRO_LANGUAGE_* value from the user's most preferred locale.
+ *
+ * @internal
+ */
+static int SDL_Libretro_DetectLanguage(void) {
+    int count = 0;
+    SDL_Locale** locales = SDL_GetPreferredLocales(&count);
+    int language = RETRO_LANGUAGE_ENGLISH;
+    if (locales && count > 0 && locales[0]) {
+        language = SDL_Libretro_LanguageFromLocale(locales[0]->language, locales[0]->country);
+    }
+    SDL_free(locales);
+    return language;
+}
+
+void SDL_Libretro_SetLanguage(SDL_Libretro* lr, int language) {
+    if (!lr) return;
+    lr->language = (language >= 0 && language < RETRO_LANGUAGE_LAST) ? language : -1;
+}
+
+int SDL_Libretro_GetLanguage(const SDL_Libretro* lr) {
+    if (!lr) return RETRO_LANGUAGE_ENGLISH;
+    return lr->language >= 0 ? lr->language : SDL_Libretro_DetectLanguage();
+}
+
+/**
+ * Pick the translated text when the core provides it, otherwise the US English text.
+ *
+ * @internal
+ */
+static const char* SDL_Libretro_PickLocalText(const char* us, const char* local) {
+    return (local && local[0]) ? local : us;
+}
+
+/**
+ * Convert a NULL-key-terminated v1 option definition list into a newly allocated v2 list (also NULL-key-terminated). Strings still point into the core's data.
+ *
+ * @internal
+ */
+static struct retro_core_option_v2_definition* SDL_Libretro_CoreOptionsV1ToV2(const struct retro_core_option_definition* defs) {
+    unsigned count = 0;
+    while (defs[count].key) count++;
+    struct retro_core_option_v2_definition* v2defs =
+        (struct retro_core_option_v2_definition*)SDL_calloc(count + 1, sizeof(*v2defs));
+    if (!v2defs) return NULL;
+    for (unsigned i = 0; i < count; i++) {
+        v2defs[i].key = defs[i].key;
+        v2defs[i].desc = defs[i].desc;
+        v2defs[i].info = defs[i].info;
+        v2defs[i].default_value = defs[i].default_value;
+        SDL_memcpy(v2defs[i].values, defs[i].values, sizeof(defs[i].values));
+    }
+    return v2defs;
+}
+
 static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return false;
@@ -542,7 +672,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_GET_LANGUAGE: {
             if (!data) return true;
-            *(unsigned*)data = RETRO_LANGUAGE_ENGLISH;
+            *(unsigned*)data = (unsigned)SDL_Libretro_GetLanguage(lr);
             return true;
         }
 
@@ -850,18 +980,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS: {
             if (!data) return true;
             const struct retro_core_option_definition* defs = (const struct retro_core_option_definition*)data;
-            unsigned count = 0;
-            while (defs[count].key) count++;
-            struct retro_core_option_v2_definition* v2defs =
-                (struct retro_core_option_v2_definition*)SDL_calloc(count + 1, sizeof(*v2defs));
+            struct retro_core_option_v2_definition* v2defs = SDL_Libretro_CoreOptionsV1ToV2(defs);
             if (!v2defs) return false;
-            for (unsigned i = 0; i < count; i++) {
-                v2defs[i].key = defs[i].key;
-                v2defs[i].desc = defs[i].desc;
-                v2defs[i].info = defs[i].info;
-                v2defs[i].default_value = defs[i].default_value;
-                SDL_memcpy(v2defs[i].values, defs[i].values, sizeof(defs[i].values));
-            }
             struct retro_core_options_v2 opts = {NULL, v2defs};
             bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts);
             SDL_free(v2defs);
@@ -871,23 +991,17 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_INTL: {
             if (!data) return false;
             const struct retro_core_options_intl* intl = (const struct retro_core_options_intl*)data;
-            const struct retro_core_option_definition* defs = intl->us;
-            if (!defs) return false;
-            unsigned count = 0;
-            while (defs[count].key) count++;
-            struct retro_core_option_v2_definition* v2defs =
-                (struct retro_core_option_v2_definition*)SDL_calloc(count + 1, sizeof(*v2defs));
-            if (!v2defs) return false;
-            for (unsigned i = 0; i < count; i++) {
-                v2defs[i].key = defs[i].key;
-                v2defs[i].desc = defs[i].desc;
-                v2defs[i].info = defs[i].info;
-                v2defs[i].default_value = defs[i].default_value;
-                SDL_memcpy(v2defs[i].values, defs[i].values, sizeof(defs[i].values));
-            }
-            struct retro_core_options_v2 opts = {NULL, v2defs};
-            bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts);
-            SDL_free(v2defs);
+            if (!intl->us) return false;
+            // Convert both sets to v2 and let the v2 INTL path merge the translations.
+            struct retro_core_option_v2_definition* usDefs = SDL_Libretro_CoreOptionsV1ToV2(intl->us);
+            if (!usDefs) return false;
+            struct retro_core_option_v2_definition* localDefs = intl->local ? SDL_Libretro_CoreOptionsV1ToV2(intl->local) : NULL;
+            struct retro_core_options_v2 us = {NULL, usDefs};
+            struct retro_core_options_v2 local = {NULL, localDefs};
+            struct retro_core_options_v2_intl v2intl = {&us, localDefs ? &local : NULL};
+            bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL, &v2intl);
+            SDL_free(localDefs);
+            SDL_free(usDefs);
             return result;
         }
 
@@ -934,9 +1048,70 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2_INTL: {
             if (!data) return false;
             const struct retro_core_options_v2_intl* intl = (const struct retro_core_options_v2_intl*)data;
-            // Frontend language is English, so the US definitions are used directly. The `us` member is already a retro_core_options_v2, so forward it as-is.
             if (!intl->us) return false;
-            return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, intl->us);
+            const struct retro_core_options_v2* us = intl->us;
+            const struct retro_core_options_v2* local = intl->local;
+            // Without translations the `us` member is already a retro_core_options_v2, so forward it as-is.
+            if (!local || !us->definitions || (!local->definitions && !local->categories)) {
+                return SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void*)us);
+            }
+
+            // Merge onto a copy of `us`: keys, option values, defaults and category membership come from `us`; any non-empty text in `local` (matched by key, and value labels by value) replaces the English text. Options missing from `local` keep their `us` text.
+            unsigned defCount = 0;
+            while (us->definitions[defCount].key) defCount++;
+            unsigned catCount = 0;
+            while (us->categories && us->categories[catCount].key) catCount++;
+            struct retro_core_option_v2_definition* defs =
+                (struct retro_core_option_v2_definition*)SDL_calloc(defCount + 1, sizeof(*defs));
+            struct retro_core_option_v2_category* cats = catCount > 0
+                ? (struct retro_core_option_v2_category*)SDL_calloc(catCount + 1, sizeof(*cats))
+                : NULL;
+            if (!defs || (catCount > 0 && !cats)) {
+                SDL_free(defs);
+                SDL_free(cats);
+                return false;
+            }
+
+            for (unsigned c = 0; c < catCount; c++) {
+                cats[c] = us->categories[c];
+                for (unsigned l = 0; local->categories && local->categories[l].key; l++) {
+                    if (SDL_strcmp(local->categories[l].key, cats[c].key) == 0) {
+                        cats[c].desc = SDL_Libretro_PickLocalText(cats[c].desc, local->categories[l].desc);
+                        cats[c].info = SDL_Libretro_PickLocalText(cats[c].info, local->categories[l].info);
+                        break;
+                    }
+                }
+            }
+
+            for (unsigned i = 0; i < defCount; i++) {
+                defs[i] = us->definitions[i];
+                const struct retro_core_option_v2_definition* loc = NULL;
+                for (unsigned l = 0; local->definitions && local->definitions[l].key; l++) {
+                    if (SDL_strcmp(local->definitions[l].key, defs[i].key) == 0) {
+                        loc = &local->definitions[l];
+                        break;
+                    }
+                }
+                if (!loc) continue;
+                defs[i].desc = SDL_Libretro_PickLocalText(defs[i].desc, loc->desc);
+                defs[i].desc_categorized = SDL_Libretro_PickLocalText(defs[i].desc_categorized, loc->desc_categorized);
+                defs[i].info = SDL_Libretro_PickLocalText(defs[i].info, loc->info);
+                defs[i].info_categorized = SDL_Libretro_PickLocalText(defs[i].info_categorized, loc->info_categorized);
+                for (unsigned v = 0; v < RETRO_NUM_CORE_OPTION_VALUES_MAX && defs[i].values[v].value; v++) {
+                    for (unsigned lv = 0; lv < RETRO_NUM_CORE_OPTION_VALUES_MAX && loc->values[lv].value; lv++) {
+                        if (SDL_strcmp(loc->values[lv].value, defs[i].values[v].value) == 0) {
+                            defs[i].values[v].label = SDL_Libretro_PickLocalText(defs[i].values[v].label, loc->values[lv].label);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            struct retro_core_options_v2 merged = {cats, defs};
+            bool result = SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &merged);
+            SDL_free(cats);
+            SDL_free(defs);
+            return result;
         }
 
         case RETRO_ENVIRONMENT_GET_MESSAGE_INTERFACE_VERSION: {
