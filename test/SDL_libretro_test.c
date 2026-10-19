@@ -2286,6 +2286,20 @@ static int SDLCALL test_OSD(void *arg) {
     SDL_Libretro_SetMessage(lr, "", 0.0);
     SDLTest_AssertCheck(SDL_Libretro_GetMessageCount(lr) == 0, "Empty string clears messages");
 
+    // Negative durations are clamped to zero, so the message expires right away.
+    SDL_Libretro_SetMessage(lr, "Negative", -5.0);
+    SDL_Libretro_SetMessage(lr, "Very negative", -1e300);
+    SDLTest_AssertCheck(lr->osdQueueCount == 2 && lr->osdQueue[0].endTimeMs <= SDL_GetTicks() && lr->osdQueue[1].endTimeMs <= SDL_GetTicks(),
+        "Negative durations end no later than now");
+    SDL_Delay(2);
+    SDLTest_AssertCheck(SDL_Libretro_GetMessage(lr) == NULL, "Negative-duration messages have expired");
+
+    // Absurdly long durations are capped rather than overflowing.
+    SDL_Libretro_SetMessage(lr, "Forever", 1e300);
+    msg = SDL_Libretro_GetMessage(lr);
+    SDLTest_AssertCheck(msg != NULL && SDL_strcmp(msg, "Forever") == 0, "Huge-duration message is shown");
+    SDL_Libretro_SetMessage(lr, NULL, 0.0);
+
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }

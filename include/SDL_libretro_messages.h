@@ -10,6 +10,10 @@
 static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress) {
     if (!lr || !msg || msg[0] == '\0') return;
 
+    // Negative (or NaN) durations expire right away, and huge ones are capped so
+    // the conversion to milliseconds stays in range.
+    if (!(durationSec > 0.0)) durationSec = 0.0;
+    if (durationSec > (double)SDL_MAX_UINT32) durationSec = (double)SDL_MAX_UINT32;
     Uint64 endMs = SDL_GetTicks() + (Uint64)(durationSec * 1000.0);
 
     for (int i = 0; i < lr->osdQueueCount; i++) {
@@ -21,6 +25,10 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
             return;
         }
     }
+
+    // Copy first, so an allocation failure never leaves a slot with a NULL msg.
+    char* dup = SDL_strdup(msg);
+    if (!dup) return;
 
     Uint64 now = SDL_GetTicks();
     int slot = -1;
@@ -37,13 +45,16 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
         if (lr->osdQueueCount >= lr->osdQueueCapacity) {
             int newCap = lr->osdQueueCapacity ? lr->osdQueueCapacity * 2 : SDL_LIBRETRO_OSD_INITIAL_CAPACITY;
             SDL_LibretroOsdEntry* newQueue = (SDL_LibretroOsdEntry*)SDL_realloc(lr->osdQueue, (size_t)newCap * sizeof(SDL_LibretroOsdEntry));
-            if (!newQueue) return;
+            if (!newQueue) {
+                SDL_free(dup);
+                return;
+            }
             lr->osdQueue = newQueue;
             lr->osdQueueCapacity = newCap;
         }
         slot = lr->osdQueueCount++;
     }
-    lr->osdQueue[slot].msg = SDL_strdup(msg);
+    lr->osdQueue[slot].msg = dup;
     lr->osdQueue[slot].endTimeMs = endMs;
     lr->osdQueue[slot].priority = priority;
     lr->osdQueue[slot].type = type;

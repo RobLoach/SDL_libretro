@@ -67,8 +67,13 @@ static struct retro_vfs_file_handle* SDL_Libretro_VFS_WrapIO(SDL_IOStream* io, c
         SDL_CloseIO(io);
         return NULL;
     }
-    h->io = io;
     h->path = SDL_strdup(path);
+    if (!h->path) {
+        SDL_free(h);
+        SDL_CloseIO(io);
+        return NULL;
+    }
+    h->io = io;
     h->mode = mode;
     return h;
 }
@@ -431,6 +436,13 @@ static struct retro_vfs_dir_handle* SDL_Libretro_VFS_Opendir(const char* dir, bo
         return NULL;
     }
     h->dir = SDL_strdup(dir);
+    if (!h->dir) {
+        for (size_t i = 0; i < ctx.count; i++) SDL_free(ctx.names[i]);
+        SDL_free(ctx.names);
+        SDL_free(ctx.isDir);
+        SDL_free(h);
+        return NULL;
+    }
     h->names = ctx.names;
     h->isDir = ctx.isDir;
     h->count = ctx.count;

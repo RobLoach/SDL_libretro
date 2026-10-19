@@ -1339,15 +1339,15 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
         (lr->coreLibraryCount + 1) * sizeof(SDL_Libretro_CoreInfo));
     if (!grown) {
         INI_Destroy(ini);
-        return SDL_ENUM_CONTINUE;
+        SDL_SetError("[SDL_Libretro] Out of memory building the core library");
+        return SDL_ENUM_FAILURE;
     }
     lr->coreLibrary = grown;
 
     // Build the SDL_Libretro_CoreInfo structure.
     SDL_Libretro_CoreInfo* entry = &lr->coreLibrary[lr->coreLibraryCount];
-    entry->corename = SDL_strdup(corename);
-
     const char* extensions = INI_GetString(ini, NULL, "supported_extensions", NULL);
+    entry->corename = SDL_strdup(corename);
     entry->supported_extensions = extensions ? SDL_strdup(extensions) : NULL;
     entry->needs_fullpath = INI_GetBoolean(ini, NULL, "needs_fullpath", false);
     entry->supports_no_game = INI_GetBoolean(ini, NULL, "supports_no_game", false);
@@ -1361,9 +1361,17 @@ static SDL_EnumerationResult SDLCALL SDL_Libretro_SetCoreDirectory_Iterator(void
     SDL_snprintf(corePath, sizeof(corePath), "%s%s%s", dirname, base, SDL_LIBRETRO_CORE_EXTENSION);
     entry->path = SDL_strdup(corePath);
 
-    lr->coreLibraryCount++;
-
     INI_Destroy(ini);
+
+    // Only publish the entry once every string copied, so the library never holds NULL names or paths.
+    if (!entry->corename || !entry->path || (extensions && !entry->supported_extensions)) {
+        SDL_free(entry->corename);
+        SDL_free(entry->supported_extensions);
+        SDL_free(entry->path);
+        SDL_SetError("[SDL_Libretro] Out of memory building the core library");
+        return SDL_ENUM_FAILURE;
+    }
+    lr->coreLibraryCount++;
     return SDL_ENUM_CONTINUE;
 }
 
@@ -1377,7 +1385,15 @@ bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
 
     // When the core directory changed, rebuild the core library.
     SDL_Libretro_FreeCoreLibrary(lr);
-    SDL_EnumerateDirectory(lr->coreDirectory, &SDL_Libretro_SetCoreDirectory_Iterator, (void*)lr);
+    if (lr->coreDirectory[0] == '\0') return true;
+
+    // A directory that doesn't exist (yet) simply has no cores; anything else
+    // that stops the scan, like being unreadable or out of memory, is an error.
+    if (!SDL_EnumerateDirectory(lr->coreDirectory, &SDL_Libretro_SetCoreDirectory_Iterator, (void*)lr)) {
+        if (!SDL_GetPathInfo(lr->coreDirectory, NULL)) return true;
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to scan core directory '%s': %s", lr->coreDirectory, SDL_GetError());
+        return false;
+    }
     return true;
 }
 

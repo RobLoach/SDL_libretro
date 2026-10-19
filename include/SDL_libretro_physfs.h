@@ -117,6 +117,7 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
     for (size_t i = 0; i < count; i++) {
         if (!include_hidden && entries[i][0] == '.') continue;
         names[stored] = SDL_strdup(entries[i]);
+        if (!names[stored]) continue;
         char full[SDL_LIBRETRO_MAX_PATH];
         SDL_snprintf(full, sizeof(full), "%s/%s", dir, entries[i]);
         PHYSFS_Stat entryStat;
@@ -126,6 +127,13 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
     PHYSFS_freeList(entries);
 
     h->dir = SDL_strdup(dir);
+    if (!h->dir) {
+        for (size_t i = 0; i < stored; i++) SDL_free(names[i]);
+        SDL_free(names);
+        SDL_free(isDir);
+        SDL_free(h);
+        return NULL;
+    }
     h->names = names;
     h->isDir = isDir;
     h->count = stored;

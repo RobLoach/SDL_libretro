@@ -42,7 +42,8 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     slot->values = NULL;
     slot->valuesCount = 0;
     slot->valuesCapacity = 0;
-    if (values) {
+    bool oom = !slot->key || !slot->value || !slot->defaultValue || !slot->desc || !slot->info || !slot->category;
+    if (!oom && values) {
         // Count how many values there are available for the option.
         unsigned count = 0;
         while (values[count].value) count++;
@@ -50,24 +51,32 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
         // Build the available values.
         if (count > 0) {
             slot->values = (SDL_LibretroOptionValue*)SDL_calloc(count, sizeof(SDL_LibretroOptionValue));
-            if (!slot->values) {
-                // When out of memory, make sure to clear the rest of the slot.
-                SDL_free((void*)slot->key);
-                SDL_free((void*)slot->value);
-                SDL_free((void*)slot->defaultValue);
-                SDL_free((void*)slot->desc);
-                SDL_free((void*)slot->info);
-                SDL_free((void*)slot->category);
-                SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Out of memory registering option '%s'", key);
-                return;
-            }
-            slot->valuesCapacity = count;
-            for (unsigned v = 0; v < count; v++) {
+            oom = !slot->values;
+            if (!oom) slot->valuesCapacity = count;
+            for (unsigned v = 0; !oom && v < count; v++) {
                 slot->values[v].value = SDL_Libretro_Strdup(values[v].value);
                 slot->values[v].label = values[v].label ? SDL_Libretro_Strdup(values[v].label) : NULL;
                 slot->valuesCount++;
+                oom = !slot->values[v].value || (values[v].label && !slot->values[v].label);
             }
         }
+    }
+
+    if (oom) {
+        // When out of memory, make sure to clear the rest of the slot.
+        for (unsigned v = 0; v < slot->valuesCount; v++) {
+            SDL_free((void*)slot->values[v].value);
+            SDL_free((void*)slot->values[v].label);
+        }
+        SDL_free(slot->values);
+        SDL_free((void*)slot->key);
+        SDL_free((void*)slot->value);
+        SDL_free((void*)slot->defaultValue);
+        SDL_free((void*)slot->desc);
+        SDL_free((void*)slot->info);
+        SDL_free((void*)slot->category);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Out of memory registering option '%s'", key);
+        return;
     }
 
     lr->core.optionCount++;
@@ -97,6 +106,13 @@ static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* ke
     cat->key = SDL_Libretro_Strdup(key);
     cat->desc = SDL_Libretro_Strdup(desc);
     cat->info = SDL_Libretro_Strdup(info);
+    if (!cat->key || !cat->desc || !cat->info) {
+        SDL_free((void*)cat->key);
+        SDL_free((void*)cat->desc);
+        SDL_free((void*)cat->info);
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Out of memory registering option category '%s'", key);
+        return;
+    }
 
     lr->core.optionCategoriesCount++;
 }
