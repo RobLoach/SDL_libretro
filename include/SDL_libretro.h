@@ -184,6 +184,8 @@ void SDL_Libretro_SetKeyboardMapping(SDL_Libretro* lr, int retroButton, SDL_Scan
 void SDL_Libretro_SetGamepadMapping(SDL_Libretro* lr, unsigned port, int retroButton, SDL_GamepadButton button);
 void SDL_Libretro_SetAnalogToDigital(SDL_Libretro* lr, unsigned port, SDL_LibretroAnalogToDigital stick);
 SDL_LibretroAnalogToDigital SDL_Libretro_GetAnalogToDigital(const SDL_Libretro* lr, unsigned port);
+void SDL_Libretro_SetMousePort(SDL_Libretro* lr, unsigned port);
+unsigned SDL_Libretro_GetMousePort(const SDL_Libretro* lr);
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed);
 unsigned SDL_Libretro_GetInputDescriptorCount(const SDL_Libretro* lr);
 bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, unsigned* port, unsigned* device, unsigned* id, const char** description);
@@ -766,6 +768,7 @@ struct SDL_Libretro {
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];
     SDL_GamepadButton gamepadButtons[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS]; /**< SDL button per port and RETRO_DEVICE_ID_JOYPAD_*. @see SDL_Libretro_SetGamepadMapping() */
     SDL_LibretroAnalogToDigital analogToDigital[SDL_LIBRETRO_MAX_USERS]; /**< Which stick, if any, also drives each port's D-Pad. @see SDL_Libretro_SetAnalogToDigital() */
+    unsigned mousePort; /**< The only port the mouse, pointer, and lightgun answer on. @see SDL_Libretro_SetMousePort() */
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
     char systemDirectory[SDL_LIBRETRO_MAX_PATH];

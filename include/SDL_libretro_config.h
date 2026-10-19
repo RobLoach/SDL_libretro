@@ -87,6 +87,8 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     }
     if (INI_HasValue(ini, NULL, "rewindmemorylimit"))
         SDL_Libretro_SetRewindMemoryLimit(lr, (size_t)INI_GetInt(ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr)));
+    if (INI_HasValue(ini, NULL, "mouseport"))
+        SDL_Libretro_SetMousePort(lr, (unsigned)INI_GetInt(ini, NULL, "mouseport", (Sint64)SDL_Libretro_GetMousePort(lr)));
     if (INI_HasValue(ini, NULL, "filebrowserdirectory"))
         SDL_strlcpy(lr->fileBrowserStartDirectory, INI_GetString(ini, NULL, "filebrowserdirectory", ""), sizeof(lr->fileBrowserStartDirectory));
 
@@ -233,6 +235,7 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetInt(lr->ini, NULL, "rewindframes", (Sint64)lr->rewindCapacity);
     INI_SetInt(lr->ini, NULL, "rewindinterval", (Sint64)lr->rewindCaptureInterval);
     INI_SetInt(lr->ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr));
+    INI_SetInt(lr->ini, NULL, "mouseport", (Sint64)SDL_Libretro_GetMousePort(lr));
     INI_SetString(lr->ini, NULL, "filebrowserdirectory", lr->fileBrowserStartDirectory);
 
     for (int button = 0; button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; button++) {

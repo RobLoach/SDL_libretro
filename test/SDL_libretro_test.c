@@ -2019,6 +2019,50 @@ static int SDLCALL test_MouseMotion(void *arg) {
 #endif
 }
 
+static int SDLCALL test_MousePort(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // Defaults, NULL handling, and bounds.
+    SDLTest_AssertCheck(SDL_Libretro_GetMousePort(lr) == 0, "Mouse port defaults to 0");
+    SDLTest_AssertCheck(SDL_Libretro_GetMousePort(NULL) == 0, "GetMousePort(NULL) reports 0");
+    SDL_Libretro_SetMousePort(NULL, 1);
+    SDL_Libretro_SetMousePort(lr, SDL_LIBRETRO_MAX_USERS);
+    SDLTest_AssertCheck(SDL_Libretro_GetMousePort(lr) == 0, "SetMousePort rejects out-of-range ports");
+
+    // With no render rect the pointer and lightgun report offscreen (1), and
+    // relative motion drives MOUSE_X; only the mouse port answers.
+    PushMouseMotion(lr, 0.0f, 0.0f, 9.0f, 0.0f);
+    SDL_Libretro_InputPoll();
+    SDLTest_AssertCheck(SDL_Libretro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X) == 9, "Port 0 answers the mouse");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(0, RETRO_DEVICE_LIGHTGUN, 0, RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN) == 1, "Port 0 answers the lightgun");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(0, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_IS_OFFSCREEN) == 1, "Port 0 answers the pointer");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(1, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X) == 0, "Port 1 ignores the mouse");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(1, RETRO_DEVICE_LIGHTGUN, 0, RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN) == 0, "Port 1 ignores the lightgun");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(1, RETRO_DEVICE_POINTER, 0, RETRO_DEVICE_ID_POINTER_IS_OFFSCREEN) == 0, "Port 1 ignores the pointer");
+
+    // Moving the mouse to port 1 swaps which port answers.
+    SDL_Libretro_SetMousePort(lr, 1);
+    SDLTest_AssertCheck(SDL_Libretro_GetMousePort(lr) == 1, "SetMousePort applies");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(1, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X) == 9, "Port 1 now answers the mouse");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(1, RETRO_DEVICE_LIGHTGUN, 0, RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN) == 1, "Port 1 now answers the lightgun");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(0, RETRO_DEVICE_MOUSE, 0, RETRO_DEVICE_ID_MOUSE_X) == 0, "Port 0 now ignores the mouse");
+    SDLTest_AssertCheck(SDL_Libretro_InputState(0, RETRO_DEVICE_LIGHTGUN, 0, RETRO_DEVICE_ID_LIGHTGUN_IS_OFFSCREEN) == 0, "Port 0 now ignores the lightgun");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_Rotation(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -3223,6 +3267,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Libretro_SetKeyboardMapping(lrSave, RETRO_DEVICE_ID_JOYPAD_B, SDL_SCANCODE_K);
     SDL_Libretro_SetGamepadMapping(lrSave, 1, RETRO_DEVICE_ID_JOYPAD_B, SDL_GAMEPAD_BUTTON_NORTH);
     SDL_Libretro_SetAnalogToDigital(lrSave, 1, SDL_LIBRETRO_ANALOG_TO_DIGITAL_LEFT);
+    SDL_Libretro_SetMousePort(lrSave, 1);
     SDL_Libretro_SetRewindMemoryLimit(lrSave, (size_t)48 << 20);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
@@ -3246,6 +3291,7 @@ static int SDLCALL test_Menu(void *arg) {
         "Analog to Digital persists through the config file per port");
     SDLTest_AssertCheck(SDL_Libretro_GetAnalogToDigital(lrLoad, 0) == SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE,
         "Analog to Digital elsewhere stays None");
+    SDLTest_AssertCheck(SDL_Libretro_GetMousePort(lrLoad) == 1, "Mouse port persists through the config file");
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lrLoad) == (size_t)48 << 20,
         "Rewind memory limit persists through the config file");
     if (menuLoad != NULL) {
@@ -3314,6 +3360,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_SetRenderer,       "SetRenderer NULL handling and renderer swap rebuild"),
     LIBRETRO_TEST_CASE(test_Rotation,          "Rotation-aware fit rect and pointer mapping"),
     LIBRETRO_TEST_CASE(test_MouseMotion,       "Mouse deltas come from relative motion events"),
+    LIBRETRO_TEST_CASE(test_MousePort,         "Mouse, pointer, and lightgun answer one port"),
     LIBRETRO_TEST_CASE(test_InputDescriptorCopy, "Input descriptors and controller info are deep-copied"),
     LIBRETRO_TEST_CASE(test_LoadGameFailure,   "Failed load resets content state cleanly"),
     LIBRETRO_TEST_CASE(test_ContentExtension,  "Content extension extraction"),

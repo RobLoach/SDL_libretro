@@ -518,6 +518,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         }
 
         case RETRO_DEVICE_MOUSE: {
+            if (port != lr->mousePort) return 0;
             switch (id) {
                 case RETRO_DEVICE_ID_MOUSE_X:
                     return (int16_t)SDL_clamp(lr->core.inputMotionX, -32768.0f, 32767.0f);
@@ -556,7 +557,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         }
 
         case RETRO_DEVICE_POINTER: {
-            if (index > 0) return 0;
+            if (port != lr->mousePort || index > 0) return 0;
 
             switch (id) {
                 case RETRO_DEVICE_ID_POINTER_X: {
@@ -581,6 +582,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
         }
 
         case RETRO_DEVICE_LIGHTGUN: {
+            if (port != lr->mousePort) return 0;
             switch (id) {
                 // Aim maps through the render rect + rotation, like the pointer.
                 case RETRO_DEVICE_ID_LIGHTGUN_SCREEN_X:
@@ -811,6 +813,30 @@ void SDL_Libretro_SetAnalogToDigital(SDL_Libretro* lr, unsigned port, SDL_Libret
 SDL_LibretroAnalogToDigital SDL_Libretro_GetAnalogToDigital(const SDL_Libretro* lr, unsigned port) {
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return SDL_LIBRETRO_ANALOG_TO_DIGITAL_NONE;
     return lr->analogToDigital[port];
+}
+
+/**
+ * Selects the one controller port that the mouse drives. Only this port
+ * answers RETRO_DEVICE_MOUSE, RETRO_DEVICE_POINTER and RETRO_DEVICE_LIGHTGUN,
+ * so a single mouse doesn't act as every player at once. Defaults to port 0.
+ *
+ * @param lr the libretro context.
+ * @param port the controller port, at a max of SDL_LIBRETRO_MAX_USERS.
+ *
+ * @see SDL_Libretro_GetMousePort()
+ */
+void SDL_Libretro_SetMousePort(SDL_Libretro* lr, unsigned port) {
+    if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return;
+    lr->mousePort = port;
+}
+
+/**
+ * Get the controller port that the mouse drives. NULL returns port 0.
+ *
+ * @see SDL_Libretro_SetMousePort()
+ */
+unsigned SDL_Libretro_GetMousePort(const SDL_Libretro* lr) {
+    return lr ? lr->mousePort : 0;
 }
 
 void SDL_Libretro_SetVirtualButton(SDL_Libretro* lr, unsigned port, int button, bool pressed) {
