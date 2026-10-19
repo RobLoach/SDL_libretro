@@ -244,6 +244,44 @@ static int SDLCALL test_CoreLibrarySorted(void *arg) {
 #endif
 }
 
+static int SDLCALL test_StartCoreWithoutContent(void *arg) {
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    const char* dir = "/tmp/sdl_libretro_nogame_cores";
+    test_RemoveCoreDir(dir);
+    SDL_CreateDirectory(dir);
+    char core[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(core, sizeof(core), "%s/nogame%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_CopyFile(TEST_CORE_PATH, core);
+    test_WriteCoreInfo(dir, "nogame", "NoGame", "none", "supports_no_game = \"true\"\n");
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetCoreDirectory(lr, dir);
+    SDLTest_AssertCheck(lr->coreLibraryCount == 1 && lr->coreLibrary[0].supports_no_game, "Library core reports supports_no_game");
+
+    // Without a core there is nothing to start.
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == true, "Content required with no core loaded");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == false, "LoadGame(NULL) fails with no core loaded");
+    SDLTest_AssertCheck(SDL_GetError()[0] != '\0', "LoadGame(NULL) sets an error with no core loaded");
+
+    // Start the library core by name, without content.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, "NoGame") == true, "LoadCore by library name");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameRequired(lr) == false, "The core reported SET_SUPPORT_NO_GAME");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == true, "LoadGame(NULL) starts the core");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Core running without content");
+    SDLTest_AssertCheck(lr->core.contentPath[0] == '\0', "No content path for a content-less start");
+    SDL_Libretro_Update(lr);
+
+    SDL_Libretro_Destroy(lr);
+    test_RemoveCoreDir(dir);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_VolumeSpeed(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
 
@@ -3884,6 +3922,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_FrameTime,         "Frame-time callback receives measured deltas"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
+    LIBRETRO_TEST_CASE(test_StartCoreWithoutContent, "Start a library core without content"),
     LIBRETRO_TEST_CASE(test_LoadGameSpecial,   "Load subsystem content by name, description, and id"),
     LIBRETRO_TEST_CASE(test_LoadGameIO,        "Load game from an SDL_IOStream"),
     LIBRETRO_TEST_CASE(test_LoadGameIOFullpath, "IO load spills need_fullpath content to disk"),

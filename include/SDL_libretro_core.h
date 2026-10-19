@@ -901,8 +901,19 @@ static bool SDL_Libretro_LoadGameFile(SDL_Libretro* lr, const char* gamePath) {
  * Loads a game at the given path.
  *
  * When SDL_LIBRETRO_ENABLE_PHYSFS is enabled, a `.zip` path is routed through
- * SDL_Libretro_PhysFS_LoadGame() automatically..
+ * SDL_Libretro_PhysFS_LoadGame() automatically.
  *
+ * Pass a NULL gamePath to start the loaded core without content. This only
+ * works for cores that report RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME (see
+ * SDL_Libretro_IsGameRequired()); otherwise it fails and SDL_GetError() says
+ * the core requires content. A core must already be loaded, as there is no
+ * extension to pick one by.
+ *
+ * @param lr the libretro context.
+ * @param gamePath the path of the content to load, or NULL for no content.
+ * @returns true when the game is running; call SDL_GetError() for more information on failure.
+ *
+ * @see SDL_Libretro_IsGameRequired()
  * @see SDL_Libretro_UnloadGame()
  * @see SDL_Libretro_SetRenderer()
  * @see SDL_Libretro_PhysFS_LoadGame()
@@ -1224,6 +1235,19 @@ bool SDL_Libretro_IsGameReady(const SDL_Libretro* lr) {
     return lr && lr->core.gameLoaded;
 }
 
+/**
+ * Indicates whether the loaded core needs content to run.
+ *
+ * Cores opt into running without content with
+ * RETRO_ENVIRONMENT_SET_SUPPORT_NO_GAME, after which SDL_Libretro_LoadGame()
+ * accepts a NULL path. The core's own report is used rather than the
+ * supports_no_game flag in its .info file.
+ *
+ * @param lr the libretro context.
+ * @returns false when the loaded core can start without content, true otherwise (including when no core is loaded).
+ *
+ * @see SDL_Libretro_LoadGame()
+ */
 bool SDL_Libretro_IsGameRequired(const SDL_Libretro* lr) {
     return lr && !lr->core.supportNoGame;
 }
