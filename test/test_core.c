@@ -55,7 +55,8 @@ static bool RETRO_CALLCONV disk_add_image_index(void) {
  * SYSTEM_RAM: [0..15] lower-case ext, [16] persistent_data, [17] data != NULL,
  * [18] GET_INPUT_MAX_USERS result, [19] max users value,
  * [20] GET_JIT_CAPABLE result, [21] jit capable value,
- * [22] GET_PREFERRED_HW_RENDER result, [23] preferred context + 1. */
+ * [22] GET_PREFERRED_HW_RENDER result, [23] preferred context + 1,
+ * [24] 1 if GET_VARIABLE gave test_option_late as "late_b". */
 static uint8_t game_info_probe[32];
 
 /* Probe the trivial environment queries and record the results in
@@ -305,6 +306,24 @@ static void scribble_stack(void) {
     for (size_t i = 0; i < sizeof(junk); i++) junk[i] = 0xAA;
 }
 
+/* Register an option late, from retro_load_game, like cores that only know
+ * their options once content is known, then record what value it reads. */
+static void register_late_option(void) {
+    if (!environ_cb) return;
+    static const struct retro_core_option_v2_definition late_defs[] = {
+        { "test_option_late", "Late Option", NULL, "Registered in retro_load_game", NULL, NULL,
+          { {"late_a", NULL}, {"late_b", NULL}, {NULL, NULL} }, "late_a" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static const struct retro_core_options_v2 late_opts = {
+        NULL, (struct retro_core_option_v2_definition *)late_defs };
+    environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)&late_opts);
+
+    struct retro_variable var = { "test_option_late", NULL };
+    game_info_probe[24] = (environ_cb(RETRO_ENVIRONMENT_GET_VARIABLE, &var) && var.value &&
+        strcmp(var.value, "late_b") == 0) ? 1 : 0;
+}
+
 RETRO_API bool retro_load_game(const struct retro_game_info *game) {
     // Like real cores, start each game with default devices so the test can
     // see the frontend re-apply them after the load.
@@ -351,6 +370,7 @@ RETRO_API bool retro_load_game(const struct retro_game_info *game) {
         game_info_probe[17] = ext->data != NULL ? 1 : 0;
     }
     probe_env_queries();
+    register_late_option();
     return true;
 }
 

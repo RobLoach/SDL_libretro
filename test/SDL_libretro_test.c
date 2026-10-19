@@ -697,6 +697,53 @@ static int SDLCALL test_UpdateOptionVisibility(void *arg) {
 #endif
 }
 
+/* Options a core registers after the core config was loaded (here, in
+   retro_load_game) still pick up their saved value. */
+static int SDLCALL test_LateOptionConfig(void *arg) {
+    (void)arg;
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    const char* cfg = "late_option_test.cfg";
+    const char* text = "[test_core]\ntest_option_a=off\ntest_option_late=late_b\ntest_option_bad=nope\n";
+    SDL_RemovePath(cfg);
+    SDLTest_AssertCheck(SDL_SaveFile(cfg, text, SDL_strlen(text)), "Write the config file");
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "off") == 0,
+        "Early option gets its saved value");
+    SDLTest_AssertCheck(SDL_Libretro_GetOption(lr, "test_option_late") == NULL, "Late option not registered yet");
+
+    // Drain the dirty state from the core load.
+    bool updated = false;
+    SDL_Libretro_AreOptionsDirty(lr);
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    const char* late = SDL_Libretro_GetOptionValue(lr, "test_option_late");
+    SDLTest_AssertCheck(late && SDL_strcmp(late, "late_b") == 0, "Late option gets its saved value");
+    const unsigned char* probe = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SYSTEM_RAM, NULL);
+    SDLTest_AssertCheck(probe && probe[24] == 1, "Core reads the saved value right after registering");
+    SDLTest_AssertCheck(lr->core.optionsDirtyCore == false, "Applying a saved value at registration isn't an update");
+
+    // A saved value the option doesn't declare is ignored in favour of the default.
+    struct retro_variable vars[] = {
+        { "test_option_bad", "Bad Option; first|second" },
+        { NULL, NULL },
+    };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_VARIABLES, vars);
+    const char* bad = SDL_Libretro_GetOptionValue(lr, "test_option_bad");
+    SDLTest_AssertCheck(bad && SDL_strcmp(bad, "first") == 0, "Invalid saved value falls back to the default");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_RemovePath(cfg);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_OptionsDirtyIndependent(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -2933,6 +2980,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
+    LIBRETRO_TEST_CASE(test_LateOptionConfig, "Late-registered options get their saved values"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),

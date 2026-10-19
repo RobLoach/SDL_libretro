@@ -902,6 +902,7 @@ static void SDL_Libretro_FreeCoreLibrary(SDL_Libretro* lr);
 
 static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr);
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr);
+static const char* SDL_Libretro_GetSavedCoreOption(const SDL_Libretro* lr, const char* key);
 static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr);
 
 // PhysFS

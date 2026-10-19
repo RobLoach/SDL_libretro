@@ -166,6 +166,19 @@ static bool SDL_Libretro_LoadCoreConfig(SDL_Libretro* lr) {
 }
 
 /**
+ * Get the saved config value for a core option, or NULL if there isn't one.
+ *
+ * Lets options registered after SDL_Libretro_LoadCoreConfig() ran, such as in retro_init() or retro_load_game(), pick up their saved value.
+ */
+static const char* SDL_Libretro_GetSavedCoreOption(const SDL_Libretro* lr, const char* key) {
+    if (!lr || !lr->ini || !key || lr->core.libraryName[0] == '\0') return NULL;
+    char section[128];
+    SDL_Libretro_SanitizeSectionName(section, sizeof(section), lr->core.libraryName);
+    if (section[0] == '\0') return NULL;
+    return INI_GetString(lr->ini, section, key, NULL);
+}
+
+/**
  * Set the core options directly into the config.
  */
 static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {

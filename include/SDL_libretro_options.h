@@ -11,6 +11,20 @@ static char* SDL_Libretro_Strdup(const char* s) {
     return SDL_strdup(s);
 }
 
+/**
+ * Whether the value is one the option declared. Options with no declared values accept anything.
+ */
+static bool SDL_Libretro_IsOptionValueValid(const SDL_LibretroOption* opt, const char* value) {
+    if (!opt || !value) return false;
+    if (opt->valuesCount == 0) return true;
+    for (unsigned v = 0; v < opt->valuesCount; v++) {
+        if (opt->values[v].value && SDL_strcmp(opt->values[v].value, value) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, const char* info, const char* categoryKey) {
     if (!lr || !key) return;
 
@@ -77,6 +91,18 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
         SDL_free((void*)slot->category);
         SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Out of memory registering option '%s'", key);
         return;
+    }
+
+    // Cores may register options after the saved core config was loaded (in
+    // retro_init() or retro_load_game()), so apply the saved value here. The
+    // core hasn't read this option yet, so don't flag it as updated.
+    const char* saved = SDL_Libretro_GetSavedCoreOption(lr, key);
+    if (saved && SDL_Libretro_IsOptionValueValid(slot, saved)) {
+        char* dup = SDL_strdup(saved);
+        if (dup) {
+            SDL_free((void*)slot->value);
+            slot->value = dup;
+        }
     }
 
     lr->core.optionCount++;
@@ -199,17 +225,8 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
 
     // Reject values the core never offered, so GET_VARIABLE only ever hands the
     // core a value it declared. Options with no declared values accept anything.
-    if (opt->valuesCount > 0) {
-        bool valid = false;
-        for (unsigned v = 0; v < opt->valuesCount; v++) {
-            if (opt->values[v].value && SDL_strcmp(opt->values[v].value, value) == 0) {
-                valid = true;
-                break;
-            }
-        }
-        if (!valid) {
-            return SDL_SetError("[SDL_Libretro] '%s' is not a valid value for option '%s'", value, key);
-        }
+    if (!SDL_Libretro_IsOptionValueValid(opt, value)) {
+        return SDL_SetError("[SDL_Libretro] '%s' is not a valid value for option '%s'", value, key);
     }
 
     // Allocate before freeing so a failed allocation never leaves opt->value
