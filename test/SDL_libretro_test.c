@@ -1074,6 +1074,99 @@ static int SDLCALL test_LoadGame(void *arg) {
 #endif
 }
 
+// Records the deltas the frame-time callback receives.
+static retro_usec_t test_frameTimes[16];
+static int test_frameTimeCount;
+
+static void RETRO_CALLCONV test_FrameTimeCallback(retro_usec_t usec) {
+    if (test_frameTimeCount < (int)SDL_arraysize(test_frameTimes)) {
+        test_frameTimes[test_frameTimeCount] = usec;
+    }
+    test_frameTimeCount++;
+}
+
+static bool test_FrameTimesAll(retro_usec_t expected) {
+    if (test_frameTimeCount <= 0) return false;
+    for (int i = 0; i < test_frameTimeCount && i < (int)SDL_arraysize(test_frameTimes); i++) {
+        if (test_frameTimes[i] != expected) return false;
+    }
+    return true;
+}
+
+static int SDLCALL test_FrameTime(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+
+    // A reference deliberately unlike 1/60s, so it can't be confused with the idealized frame period.
+    const retro_usec_t coreReference = 12345;
+    struct retro_frame_time_callback ftcb = { test_FrameTimeCallback, coreReference };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK, &ftcb), "SET_FRAME_TIME_CALLBACK succeeds");
+
+    // First tick has no measured cadence: the core's reference.
+    test_frameTimeCount = 0;
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_frameTimeCount == 1 && test_frameTimes[0] == coreReference,
+        "First tick reports the core reference, got %d calls, %lld", test_frameTimeCount, (long long)test_frameTimes[0]);
+
+    // At 1x, a 50ms stall runs two catch-up ticks that share the measured time.
+    test_frameTimeCount = 0;
+    SDL_DelayNS(50 * SDL_NS_PER_MS);
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_frameTimeCount == 2, "50ms stall runs two catch-up ticks, got %d", test_frameTimeCount);
+    SDLTest_AssertCheck(test_frameTimeCount >= 1 && test_frameTimes[0] >= 24000 && test_frameTimes[0] < 1000000,
+        "Catch-up ticks report their share of the measured time, got %lld", (long long)test_frameTimes[0]);
+
+    // Off 1x speed the idealized per-tick period is reported.
+    SDL_Libretro_SetSpeed(lr, 2.0f);
+    test_frameTimeCount = 0;
+    SDL_DelayNS(20 * SDL_NS_PER_MS);
+    SDL_Libretro_Update(lr);
+    retro_usec_t fastReference = (retro_usec_t)((1.0 / 60.0) * 1.0e6 / 2.0);
+    SDLTest_AssertCheck(test_FrameTimesAll(fastReference), "Fast-forward reports the idealized period %lld, got %d calls, first %lld",
+        (long long)fastReference, test_frameTimeCount, (long long)test_frameTimes[0]);
+
+    // Pausing restarts the clock, so the pause isn't reported as one long frame.
+    SDL_Libretro_SetSpeed(lr, 0.0f);
+    SDL_Libretro_Update(lr);
+    SDL_Libretro_SetSpeed(lr, 1.0f);
+    test_frameTimeCount = 0;
+    SDL_DelayNS(30 * SDL_NS_PER_MS);
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_FrameTimesAll(coreReference), "First tick after a pause reports the core reference");
+
+    // A reset restarts the clock too.
+    SDLTest_AssertCheck(SDL_Libretro_Reset(lr), "Reset succeeds");
+    test_frameTimeCount = 0;
+    SDL_DelayNS(30 * SDL_NS_PER_MS);
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_FrameTimesAll(coreReference), "First tick after a reset reports the core reference");
+
+    // Once running, a single 1x tick reports the measured time, not the idealized 16666us.
+    test_frameTimeCount = 0;
+    SDL_DelayNS(16 * SDL_NS_PER_MS);
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_frameTimeCount >= 1 && test_frameTimes[0] >= 16000 && test_frameTimes[0] != 16666,
+        "1x tick reports measured time, got %d calls, %lld", test_frameTimeCount, (long long)test_frameTimes[0]);
+
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_GameInfoExt(void *arg) {
 #if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
@@ -3372,6 +3465,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
+    LIBRETRO_TEST_CASE(test_FrameTime,         "Frame-time callback receives measured deltas"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
     LIBRETRO_TEST_CASE(test_LoadGameSpecial,   "Load subsystem content by name, description, and id"),

@@ -678,7 +678,7 @@ typedef struct SDL_LibretroCoreData {
 
     // Timing
     struct retro_frame_time_callback runloop_frame_time;
-    retro_usec_t runloop_frame_time_last;
+    Uint64 runloop_frame_time_last; /**< SDL_GetTicksNS() of the last frame-time callback tick batch; 0 restarts the clock so the next tick reports the core's reference. */
 
     // Fast-forward override
     struct retro_fastforwarding_override fastforwardOverride;

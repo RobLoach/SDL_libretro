@@ -545,6 +545,9 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
     // Images added with SDL_Libretro_AddDiskImage_IO() belong to the game.
     SDL_Libretro_FreeDiskImages(lr);
 
+    // Restart the frame-time clock, so the first tick of new content reports the core's reference.
+    lr->core.runloop_frame_time_last = 0;
+
     // The disk control interface is core-lifetime state (registered from
     // retro_set_environment/retro_init), so it's kept until SDL_Libretro_UnloadCore().
 }
@@ -1117,6 +1120,9 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
     }
     lr->core.symbols.retro_reset();
 
+    // Restart the frame-time clock, so the first tick after the reset reports the core's reference.
+    lr->core.runloop_frame_time_last = 0;
+
     // Clear any rewind states.
     SDL_Libretro_ClearRewind(lr);
 
@@ -1130,17 +1136,32 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
 }
 
 /**
- * Advance the core a single tick. Also report to the frame-time callback if needed.
+ * Work out the delta handed to the frame-time callback for each of the `ticks` ticks about to run, and stamp the time.
+ *
+ * Mirrors RetroArch: the first tick (or the first after a load, reset, pause or rewind) has no measured cadence, so it gets the reference the core declared. At 1x speed the wall-clock time since the previous tick batch is reported. Off 1x speed (fast-forward, slow-motion) the idealized `referenceUsec` is reported instead, since the measured time doesn't describe game time. When one Update runs several catch-up ticks, the measured time is split evenly across them, so each tick still reports its share rather than the first getting it all and the rest ~0.
  */
-static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t referenceUsec) {
+static retro_usec_t SDL_Libretro_FrameTimeDelta(SDL_Libretro* lr, retro_usec_t referenceUsec, int ticks) {
+    Uint64 nowNS = SDL_GetTicksNS();
+    Uint64 lastNS = lr->core.runloop_frame_time_last;
+    lr->core.runloop_frame_time_last = nowNS;
+    if (!lastNS || referenceUsec <= 0) {
+        return lr->core.runloop_frame_time.reference;
+    }
+    if (lr->core.speed != 1.0f) {
+        return referenceUsec;
+    }
+    retro_usec_t measured = (retro_usec_t)((nowNS - lastNS) / SDL_NS_PER_US);
+    return ticks > 1 ? measured / ticks : measured;
+}
+
+/**
+ * Advance the core a single tick. Also report `frameTimeUsec` to the frame-time callback if needed.
+ *
+ * @see SDL_Libretro_FrameTimeDelta
+ */
+static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t frameTimeUsec) {
     if (lr->core.runloop_frame_time.callback) {
-        retro_usec_t delta = referenceUsec;
-        // First tick (or right after a reset) has no measured cadence yet, so fall back to the reference the core declared.
-        if (!lr->core.runloop_frame_time_last) {
-            delta = lr->core.runloop_frame_time.reference;
-        }
-        lr->core.runloop_frame_time_last = referenceUsec;
-        lr->core.runloop_frame_time.callback(delta);
+        lr->core.runloop_frame_time.callback(frameTimeUsec);
     }
 
     // Report audio buffer occupancy so the core can frame-skip if an underrun looms. Per the libretro spec this fires right before retro_run().
@@ -1173,8 +1194,11 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         SDL_Libretro_InitAudio(lr);
     }
 
-    // Paused: Do nothing when speed is zero.
-    if (lr->core.speed == 0.0f) return;
+    // Paused: Do nothing when speed is zero. The frame-time clock restarts on resume, so the pause isn't reported as one long frame.
+    if (lr->core.speed == 0.0f) {
+        lr->core.runloop_frame_time_last = 0;
+        return;
+    }
 
     // Keep any active rumble going until the core sets it back to 0.
     for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
@@ -1215,6 +1239,8 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
             lr->core.symbols.retro_run();
         }
         lr->rewindActive = false;
+        // Rewind steps bypass the frame-time callback, so restart its clock for when forward play resumes.
+        lr->core.runloop_frame_time_last = 0;
         return;
     }
 
@@ -1227,7 +1253,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         // First call: seed the clock and run exactly one tick.
         lr->core.lastTickNS = nowNS;
         lr->core.speedAccumulator = 0.0;
-        SDL_Libretro_Tick(lr, 0);
+        SDL_Libretro_Tick(lr, SDL_Libretro_FrameTimeDelta(lr, 0, 1));
         return;
     }
 
@@ -1245,7 +1271,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
     if (lr->core.speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
         lr->core.speedAccumulator = 0.0;
-        SDL_Libretro_Tick(lr, referenceUsec);
+        SDL_Libretro_Tick(lr, SDL_Libretro_FrameTimeDelta(lr, referenceUsec, 1));
         return;
     }
 
@@ -1261,10 +1287,18 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         lr->core.speedAccumulator = maxAccumulator;
     }
 
-    // Run the required number of ticks to catch up to what's needed.
-    while (lr->core.speedAccumulator >= framePeriod && maxTicks-- > 0) {
+    // Count the ticks needed to catch up, so the measured frame time can be shared between them.
+    int ticks = 0;
+    while (lr->core.speedAccumulator >= framePeriod && ticks < maxTicks) {
         lr->core.speedAccumulator -= framePeriod;
-        SDL_Libretro_Tick(lr, referenceUsec);
+        ticks++;
+    }
+    if (ticks == 0) return;
+
+    // Run the required number of ticks.
+    retro_usec_t frameTimeUsec = SDL_Libretro_FrameTimeDelta(lr, referenceUsec, ticks);
+    for (int i = 0; i < ticks; i++) {
+        SDL_Libretro_Tick(lr, frameTimeUsec);
     }
 }
 
