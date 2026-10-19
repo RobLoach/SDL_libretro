@@ -344,6 +344,11 @@ static bool SDL_Libretro_PhysFS_PickContent(SDL_Libretro* lr, const char* archiv
  * the core: as a data buffer for byte-oriented cores, or by its virtual path in
  * a PhysFS-backed VFS for full-path cores that use the libretro VFS.
  *
+ * The raw .zip is handed over unextracted instead when the loaded core reports
+ * block_extract or lists "zip" in its valid extensions, or, with no core
+ * loaded, when the first core in the library that lists "zip" sets
+ * block_extract in its .info file.
+ *
  * SDL_Libretro_LoadGame() will call this automatically when loading an archive,
  * so there is no need to call it directly.
  *
@@ -383,16 +388,20 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
             return SDL_Libretro_LoadGameFile(lr, gamePath);
         }
     }
-// Skip this for now, since it will force using .zip core for all content.
-#if 0
     else {
+        // With no core loaded, look at the core that would be picked for a
+        // .zip (the first in sorted library order). Only when its .info sets
+        // block_extract does it get the raw archive; a core that merely lists
+        // "zip" would otherwise claim every archive, whatever is inside.
         for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
-            if (SDL_Libretro_ExtensionInList("zip", lr->coreLibrary[i].supported_extensions)) {
+            const SDL_Libretro_CoreInfo* info = &lr->coreLibrary[i];
+            if (!SDL_Libretro_ExtensionInList("zip", info->supported_extensions)) continue;
+            if (info->block_extract && SDL_Libretro_LoadCore(lr, info->path)) {
                 return SDL_Libretro_LoadGameFile(lr, gamePath);
             }
+            break;
         }
     }
-#endif
 
     // Mount the .zip file.
     if (!SDL_PhysFS_Mount(gamePath, SDL_LIBRETRO_PHYSFS_MOUNT_POINT)) {

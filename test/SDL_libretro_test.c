@@ -2149,6 +2149,55 @@ static int SDLCALL test_PhysFSSpillFallback(void *arg) {
     return TEST_COMPLETED;
 #endif
 }
+static int SDLCALL test_PhysFSBlockExtractLibrary(void *arg) {
+#if !defined(TEST_CORE_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    const char* dir = "/tmp/sdl_libretro_block_extract_cores";
+    test_RemoveCoreDir(dir);
+    SDL_CreateDirectory(dir);
+
+    // "Arcade" sorts first and claims zips; "Text" handles what's inside.
+    char arcade[SDL_LIBRETRO_MAX_PATH], text[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(arcade, sizeof(arcade), "%s/arcade%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_snprintf(text, sizeof(text), "%s/text%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_CopyFile(TEST_CORE_PATH, arcade);
+    SDL_CopyFile(TEST_CORE_PATH, text);
+    test_WriteCoreInfo(dir, "arcade", "Arcade", "zip", "block_extract = \"true\"\n");
+    test_WriteCoreInfo(dir, "text", "Text", "txt", NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetCoreDirectory(lr, dir);
+    SDLTest_AssertCheck(lr->coreLibraryCount == 2 && lr->coreLibrary[0].block_extract, "Library holds the block_extract core first");
+
+    // No core loaded: the block_extract zip core gets the raw archive.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_ZIP_PATH) == true, "LoadGame with a block_extract library core succeeds");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, arcade) == 0, "The block_extract core was loaded, got '%s'", lr->core.corePath);
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "zip") == 0,
+        "Content extension stays 'zip', got '%s'", SDL_Libretro_GetContentExtension(lr));
+    size_t sramSize = 0;
+    const unsigned char* sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram && sramSize >= 2 && sram[0] == 'P' && sram[1] == 'K', "Core received the raw zip (PK magic)");
+    SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "The archive was not mounted");
+    SDL_Libretro_UnloadCore(lr);
+
+    // Without block_extract, the archive is still mounted and its content picked.
+    test_WriteCoreInfo(dir, "arcade", "Arcade", "zip", NULL);
+    SDL_Libretro_SetCoreDirectory(lr, dir);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_ZIP_PATH) == true, "LoadGame without block_extract succeeds");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, text) == 0, "The core for the content inside was loaded, got '%s'", lr->core.corePath);
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "txt") == 0,
+        "Content extension is the file inside the zip, got '%s'", SDL_Libretro_GetContentExtension(lr));
+
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDL_Libretro_Destroy(lr);
+    test_RemoveCoreDir(dir);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 #endif /* TEST_CONTENT_ZIP_PATH */
 
 static int SDLCALL test_Memory(void *arg) {
@@ -3842,6 +3891,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PhysFSLoadGameZip, "Load game out of a zip via PhysFS"),
     LIBRETRO_TEST_CASE(test_PhysFSLoadGameZipFullpath, "need_fullpath content inside a zip served via the VFS"),
     LIBRETRO_TEST_CASE(test_PhysFSBlockExtract, "block_extract cores receive the raw archive"),
+    LIBRETRO_TEST_CASE(test_PhysFSBlockExtractLibrary, "block_extract library cores receive the raw archive"),
     LIBRETRO_TEST_CASE(test_PhysFSNonZip,      "PhysFS loader passes non-zip content through"),
     LIBRETRO_TEST_CASE(test_PhysFSPickPriority, "Content pick prefers disc metadata and base-name matches"),
     LIBRETRO_TEST_CASE(test_PhysFSNestedDir,   "Content in a zip subdirectory is found"),
