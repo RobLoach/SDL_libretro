@@ -229,9 +229,11 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  * call, so to implement a command, handle the event from an
  * SDL_AddEventWatch() callback — watches run synchronously during the push —
  * and set event->user.code to a non-zero value there to tell the core the
- * command succeeded. A claimed command is consumed by the watch and doesn't
- * also reach the event queue; unclaimed commands arrive there once, with the
- * data pointer already expired.
+ * command succeeded. An SDL_SetEventFilter() filter can claim the same way,
+ * and may return false to drop the event. A claimed command is consumed and
+ * doesn't also reach the event queue; unclaimed commands arrive there once,
+ * with the data pointer already expired. user.reserved is used internally to
+ * tell queued copies of the same command apart.
  */
 #define SDL_EVENT_LIBRETRO (SDL_EVENT_USER + 0x1000)
 

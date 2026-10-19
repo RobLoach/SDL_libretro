@@ -3146,6 +3146,18 @@ static bool SDLCALL test_EventsWatch(void* userdata, SDL_Event* event) {
     return true;
 }
 
+/**
+ * An event filter that claims the env command in its userdata and drops it,
+ * so SDL_PushEvent() returns false even though the command was handled.
+ */
+static bool SDLCALL test_EventsFilterClaim(void* userdata, SDL_Event* event) {
+    if (event->type == (Uint32)(uintptr_t)userdata) {
+        event->user.code = 1;
+        return false;
+    }
+    return true;
+}
+
 static int SDLCALL test_Events(void *arg) {
     (void)arg;
 
@@ -3183,6 +3195,30 @@ static int SDLCALL test_Events(void *arg) {
     SDL_RemoveEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
     SDLTest_AssertCheck(test_DrainEvents(cameraEvent, NULL) == 0,
         "A claimed env command is consumed by the watch, not queued");
+
+    // With an earlier unclaimed copy of the same command still queued, a
+    // claimed push removes exactly its own copy and leaves the earlier one.
+    int earlier = 1, claimed = 2;
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &earlier) == false,
+        "The earlier env event is left unclaimed");
+    SDL_AddEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &claimed) == true,
+        "The later env event is claimed");
+    SDL_RemoveEventWatch(test_EventsWatch, (void*)(uintptr_t)cameraEvent);
+    SDL_zero(received);
+    SDLTest_AssertCheck(test_DrainEvents(cameraEvent, &received) == 1,
+        "Only one copy of the command remains queued");
+    SDLTest_AssertCheck(received.user.data2 == &earlier,
+        "The earlier unclaimed copy remains, not the claimed one");
+
+    // A filter that claims the command and drops the event still reports
+    // it handled, even though SDL_PushEvent() returns false.
+    SDL_SetEventFilter(test_EventsFilterClaim, (void*)(uintptr_t)cameraEvent);
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE, &payload) == true,
+        "A filter that sets user.code marks the env command handled");
+    SDL_SetEventFilter(NULL, NULL);
+    SDLTest_AssertCheck(test_DrainEvents(cameraEvent, NULL) == 0,
+        "A filter-claimed env command is not queued");
 
 #if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
     // Real loads push the lifecycle events, with the loaded name in data2.

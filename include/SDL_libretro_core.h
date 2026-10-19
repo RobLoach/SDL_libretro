@@ -1398,33 +1398,60 @@ static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
 }
 
 /**
+ * Event filter for SDL_FilterEvents() that removes exactly the queued copy of
+ * the env event in userdata, matched by type, context, and the sequence tag
+ * SDL_Libretro_PushEnvEvent() stored in user.reserved.
+ *
+ * @internal
+ */
+static bool SDLCALL SDL_Libretro_KeepUnclaimedEnvEvent(void* userdata, SDL_Event* event) {
+    const SDL_UserEvent* pushed = (const SDL_UserEvent*)userdata;
+    return !(event->type == pushed->type &&
+        event->user.data1 == pushed->data1 &&
+        event->user.reserved == pushed->reserved);
+}
+
+/**
  * Reports an environment command the library doesn't handle itself as
  * SDL_EVENT_LIBRETRO | cmd, masking off the experimental and private flags
  * since they don't fit the SDL event range. data2 is the command's data
  * pointer.
  *
- * @return true when the event was pushed and an event watch claimed the
- *         command by setting a non-zero user.code; watches run synchronously
- *         inside SDL_PushEvent(), which is how an application implements an
- *         environment command while the core waits.
+ * Each push is tagged with a process-wide sequence number in user.reserved,
+ * which applications don't read, so a claimed push can remove exactly its own
+ * queued copy even when earlier copies of the same command are still queued.
+ *
+ * @return true when an event watch or the event filter claimed the command by
+ *         setting a non-zero user.code; both run synchronously inside
+ *         SDL_PushEvent(), which is how an application implements an
+ *         environment command while the core waits. A filter may also drop
+ *         the event by returning false; the claim still counts.
  *
  * @internal
  */
 static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data) {
+    static SDL_AtomicInt sequence;
     SDL_Event event;
     SDL_zero(event);
     event.user.type = SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE));
+    event.user.reserved = (Uint32)SDL_AddAtomicInt(&sequence, 1) + 1;
     event.user.data1 = lr;
     event.user.data2 = data;
-    if (!SDL_PushEvent(&event) || event.user.code == 0) {
+    const SDL_UserEvent pushed = event.user;
+
+    // SDL_PushEvent() returns false when the filter drops the event, which a
+    // filter that claimed the command may do, so only user.code decides.
+    const bool queued = SDL_PushEvent(&event);
+    if (event.user.code == 0) {
         return false;
     }
 
     // A watch implemented the command, so each event is delivered exactly
     // once: the queued copy would only re-report it with an expired data
     // pointer, so drop it. Unclaimed commands stay queued for observation.
-    SDL_Event claimed;
-    SDL_PeepEvents(&claimed, 1, SDL_GETEVENT, event.user.type, event.user.type);
+    if (queued) {
+        SDL_FilterEvents(SDL_Libretro_KeepUnclaimedEnvEvent, (void*)&pushed);
+    }
     return true;
 }
 
