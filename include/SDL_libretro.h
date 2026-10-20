@@ -37,6 +37,7 @@
 #define SDL_LIBRETRO_H
 
 #include <SDL3/SDL.h>
+#include "libretro.h"
 
 /**
  * \defgroup SDL_Libretro SDL_Libretro
@@ -498,8 +499,6 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
  * Guards against compiling the implementation twice in one translation unit.
  */
 #define SDL_LIBRETRO_IMPLEMENTATION_ONCE
-
-#include "libretro.h"
 
 #ifndef SDL_LIBRETRO_NO_INI_IMPLEMENTATION
 #define SDL_INI_IMPLEMENTATION
