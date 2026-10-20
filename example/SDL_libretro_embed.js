@@ -17,9 +17,12 @@
  *     script     URL of the Emscripten-generated script ('SDL_libretro.js').
  *     arguments  Argument list for SDL_libretro, e.g. ['/cores/core.wasm', '/game.rom'].
  *     pixelated  Keep upscaled pixels crisp instead of smoothed (true).
- *     canvasId   id for the created canvas, matching SDL's selector ('canvas').
+ *     canvasId   id for the created canvas ('canvas').
  *     onReady    Called with the handle once the runtime is initialized.
  *     onError    Called with an Error when the script fails to load.
+ *
+ * The emulator takes keyboard input while its canvas has focus, which clicking
+ * it gives, so the rest of the page keeps its keyboard.
  *
  * Returns a handle with { element, canvas, module }. Emscripten builds without
  * MODULARIZE share one global Module, so only one embed can run per page.
@@ -46,9 +49,7 @@
             throw new Error('SDL_libretro.embed: only one instance can run per page');
         }
 
-        // The canvas SDL attaches to, filling the target element. SDL's
-        // Emscripten backend finds it with document.querySelector() using a CSS
-        // selector (default "#canvas"), so the id must match that selector.
+        // The canvas SDL attaches to, filling the target element.
         var canvas = document.createElement('canvas');
         canvas.id = options.canvasId || 'canvas';
         canvas.tabIndex = -1;
@@ -61,7 +62,16 @@
         canvas.addEventListener('contextmenu', function (event) {
             event.preventDefault();
         });
+        // Keys go to the emulator while the canvas has focus, so clicking it
+        // takes focus, and the rest of the page keeps its keyboard.
+        canvas.addEventListener('pointerdown', function () {
+            canvas.focus();
+        });
         element.appendChild(canvas);
+
+        // Point SDL at this canvas, for both drawing and keyboard input; by
+        // default it looks for "#canvas", and takes the whole page's keys.
+        var selector = '#' + CSS.escape(canvas.id);
 
         var handle = {
             element: element,
@@ -69,6 +79,10 @@
             module: {
                 canvas: canvas,
                 arguments: options.arguments || [],
+                preRun: [function () {
+                    ENV.SDL_EMSCRIPTEN_CANVAS_SELECTOR = selector;
+                    ENV.SDL_EMSCRIPTEN_KEYBOARD_ELEMENT = selector;
+                }],
                 onRuntimeInitialized: function () {
                     if (options.onReady) {
                         options.onReady(handle);
