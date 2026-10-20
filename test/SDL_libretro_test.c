@@ -2965,6 +2965,27 @@ static int SDLCALL test_AudioLatency(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(lr) == 48000.0, "SampleRate falls back to default without core");
     SDLTest_AssertCheck(SDL_Libretro_GetSampleRate(NULL) == 48000.0, "SampleRate(NULL) returns default");
 
+#ifdef TEST_CORE_PATH
+    // The setting carries across core loads.
+    SDL_Libretro_SetAudioLatency(lr, 64);
+    SDLTest_AssertCheck(SDL_Libretro_LoadCore(lr, TEST_CORE_PATH) == true, "LoadCore succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(lr) == 64, "Audio latency survives LoadCore");
+
+    // A core's minimum raises the latency in effect, but not the setting.
+    unsigned coreMinimum = 200;
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY, &coreMinimum) == true, "SET_MINIMUM_AUDIO_LATENCY accepted");
+    SDLTest_AssertCheck(SDL_Libretro_UpdateAudioThreshold(lr) == 200, "Core minimum above the setting is in effect");
+    SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(lr) == 64, "Core minimum doesn't change the setting");
+
+    // A lower core minimum can't drop below the setting.
+    coreMinimum = 32;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY, &coreMinimum);
+    SDLTest_AssertCheck(SDL_Libretro_UpdateAudioThreshold(lr) == 64, "Core minimum below the setting is ignored");
+
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(SDL_Libretro_GetAudioLatency(lr) == 64, "Audio latency survives UnloadCore");
+#endif
+
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 }

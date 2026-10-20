@@ -694,7 +694,7 @@ typedef struct SDL_LibretroCoreData {
     // Audio
     SDL_AudioStream* audioStream;
     int audioQueueThresholdBytes;
-    unsigned minimumAudioLatencyMs;
+    unsigned minimumAudioLatencyMs; /**< The core's RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY request; 0 when it made none. */
     int16_t singleSampleBuffer[SDL_LIBRETRO_AUDIO_SINGLE_SAMPLE_BUFFER_SIZE * 2];
     size_t singleSampleCount;
     int audioDropWarnCount;
@@ -812,6 +812,7 @@ typedef struct SDL_LibretroRewindDelta {
 struct SDL_Libretro {
     // Persistent Settings Across Cores
     float volume; /**< The audio volume. */
+    unsigned audioLatencyMs; /**< The application's audio latency, or 0 for SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS. @see SDL_Libretro_SetAudioLatency() */
     SDL_LibretroFitMode fitMode; /**< How the libretro context should fit into its destination when rendering. */
     SDL_ScaleMode scaleMode; /**< The texture filtering used when the libretro frame is scaled. @see SDL_Libretro_SetScaleMode() */
     SDL_Scancode keyboardPlayer1[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS];

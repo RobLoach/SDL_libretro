@@ -143,6 +143,10 @@ static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed) {
 /**
  * Recompute the audio queue latency threshold from the current sample rate and requested latency.
  *
+ * The latency is the application's (SDL_Libretro_SetAudioLatency()), raised
+ * to the core's RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY when that's
+ * higher; a core can ask for more latency, but never lower the application's.
+ *
  * DRC targets half of this fill level; the hard drop cap in
  * SDL_Libretro_QueueAudio() sits at double it.
  *
@@ -151,8 +155,8 @@ static void SDL_Libretro_UpdateDRC(SDL_Libretro* lr, float speed) {
  * @return The effective latency in milliseconds.
  */
 static unsigned SDL_Libretro_UpdateAudioThreshold(SDL_Libretro* lr) {
-    unsigned latencyMs = lr->core.minimumAudioLatencyMs;
-    if (latencyMs == 0) latencyMs = SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS;
+    unsigned latencyMs = SDL_Libretro_GetAudioLatency(lr);
+    if (lr->core.minimumAudioLatencyMs > latencyMs) latencyMs = lr->core.minimumAudioLatencyMs;
 
     int threshold = (int)(SDL_Libretro_GetSampleRate(lr) * latencyMs / 1000.0 * (double)(sizeof(int16_t) * 2));
 
@@ -297,6 +301,10 @@ static void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
 /**
  * Set the desired minimum audio latency for the audio stream.
  *
+ * The setting carries across cores. A core asking for more latency through
+ * RETRO_ENVIRONMENT_SET_MINIMUM_AUDIO_LATENCY raises the latency in effect
+ * while it's loaded, without changing this setting.
+ *
  * @param lr the libretro context.
  * @param latencyMs the minimum latency in milliseconds, or 0 for SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS.
  *
@@ -305,7 +313,7 @@ static void SDL_Libretro_CloseAudio(SDL_Libretro* lr) {
  */
 void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs) {
     if (!lr) return;
-    lr->core.minimumAudioLatencyMs = latencyMs;
+    lr->audioLatencyMs = latencyMs;
 
     // When the Audio Latency changes, make sure to update the threshold too.
     if (lr->core.audioStream) {
@@ -323,7 +331,7 @@ void SDL_Libretro_SetAudioLatency(SDL_Libretro* lr, unsigned latencyMs) {
  */
 unsigned SDL_Libretro_GetAudioLatency(const SDL_Libretro* lr) {
     if (!lr) return 0;
-    return lr->core.minimumAudioLatencyMs ? lr->core.minimumAudioLatencyMs : SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS;
+    return lr->audioLatencyMs ? lr->audioLatencyMs : SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS;
 }
 
 /**
