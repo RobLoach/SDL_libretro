@@ -487,14 +487,11 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_GET_VARIABLE: {
             // When NULL data is passed, the core is checking if the environment callback is available.
             if (!data) return true;
+            // An unknown key still succeeds, with a NULL value.
             struct retro_variable* var = (struct retro_variable*)data;
-            if (!var->key) return false;
-            const SDL_LibretroOption* o = SDL_Libretro_GetOption(lr, var->key);
-            if (o) {
-                var->value = o->value;
-                return true;
-            }
-            return false;
+            const SDL_LibretroOption* o = var->key ? SDL_Libretro_GetOption(lr, var->key) : NULL;
+            var->value = o ? o->value : NULL;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_SET_VARIABLE: {

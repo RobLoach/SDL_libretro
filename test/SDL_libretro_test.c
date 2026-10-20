@@ -603,6 +603,14 @@ static int SDLCALL test_OptionValuesFull(void *arg) {
         "A full values array keeps exactly %d values, got %u", RETRO_NUM_CORE_OPTION_VALUES_MAX, full ? full->valuesCount : 0);
     SDLTest_AssertCheck(SDL_Libretro_GetOption(lr, "test_after") != NULL, "The next option still registers");
 
+    // GET_VARIABLE succeeds for an unknown key, clearing the value.
+    struct retro_variable var = { "test_no_such_option", "stale" };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) == true, "GET_VARIABLE succeeds for an unknown key");
+    SDLTest_AssertCheck(var.value == NULL, "An unknown key reads back a NULL value");
+    var.key = "test_after";
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE, &var) == true && var.value && SDL_strcmp(var.value, "x") == 0,
+        "A known key reads back its value");
+
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 #endif
