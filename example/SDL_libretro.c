@@ -200,6 +200,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     SDL_Libretro_SetCoreDirectory(lr, "cores");
     SDL_Libretro_SetSystemDirectory(lr, "system");
     SDL_Libretro_SetSaveDirectory(lr, "saves");
+    SDL_Libretro_SetSRAMAutoSave(lr, true);
     SDL_Libretro_InitConfigFile(lr, "SDL_libretro.cfg");
 
     // Load the core

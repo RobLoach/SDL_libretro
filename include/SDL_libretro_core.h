@@ -790,6 +790,9 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
         }
     }
 
+    // Restore the game's battery save before it first runs.
+    SDL_Libretro_AutoLoadSRAM(lr);
+
     // Grab the Audio/Video data.
     struct retro_system_av_info avInfo = {0};
     lr->core.symbols.retro_get_system_av_info(&avInfo);
@@ -1346,6 +1349,9 @@ bool SDL_Libretro_LoadGameSpecial(SDL_Libretro* lr, const char* subsystem, const
  */
 void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     if (!lr || !lr->core.gameLoaded) return;
+
+    // Keep the game's battery save while the core still has it.
+    SDL_Libretro_AutoSaveSRAM(lr);
 
     // Unload the game before closing audio and video.
     lr->core.symbols.retro_unload_game();

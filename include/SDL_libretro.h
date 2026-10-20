@@ -292,6 +292,8 @@ bool SDL_Libretro_SaveSRAM(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_SaveSRAM_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio);
 bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
+void SDL_Libretro_SetSRAMAutoSave(SDL_Libretro* lr, bool enabled);
+bool SDL_Libretro_GetSRAMAutoSave(const SDL_Libretro* lr);
 unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr);
 bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index, Uint64* flags, void** ptr, size_t* offset, size_t* start, size_t* select, size_t* disconnect, size_t* len, const char** addrspace);
 void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining);
@@ -820,6 +822,7 @@ struct SDL_Libretro {
     SDL_GamepadButton gamepadButtons[SDL_LIBRETRO_MAX_USERS][SDL_LIBRETRO_MAX_JOYPAD_BUTTONS]; /**< SDL button per port and RETRO_DEVICE_ID_JOYPAD_*. @see SDL_Libretro_SetGamepadMapping() */
     SDL_LibretroAnalogToDigital analogToDigital[SDL_LIBRETRO_MAX_USERS]; /**< Which stick, if any, also drives each port's D-Pad. @see SDL_Libretro_SetAnalogToDigital() */
     unsigned mousePort; /**< The only port the mouse, pointer, and lightgun answer on. @see SDL_Libretro_SetMousePort() */
+    bool sramAutoSave; /**< Load SRAM when a game loads, and save it when the game unloads. @see SDL_Libretro_SetSRAMAutoSave() */
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
     char systemDirectory[SDL_LIBRETRO_MAX_PATH];

@@ -876,6 +876,61 @@ bool SDL_Libretro_LoadMemory(SDL_Libretro* lr, unsigned memoryType, const char* 
 // SRAM convenience wrappers (RETRO_MEMORY_SAVE_RAM)
 
 /**
+ * Load and save the core's battery-backed save RAM along with the game.
+ *
+ * When enabled, SRAM is loaded from "<save directory>/<content name>.srm"
+ * (see SDL_Libretro_GetSavePath()) once a game loads, before it first runs,
+ * and written back there before the game unloads: from
+ * SDL_Libretro_UnloadGame(), loading other content, unloading the core, or
+ * SDL_Libretro_Destroy(). Disabled by default.
+ *
+ * @param lr the libretro context.
+ * @param enabled true to load and save SRAM automatically.
+ *
+ * @see SDL_Libretro_GetSRAMAutoSave()
+ * @see SDL_Libretro_SetSaveDirectory()
+ */
+void SDL_Libretro_SetSRAMAutoSave(SDL_Libretro* lr, bool enabled) {
+    if (lr) lr->sramAutoSave = enabled;
+}
+
+/**
+ * Check whether SRAM is loaded and saved along with the game.
+ *
+ * @param lr the libretro context.
+ * @returns true when enabled with SDL_Libretro_SetSRAMAutoSave().
+ *
+ * @see SDL_Libretro_SetSRAMAutoSave()
+ */
+bool SDL_Libretro_GetSRAMAutoSave(const SDL_Libretro* lr) {
+    return lr && lr->sramAutoSave;
+}
+
+/**
+ * @internal
+ * Load the game's SRAM file, if SRAM auto-save is on and there is one.
+ */
+static void SDL_Libretro_AutoLoadSRAM(SDL_Libretro* lr) {
+    char path[SDL_LIBRETRO_MAX_PATH];
+    if (!lr->sramAutoSave || SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) == 0 || !SDL_GetPathInfo(path, NULL)) return;
+    if (!SDL_Libretro_LoadSRAM(lr, path)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to load SRAM: %s", SDL_GetError());
+    }
+}
+
+/**
+ * @internal
+ * Save the game's SRAM file, if SRAM auto-save is on.
+ */
+static void SDL_Libretro_AutoSaveSRAM(SDL_Libretro* lr) {
+    char path[SDL_LIBRETRO_MAX_PATH];
+    if (!lr->sramAutoSave || !lr->core.gameLoaded || SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) == 0) return;
+    if (!SDL_Libretro_SaveSRAM(lr, path)) {
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to save SRAM: %s", SDL_GetError());
+    }
+}
+
+/**
  * Write the core's battery-backed save RAM to a stream.
  *
  * Shorthand for SDL_Libretro_SaveMemory_IO() with RETRO_MEMORY_SAVE_RAM.

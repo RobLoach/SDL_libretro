@@ -2446,6 +2446,49 @@ static int SDLCALL test_PhysFSBlockExtractLibrary(void *arg) {
 
 #endif /* TEST_CONTENT_ZIP_PATH */
 
+/* SRAM auto-save loads the game's .srm on load and writes it on unload. */
+static int SDLCALL test_SRAMAutoSave(void *arg) {
+    (void)arg;
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    char saveDir[1024], srmPath[1024];
+    SDL_snprintf(saveDir, sizeof(saveDir), "%ssram_autosave_test", SDL_GetBasePath());
+    SDL_snprintf(srmPath, sizeof(srmPath), "%s/test_content.srm", saveDir);
+    SDL_RemovePath(srmPath);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_GetSRAMAutoSave(lr) == false, "SRAM auto-save starts off");
+    SDL_Libretro_SetSRAMAutoSave(lr, true);
+    SDLTest_AssertCheck(SDL_Libretro_GetSRAMAutoSave(lr) == true, "SRAM auto-save turns on");
+    SDL_Libretro_SetSaveDirectory(lr, saveDir);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // Nothing to load the first time; unloading writes the game's SRAM.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    size_t size = 0;
+    unsigned char* sram = (unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &size);
+    SDLTest_AssertCheck(sram != NULL && size >= 4, "SAVE_RAM available");
+    if (sram && size >= 4) SDL_memcpy(sram, "SAVE", 4);
+    SDL_Libretro_UnloadGame(lr);
+    size_t fileSize = 0;
+    char* file = (char*)SDL_LoadFile(srmPath, &fileSize);
+    SDLTest_AssertCheck(file && fileSize == size && SDL_memcmp(file, "SAVE", 4) == 0, "Unloading the game saves SRAM to %s", srmPath);
+    SDL_free(file);
+
+    // Loading the game again restores it, over what the core started with.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds again");
+    sram = (unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &size);
+    SDLTest_AssertCheck(sram && size >= 4 && SDL_memcmp(sram, "SAVE", 4) == 0, "Loading the game restores SRAM");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_RemovePath(srmPath);
+    SDL_RemovePath(saveDir);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_Memory(void *arg) {
 #if !defined(TEST_CORE_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -4266,6 +4309,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Language,        "Language detection, override, and INTL option merges"),
     LIBRETRO_TEST_CASE(test_Rewind,           "Rewind buffer setup and speed"),
     LIBRETRO_TEST_CASE(test_RewindBuffer,     "Rewind codec round-trip and capture/step"),
+    LIBRETRO_TEST_CASE(test_SRAMAutoSave,     "SRAM auto-save loads and saves with the game"),
     LIBRETRO_TEST_CASE(test_Memory,           "Memory get/set, save/load, and memory map"),
     LIBRETRO_TEST_CASE(test_SavePath,         "Derived save path and game reload"),
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),

@@ -247,7 +247,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 ## Limitations
 
 - Only one `SDL_Libretro` context can have a core loaded at a time, as libretro callbacks reach it through a single global. The API isn't thread-safe; use it from the main thread.
-- SRAM isn't loaded or saved automatically; call `SDL_Libretro_LoadSRAM()` and `SDL_Libretro_SaveSRAM()` from the application ([#182](https://github.com/RobLoach/SDL_libretro/issues/182)).
+- SRAM is only loaded and saved automatically with `SDL_Libretro_SetSRAMAutoSave()`, and then only when the game loads and unloads, so a crash loses progress since then ([#182](https://github.com/RobLoach/SDL_libretro/issues/182)). Otherwise, call `SDL_Libretro_LoadSRAM()` and `SDL_Libretro_SaveSRAM()` from the application.
 - Web builds don't persist saves between visits ([#222](https://github.com/RobLoach/SDL_libretro/issues/222)).
 - Hardware rendering (`RETRO_ENVIRONMENT_SET_HW_RENDER`) is unsupported, so cores need software rendering ([#14](https://github.com/RobLoach/SDL_libretro/issues/14)).
 
