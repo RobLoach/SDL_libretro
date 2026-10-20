@@ -1,5 +1,5 @@
 /*
- * SDL_libretro: A fully-featured example of what SDL_libretro can do.
+ * SDL_libretro: A fully-featured example of what SDL_libretro.h can do.
  *
  * Usage: SDL_libretro [core.so] [game.rom]
  *        SDL_libretro core.so --subsystem <ident> "path1" ["path2" ...]
@@ -90,10 +90,10 @@ static bool SDL_Libretro_AppHandleLibretroEvent(AppContext* app, const SDL_Event
         }
 
         case SDL_EVENT_LIBRETRO_MENU_OPENED:
-            SDL_Log("Menu opened");
+            // SDL_Log("Menu opened");
             return true;
         case SDL_EVENT_LIBRETRO_MENU_CLOSED:
-            SDL_Log("Menu closed");
+            // SDL_Log("Menu closed");
             return true;
 
         // Environment commands the library leaves to the application. Plain
