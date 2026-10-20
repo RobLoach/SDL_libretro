@@ -1513,6 +1513,13 @@ static int SDLCALL test_FrameTime(void *arg) {
     SDLTest_AssertCheck(test_frameTimeCount == 1 && test_frameTimes[0] == 16000,
         "1x tick reports measured time, got %d calls, %lld", test_frameTimeCount, (long long)test_frameTimes[0]);
 
+    // Not calling Update() for a while (an open menu) is a pause too, not a 30s frame.
+    test_frameTimeCount = 0;
+    test_fakeTicksNS += 30 * SDL_NS_PER_SECOND;
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_frameTimeCount > 0 && test_FrameTimesAll(coreReference),
+        "First tick after an Update() gap reports the core reference, got %d calls, first %lld", test_frameTimeCount, (long long)test_frameTimes[0]);
+
     test_fakeTicksNS = 0;
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);

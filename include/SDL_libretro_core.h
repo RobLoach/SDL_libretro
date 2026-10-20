@@ -1320,15 +1320,24 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
 }
 
 /**
+ * @internal
+ * The longest wall-clock gap between tick batches that's reported to the
+ * frame-time callback as elapsed time. A longer gap means the application
+ * stopped calling SDL_Libretro_Update() for a while (its menu was open, or the
+ * machine slept), which is a pause rather than one long frame.
+ */
+#define SDL_LIBRETRO_FRAME_TIME_MAX_GAP_NS (250 * SDL_NS_PER_MS)
+
+/**
  * Work out the delta handed to the frame-time callback for each of the `ticks` ticks about to run, and stamp the time.
  *
- * Mirrors RetroArch: the first tick (or the first after a load, reset, pause or rewind) has no measured cadence, so it gets the reference the core declared. At 1x speed the wall-clock time since the previous tick batch is reported. Off 1x speed (fast-forward, slow-motion) the idealized `referenceUsec` is reported instead, since the measured time doesn't describe game time. When one Update runs several catch-up ticks, the measured time is split evenly across them, so each tick still reports its share rather than the first getting it all and the rest ~0.
+ * Mirrors RetroArch: the first tick (or the first after a load, reset, pause or rewind) has no measured cadence, so it gets the reference the core declared. So does the first after a gap longer than SDL_LIBRETRO_FRAME_TIME_MAX_GAP_NS, which is the application pausing by not calling SDL_Libretro_Update(). At 1x speed the wall-clock time since the previous tick batch is reported. Off 1x speed (fast-forward, slow-motion) the idealized `referenceUsec` is reported instead, since the measured time doesn't describe game time. When one Update runs several catch-up ticks, the measured time is split evenly across them, so each tick still reports its share rather than the first getting it all and the rest ~0.
  */
 static retro_usec_t SDL_Libretro_FrameTimeDelta(SDL_Libretro* lr, retro_usec_t referenceUsec, int ticks) {
     Uint64 nowNS = SDL_LIBRETRO_GET_TICKS_NS();
     Uint64 lastNS = lr->core.runloop_frame_time_last;
     lr->core.runloop_frame_time_last = nowNS;
-    if (!lastNS || referenceUsec <= 0) {
+    if (!lastNS || referenceUsec <= 0 || nowNS - lastNS > SDL_LIBRETRO_FRAME_TIME_MAX_GAP_NS) {
         return lr->core.runloop_frame_time.reference;
     }
     if (lr->core.speed != 1.0f) {
