@@ -41,18 +41,21 @@ static void SDL_Libretro_FreeOptionValues(SDL_LibretroOptionValue* values, unsig
 
 /**
  * @internal
- * Deep-copy the core's NULL-terminated value list into an owned array.
+ * Deep-copy the core's value list into an owned array.
  *
+ * @param values the values, ending at a NULL value or after `valuesMax` entries.
+ * @param valuesMax the size of a fixed-size `values` array, which needn't have a
+ *                  NULL entry when every slot is used (RETRO_NUM_CORE_OPTION_VALUES_MAX).
  * @returns false when out of memory.
  */
-static bool SDL_Libretro_CopyOptionValues(const struct retro_core_option_value* values, SDL_LibretroOptionValue** outValues, unsigned* outCount) {
+static bool SDL_Libretro_CopyOptionValues(const struct retro_core_option_value* values, unsigned valuesMax, SDL_LibretroOptionValue** outValues, unsigned* outCount) {
     *outValues = NULL;
     *outCount = 0;
     if (!values) return true;
 
     // Count how many values there are available for the option.
     unsigned count = 0;
-    while (values[count].value) count++;
+    while (count < valuesMax && values[count].value) count++;
     if (count == 0) return true;
 
     SDL_LibretroOptionValue* copy = (SDL_LibretroOptionValue*)SDL_calloc(count, sizeof(SDL_LibretroOptionValue));
@@ -70,7 +73,7 @@ static bool SDL_Libretro_CopyOptionValues(const struct retro_core_option_value* 
     return true;
 }
 
-static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, const char* info, const char* categoryKey) {
+static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, unsigned valuesMax, const char* info, const char* categoryKey) {
     if (!lr || !key) return;
 
     SDL_LibretroOption* slot = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, key);
@@ -94,7 +97,7 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
     copy.info = SDL_Libretro_Strdup(info);
     copy.category = SDL_Libretro_Strdup(categoryKey);
     bool ok = (reregistered || copy.key) && copy.defaultValue && copy.desc && copy.info && copy.category;
-    ok = ok && SDL_Libretro_CopyOptionValues(values, &copy.values, &copy.valuesCount);
+    ok = ok && SDL_Libretro_CopyOptionValues(values, valuesMax, &copy.values, &copy.valuesCount);
     copy.valuesCapacity = copy.valuesCount;
 
     // Pick the value: a re-registered option keeps its current value while

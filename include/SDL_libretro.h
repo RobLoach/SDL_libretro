@@ -956,7 +956,7 @@ static void SDL_Libretro_RewindFree(SDL_Libretro* lr);
 
 static bool SDL_Libretro_ExtensionInList(const char* ext, const char* pipeList);
 
-static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, const char* info, const char* categoryKey);
+static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const char* defaultValue, const char* desc, const struct retro_core_option_value* values, unsigned valuesMax, const char* info, const char* categoryKey);
 static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key, const char* desc, const char* info);
 static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr);
 

@@ -569,6 +569,45 @@ static int SDLCALL test_SetVariablesLegacy(void *arg) {
 
 /* A core re-registering an option replaces its values, default, and text,
    keeping the current value only while it's still declared. */
+/* An option may use every one of its RETRO_NUM_CORE_OPTION_VALUES_MAX value
+   slots, leaving no NULL entry to stop at. */
+static int SDLCALL test_OptionValuesFull(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    static char names[RETRO_NUM_CORE_OPTION_VALUES_MAX][8];
+    static struct retro_core_option_v2_definition defs[3];
+    SDL_zeroa(defs);
+    defs[0].key = "test_full";
+    defs[0].desc = "Full";
+    defs[0].default_value = "v0";
+    for (int v = 0; v < RETRO_NUM_CORE_OPTION_VALUES_MAX; v++) {
+        SDL_snprintf(names[v], sizeof(names[v]), "v%d", v);
+        defs[0].values[v].value = names[v];
+    }
+    // The next definition follows the full values array in memory.
+    defs[1].key = "test_after";
+    defs[1].desc = "After";
+    defs[1].default_value = "x";
+    defs[1].values[0].value = "x";
+    struct retro_core_options_v2 opts = { NULL, defs };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &opts) == true, "SET_CORE_OPTIONS_V2 accepted");
+
+    const SDL_LibretroOption* full = SDL_Libretro_GetOption(lr, "test_full");
+    SDLTest_AssertCheck(full && full->valuesCount == RETRO_NUM_CORE_OPTION_VALUES_MAX,
+        "A full values array keeps exactly %d values, got %u", RETRO_NUM_CORE_OPTION_VALUES_MAX, full ? full->valuesCount : 0);
+    SDLTest_AssertCheck(SDL_Libretro_GetOption(lr, "test_after") != NULL, "The next option still registers");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_OptionReregister(void *arg) {
     (void)arg;
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -4120,6 +4159,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OptionVisibility, "Core options, categories, and SET_CORE_OPTIONS_DISPLAY"),
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
+    LIBRETRO_TEST_CASE(test_OptionValuesFull,  "An option can use every value slot"),
     LIBRETRO_TEST_CASE(test_OptionReregister, "Re-registering an option updates it"),
     LIBRETRO_TEST_CASE(test_CategoryReregister, "Re-registering a category updates it"),
     LIBRETRO_TEST_CASE(test_RewindConfig,     "Rewind settings round-trip through the config"),

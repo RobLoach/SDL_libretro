@@ -560,7 +560,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                         defaultVal = opts;
                     }
                 }
-                SDL_Libretro_InitCoreOption(lr, var->key, defaultVal, label, values, NULL, NULL);
+                // The legacy list has no size limit, but always ends in a NULL value.
+                SDL_Libretro_InitCoreOption(lr, var->key, defaultVal, label, values, SDL_MAX_UINT32, NULL, NULL);
                 SDL_free(values);
                 SDL_free(valueBuffer);
             }
@@ -1043,7 +1044,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 // Prefer the *_categorized text when the option belongs to a category.
                 const char* desc = SDL_Libretro_PickCoreOptionText(def->desc, def->desc_categorized, def->category_key);
                 const char* info = SDL_Libretro_PickCoreOptionText(def->info, def->info_categorized, def->category_key);
-                SDL_Libretro_InitCoreOption(lr, def->key, defaultVal, desc, def->values, info, def->category_key);
+                SDL_Libretro_InitCoreOption(lr, def->key, defaultVal, desc, def->values, RETRO_NUM_CORE_OPTION_VALUES_MAX, info, def->category_key);
             }
             return true;
         }
