@@ -408,9 +408,11 @@ static retro_microphone_t* SDL_Libretro_MicOpen(const retro_microphone_params_t*
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr) return NULL;
 
+    // Only one microphone is supported. Handing back the open one would give
+    // the core two handles to the same mic, and closing either frees both.
     if (lr->core.microphone) {
         SDL_LogWarn(SDL_LOG_CATEGORY_AUDIO, "[SDL_Libretro] Microphone already open");
-        return (retro_microphone_t*)lr->core.microphone;
+        return NULL;
     }
 
     unsigned rate = (params && params->rate > 0) ? params->rate : SDL_LIBRETRO_MIC_DEFAULT_RATE;

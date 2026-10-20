@@ -3158,6 +3158,40 @@ static int SDLCALL test_AudioLatency(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Only one microphone opens at a time; a second open doesn't alias the first. */
+static int SDLCALL test_Microphone(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    struct retro_microphone_interface mic;
+    SDL_zero(mic);
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_MICROPHONE_INTERFACE, &mic) == true, "Microphone interface provided");
+    retro_microphone_params_t params = { 16000 };
+    retro_microphone_t* first = mic.open_mic(&params);
+    if (first == NULL) {
+        SDLTest_Log("No recording device available, skipping: %s", SDL_GetError());
+    }
+    else {
+        SDLTest_AssertCheck(mic.open_mic(&params) == NULL, "A second open fails instead of sharing the first");
+        mic.close_mic(first);
+        retro_microphone_t* again = mic.open_mic(&params);
+        SDLTest_AssertCheck(again != NULL, "The microphone opens again once closed");
+        mic.close_mic(again);
+    }
+
+    SDL_Libretro_Destroy(lr);
+    SDL_QuitSubSystem(SDL_INIT_AUDIO);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_AudioInitPausedRewind(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -4200,6 +4234,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_DiskControl,      "Disk control eject/insert/swap/add"),
     LIBRETRO_TEST_CASE(test_DiskImageIO,      "Disk images keep a path and buffer"),
     LIBRETRO_TEST_CASE(test_AudioLatency,     "Audio latency get/set and sample rate"),
+    LIBRETRO_TEST_CASE(test_Microphone,       "Only one microphone opens at a time"),
     LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),
     LIBRETRO_TEST_CASE(test_AudioZeroSampleRate, "Audio falls back to default sample rate when core reports 0"),
     LIBRETRO_TEST_CASE(test_AudioQueueOverflow, "Audio queue hard cap trims overflow"),
