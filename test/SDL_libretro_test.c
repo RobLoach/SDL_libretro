@@ -3903,6 +3903,19 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(customClicks == 2, "Custom entry callbacks fired, got %d", customClicks);
         SDLTest_AssertCheck(checkValue == true, "Checkbox value mirrors the widget state");
 
+#ifndef __EMSCRIPTEN__
+        // Load Game browses with the menu's own file browser, which needs no
+        // OS dialog (the offscreen driver here has none).
+        SDL_Libretro_SetMenuOpen(menu, true);
+        nk_console_trigger_event(menu->loadGameButton, NK_CONSOLE_EVENT_CLICKED);
+        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->loadGameButton, "Load Game opens the file browser");
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(cvector_size(menu->loadGameButton->children) > 0, "The file browser lists the directory");
+        nk_console_set_active_parent(menu->console);
+        SDL_Libretro_SetMenuOpen(menu, false);
+#endif
+
         // Deep links open the menu and navigate by label path.
         SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(NULL, "Settings") == false, "OpenMenuPath(NULL) fails");
         SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, NULL) == false, "OpenMenuPath without a path fails");

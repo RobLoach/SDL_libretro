@@ -238,6 +238,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - `SDL_LIBRETRO_MENU_TOGGLE_KEY`: The key that toggles the menu (default `SDLK_F1`)
 - `SDL_LIBRETRO_MENU_FONT_HEIGHT`: Base menu font height in pixels (default `13`)
 - `SDL_LIBRETRO_MENU_DEFAULT_STYLE`: The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA`)
+- `SDL_LIBRETRO_MENU_NATIVE_FILE_DIALOG`: Load Game with the OS file dialog instead of the menu's own file browser, which a gamepad can drive
 - `SDL_LIBRETRO_DISABLE_PHYSFS` / `SDL_LIBRETRO_DISABLE_MENU`: Turn PhysFS or the menu back off, even when enabled
 - `SDL_LIBRETRO_DISABLE_VFS`: Don't provide the SDL-backed libretro VFS, e.g. when implementing your own (PhysFS requires it)
 - `SDL_LIBRETRO_NO_INI_IMPLEMENTATION`, `SDL_LIBRETRO_PHYSFS_NO_SDL_PHYSFS_IMPLEMENTATION`, `SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION`: Skip compiling the bundled SDL_ini, SDL_PhysFS or Nuklear implementations when they're already compiled elsewhere
