@@ -3238,8 +3238,13 @@ static int SDLCALL test_VFSTruncate(void *arg) {
     SDLTest_AssertCheck(ro != NULL && SDL_Libretro_VFS_Truncate(ro, 2) == -1, "Read-only truncate fails");
     SDL_Libretro_VFS_Close(ro);
 
+    // Seek reports 0 on success, like fseek(), rather than the new offset.
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Seek(h, 0, RETRO_VFS_SEEK_POSITION_END) == 0, "Seek to end returns 0");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Tell(h) == 10, "Seek to end lands at 10");
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Seek(h, -1, RETRO_VFS_SEEK_POSITION_START) == -1, "Seek before the start returns -1");
+
     // Shrink with the position past the new end: position clamps to the length.
-    SDL_Libretro_VFS_Seek(h, 8, RETRO_VFS_SEEK_POSITION_START);
+    SDLTest_AssertCheck(SDL_Libretro_VFS_Seek(h, 8, RETRO_VFS_SEEK_POSITION_START) == 0, "Seek to 8 returns 0");
     SDLTest_AssertCheck(SDL_Libretro_VFS_Truncate(h, 4) == 0, "Shrink to 4 succeeds");
     SDLTest_AssertCheck(h->io != NULL, "Handle keeps a stream after shrink");
     SDLTest_AssertCheck(SDL_Libretro_VFS_Size(h) == 4, "Size is 4 after shrink");

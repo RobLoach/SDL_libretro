@@ -144,6 +144,9 @@ static int64_t SDL_Libretro_VFS_Tell(struct retro_vfs_file_handle* stream) {
 
 /**
  * @internal
+ *
+ * Returns 0 on success like fseek(), not the new offset SDL_SeekIO() reports;
+ * cores reach this through rfseek() and test for a non-zero result.
  */
 static int64_t SDL_Libretro_VFS_Seek(struct retro_vfs_file_handle* stream, int64_t offset, int seek_position) {
     if (!stream) return -1;
@@ -154,7 +157,7 @@ static int64_t SDL_Libretro_VFS_Seek(struct retro_vfs_file_handle* stream, int64
         case RETRO_VFS_SEEK_POSITION_END: whence = SDL_IO_SEEK_END; break;
         default: return -1;
     }
-    return SDL_SeekIO(stream->io, offset, whence);
+    return SDL_SeekIO(stream->io, offset, whence) < 0 ? -1 : 0;
 }
 
 /**
