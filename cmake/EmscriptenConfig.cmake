@@ -105,8 +105,7 @@ target_link_options(SDL_libretro_app PRIVATE
     # zlib
     -sUSE_ZLIB=1
 
-     # Used for the Drag & Drop exposure in the JS handler
+    # Used by the menu's Load Game file picker
     -sEXPORTED_RUNTIME_METHODS=ccall,FS
-    "--post-js=${PROJECT_SOURCE_DIR}/example/SDL_libretro_web.js"
     "--shell-file=${PROJECT_SOURCE_DIR}/example/SDL_libretro.html" # Minimal canvas-only page
     ${SDL_LIBRETRO_CORE_EXPORTS})

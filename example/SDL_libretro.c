@@ -13,10 +13,6 @@
 #define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-
 typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
@@ -115,7 +111,8 @@ static bool SDL_Libretro_AppHandleLibretroEvent(AppContext* app, const SDL_Event
 }
 
 /**
- * Called when dragging and dropping a game onto the window.
+ * Called when dragging and dropping a game onto the window. On the web, SDL
+ * writes the dropped file into the virtual file system first.
  */
 static void SDL_Libretro_AppLoadDroppedGame(AppContext* app, const char* path) {
     SDL_Libretro_UnloadCore(app->lr);
@@ -125,18 +122,6 @@ static void SDL_Libretro_AppLoadDroppedGame(AppContext* app, const char* path) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 }
-
-#ifdef __EMSCRIPTEN__
-/**
- * Called from SDL_libretro_web.js to pass over to AppLoadDroppedGame()
- */
-EMSCRIPTEN_KEEPALIVE
-void SDL_Libretro_AppDropFile(AppContext* app, const char* path) {
-    if (app && path) {
-        SDL_Libretro_AppLoadDroppedGame(app, path);
-    }
-}
-#endif
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     // Subsystem detection with "--subsystem <ident> path1 [path2 ...]"
@@ -228,10 +213,7 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         SDL_Log("Failed to create menu: %s", SDL_GetError());
     }
 
-#ifdef __EMSCRIPTEN__
-    // Hand the app pointer to the drag & drop bridge; it passes it back on drop.
-    EM_ASM({ Module.installAppDrop($0); }, app);
-#else
+#ifndef __EMSCRIPTEN__
     // Don't have rewind on Web
     SDL_Libretro_SetRewindEnabled(lr, true, 0, 0);
 #endif
