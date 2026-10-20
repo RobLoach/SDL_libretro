@@ -1,7 +1,6 @@
 build*
 .cache/
 compile_commands.json
-*.sav
 *.state
 *.srm
 /docs

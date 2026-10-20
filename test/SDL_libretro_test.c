@@ -1482,6 +1482,7 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDLTest_AssertCheck(SDL_GetPathInfo("test_state.state", &stateInfo) && stateInfo.size == 128, "Failed save keeps the previous state");
     SDLTest_AssertCheck(SDL_GetPathInfo("test_state.state.tmp", NULL) == false, "Failed save removes its temp file");
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.state") == true, "Previous state still loads");
+    SDL_RemovePath("test_state.state");
 
     // Texture scale mode applies to the live texture and reads back.
     SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL) fails");
