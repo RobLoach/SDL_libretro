@@ -26,11 +26,13 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
  *
  * Will load the configuration from the file, and save it when destroying the instance.
  * A missing file is not an error: it starts out empty and is created on save.
+ * A file that exists but can't be read or parsed is left untouched, and no
+ * config is set up, so it isn't overwritten with defaults.
  * Any previously initialized config is discarded without being saved.
  *
  * @param lr the libretro context.
  * @param file the path of the .ini file to load from and save to. The string is copied.
- * @returns true when the config was set up, false when lr or file is NULL, or on allocation failure.
+ * @returns true when the config was set up, false when lr or file is NULL, the existing file can't be loaded, or on allocation failure.
  *
  * @see SDL_Libretro_InitConfig()
  */
@@ -43,9 +45,15 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     INI_Destroy(lr->ini);
     lr->ini = NULL;
 
-    // Load the file.
+    // Load the file. Only a missing file starts out empty: saving over one
+    // that failed to load would replace everything in it with defaults.
     SDL_ini* ini = INI_Load(file);
     if (!ini) {
+        if (SDL_GetPathInfo(file, NULL)) {
+            SDL_SetError("[SDL_Libretro] Failed to load config '%s', leaving it untouched: %s", file, SDL_GetError());
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "%s", SDL_GetError());
+            return false;
+        }
         ini = INI_Create();
         if (!ini) return false;
     }

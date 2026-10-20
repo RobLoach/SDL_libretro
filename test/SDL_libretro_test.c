@@ -1183,6 +1183,36 @@ static int SDLCALL test_LateOptionConfig(void *arg) {
 #endif
 }
 
+/* A config file that exists but doesn't parse is left alone, rather than
+   replaced with defaults when the context is destroyed. */
+static int SDLCALL test_ConfigUnparseable(void *arg) {
+    (void)arg;
+    const char* cfg = "unparseable_test.cfg";
+    const char* text = "volume = 0.5\n[gamepad1\nB = a\n";
+    SDL_RemovePath(cfg);
+    SDLTest_AssertCheck(SDL_SaveFile(cfg, text, SDL_strlen(text)), "Write a config with an unclosed section");
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, cfg) == false, "InitConfigFile fails on an unparseable file");
+    SDL_Libretro_Destroy(lr);
+
+    size_t size = 0;
+    char* data = (char*)SDL_LoadFile(cfg, &size);
+    SDLTest_AssertCheck(data && size == SDL_strlen(text) && SDL_memcmp(data, text, size) == 0, "Unparseable config left untouched");
+    SDL_free(data);
+
+    // An empty file is a valid, empty config.
+    SDLTest_AssertCheck(SDL_SaveFile(cfg, "", 0), "Write an empty config");
+    lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr, cfg) == true, "InitConfigFile accepts an empty file");
+    SDL_Libretro_Destroy(lr);
+    SDL_PathInfo info;
+    SDLTest_AssertCheck(SDL_GetPathInfo(cfg, &info) && info.size > 0, "Empty config saved on destroy");
+
+    SDL_RemovePath(cfg);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_OptionsDirtyIndependent(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -3998,6 +4028,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_CategoryReregister, "Re-registering a category updates it"),
     LIBRETRO_TEST_CASE(test_RewindConfig,     "Rewind settings round-trip through the config"),
     LIBRETRO_TEST_CASE(test_LateOptionConfig, "Late-registered options get their saved values"),
+    LIBRETRO_TEST_CASE(test_ConfigUnparseable, "An unparseable config is never overwritten"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
