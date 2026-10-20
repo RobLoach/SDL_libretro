@@ -225,7 +225,7 @@ static bool SDL_Libretro_InitAudio(SDL_Libretro* lr) {
 
     SDL_Libretro_CloseAudio(lr);
 
-    unsigned latencyMs = SDL_Libretro_UpdateAudioThreshold(lr);
+    SDL_Libretro_UpdateAudioThreshold(lr);
     double sampleRate = SDL_Libretro_GetSampleRate(lr);
 
     SDL_AudioSpec spec;

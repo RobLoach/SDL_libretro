@@ -364,6 +364,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
 }
 
 void SDL_AppQuit(void* appstate, SDL_AppResult result) {
+    (void)result;
     AppContext* app = appstate;
     if (app) {
         SDL_Libretro_DestroyMenu(app->menu);

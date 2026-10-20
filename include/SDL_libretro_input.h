@@ -354,10 +354,11 @@ static void SDL_Libretro_InputPoll(void) {
     lr->core.inputWheelAccumY = 0.0f;
 }
 
-static bool SDL_Libretro_IsKeyDown(SDL_Libretro* lr, SDL_Scancode scancode) {
-    if (scancode == SDL_SCANCODE_UNKNOWN) return false;
-    const bool* state = SDL_GetKeyboardState(NULL);
-    return state[scancode];
+static bool SDL_Libretro_IsKeyDown(SDL_Scancode scancode) {
+    // A custom binding can be any number, so stay within the state array.
+    int numKeys = 0;
+    const bool* state = SDL_GetKeyboardState(&numKeys);
+    return scancode > SDL_SCANCODE_UNKNOWN && (int)scancode < numKeys && state[scancode];
 }
 
 /**
@@ -452,7 +453,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
 
             // Keyboard mapping (port 0)
             if (port == 0 && id <= RETRO_DEVICE_ID_JOYPAD_R3) {
-                if (SDL_Libretro_IsKeyDown(lr, lr->keyboardPlayer1[id])) {
+                if (SDL_Libretro_IsKeyDown(lr->keyboardPlayer1[id])) {
                     return 1;
                 }
             }
@@ -516,7 +517,7 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
 
         case RETRO_DEVICE_KEYBOARD: {
             SDL_Scancode sc = SDL_Libretro_RetroKeyToScancode(id);
-            return SDL_Libretro_IsKeyDown(lr, sc) ? 1 : 0;
+            return SDL_Libretro_IsKeyDown(sc) ? 1 : 0;
         }
 
         case RETRO_DEVICE_MOUSE: {
@@ -629,17 +630,17 @@ static int16_t SDL_Libretro_InputState(unsigned port, unsigned device, unsigned 
                     return (state & SDL_BUTTON_X2MASK) ? 1 : 0;
                 }
                 case RETRO_DEVICE_ID_LIGHTGUN_START:
-                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_RETURN) ? 1 : 0;
+                    return SDL_Libretro_IsKeyDown(SDL_SCANCODE_RETURN) ? 1 : 0;
                 case RETRO_DEVICE_ID_LIGHTGUN_SELECT:
-                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_RSHIFT) ? 1 : 0;
+                    return SDL_Libretro_IsKeyDown(SDL_SCANCODE_RSHIFT) ? 1 : 0;
                 case RETRO_DEVICE_ID_LIGHTGUN_DPAD_UP:
-                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_UP) ? 1 : 0;
+                    return SDL_Libretro_IsKeyDown(SDL_SCANCODE_UP) ? 1 : 0;
                 case RETRO_DEVICE_ID_LIGHTGUN_DPAD_DOWN:
-                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_DOWN) ? 1 : 0;
+                    return SDL_Libretro_IsKeyDown(SDL_SCANCODE_DOWN) ? 1 : 0;
                 case RETRO_DEVICE_ID_LIGHTGUN_DPAD_LEFT:
-                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_LEFT) ? 1 : 0;
+                    return SDL_Libretro_IsKeyDown(SDL_SCANCODE_LEFT) ? 1 : 0;
                 case RETRO_DEVICE_ID_LIGHTGUN_DPAD_RIGHT:
-                    return SDL_Libretro_IsKeyDown(lr, SDL_SCANCODE_RIGHT) ? 1 : 0;
+                    return SDL_Libretro_IsKeyDown(SDL_SCANCODE_RIGHT) ? 1 : 0;
             }
             return 0;
         }
@@ -1005,8 +1006,8 @@ static float SDL_Libretro_GetSensorInput(unsigned port, unsigned id) {
     SDL_Libretro* lr = SDL_Libretro_active;
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS) return 0.0f;
 
-    // Accelerometer
-    if (id >= RETRO_SENSOR_ACCELEROMETER_X && id <= RETRO_SENSOR_ACCELEROMETER_Z && lr->core.sensorAccel[port]) {
+    // Accelerometer; its ids start the list at 0.
+    if (id <= RETRO_SENSOR_ACCELEROMETER_Z && lr->core.sensorAccel[port]) {
         float data[3];
         if (SDL_GetSensorData(lr->core.sensorAccel[port], data, 3)) {
             lr->core.sensorAccelData[port][0] = data[0] / SDL_STANDARD_GRAVITY;
