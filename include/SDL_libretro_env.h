@@ -127,8 +127,9 @@ static void SDL_Libretro_PerfLog(void) {
  */
 static void SDL_Libretro_ApplyRumble(SDL_Libretro* lr, unsigned port) {
     if (!lr || port >= SDL_LIBRETRO_MAX_USERS || !lr->gamepads[port]) return;
-    Uint16 lo = (Uint16)(lr->core.rumbleWeak[port] * 65535.0f);
-    Uint16 hi = (Uint16)(lr->core.rumbleStrong[port] * 65535.0f);
+    // SDL's low-frequency motor is the large, strong one.
+    Uint16 lo = (Uint16)(lr->core.rumbleStrong[port] * 65535.0f);
+    Uint16 hi = (Uint16)(lr->core.rumbleWeak[port] * 65535.0f);
     SDL_RumbleGamepad(lr->gamepads[port], lo, hi, (lo || hi) ? 1000 : 0);
 }
 
