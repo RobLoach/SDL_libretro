@@ -3918,6 +3918,21 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(aboutHasCore, "About shows the loaded core");
         SDLTest_AssertCheck(aboutHasContent, "About shows the loaded content");
         SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
+
+        // Reloading the same core while the menu stays open frees the option
+        // strings Core Options borrows, so it must rebuild before it draws.
+        SDL_Libretro_UnloadCore(lr);
+        SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+        SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH);
+        SDL_Libretro_AreOptionsDirty(lr); // As for a core that registers its options just once.
+        SDLTest_AssertCheck(menu->builtOptionCount == lr->core.optionCount, "Same-core reload keeps the option count");
+        SDL_Libretro_UpdateMenu(menu);
+        SDLTest_AssertCheck(menu->builtCoreGeneration == lr->coreGeneration, "Same-core reload rebuilds the core pages");
+        nk_console_set_active_parent(menu->optionsButton);
+        SDL_Libretro_RenderMenu(menu);
+        SDL_Libretro_UpdateMenu(menu);
+        SDL_Libretro_RenderMenu(menu);
+        nk_console_set_active_parent(menu->console);
 #endif
 
         SDL_Libretro_DestroyMenu(menu);

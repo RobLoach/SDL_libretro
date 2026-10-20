@@ -865,6 +865,7 @@ struct SDL_Libretro {
     unsigned gamepadCount;
 
     SDL_LibretroCoreData core; /**< The loaded core state. */
+    unsigned coreGeneration; /**< Bumped each time the core unloads and frees its options, descriptors, and other core-owned strings, so anything borrowing them can tell even a reload of the same core apart. */
 
     // Configuration
     char* iniFile;

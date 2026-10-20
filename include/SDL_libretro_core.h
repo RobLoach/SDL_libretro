@@ -356,6 +356,7 @@ void SDL_Libretro_UnloadCore(SDL_Libretro* lr) {
     if (SDL_Libretro_active == lr) {
         SDL_Libretro_active = NULL;
     }
+    lr->coreGeneration++;
 
     SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Core unloaded");
 

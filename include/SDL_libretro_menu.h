@@ -258,7 +258,7 @@ struct SDL_LibretroMenu {
     bool optionsStale; /**< The Core Options submenu no longer matches the core's options. */
     bool settingsDirty; /**< A menu-owned setting changed and awaits SDL_Libretro_MenuSaveState(). */
     unsigned builtOptionCount; /**< Option count when the submenu was last built. */
-    char builtCoreName[128]; /**< Core library name when the submenu was last built. */
+    unsigned builtCoreGeneration; /**< SDL_Libretro::coreGeneration when the core submenus were last built; the widgets borrow core-owned strings that an unload frees. */
 
     // Controllers
     SDL_LibretroMenuPortState portStates[SDL_LIBRETRO_MAX_USERS];
@@ -2640,7 +2640,8 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
  * filter) when they no longer match the loaded core:
  *
  *  * an option changed outside the menu (the app-side dirty flag),
- *  * the loaded core changed (library name) or its option set changed size,
+ *  * a core unloaded since the last build, freeing the strings the widgets
+ *    borrow, even if the same core loaded again; or the option set changed size,
  *  * the menu just opened; visibility may have shifted while it was closed,
  *    so the core's display callback is re-run first.
  */
@@ -2649,7 +2650,9 @@ static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justO
     if (SDL_Libretro_AreOptionsDirty(lr)) {
         menu->optionsStale = true;
     }
-    bool coreChanged = SDL_strcmp(menu->builtCoreName, lr->core.libraryName) != 0;
+    // Any unload frees the strings the widgets borrow, even when the same core
+    // loads again, so compare generations rather than core names.
+    bool coreChanged = menu->builtCoreGeneration != lr->coreGeneration;
     bool countChanged = menu->builtOptionCount != lr->core.optionCount;
     if (!justOpened && !coreChanged && !countChanged && !menu->optionsStale) {
         return;
@@ -2667,7 +2670,7 @@ static void SDL_Libretro_MenuRebuildCoreMenus(SDL_LibretroMenu* menu, bool justO
     SDL_Libretro_MenuUpdateLoadGameFilter(menu);
     menu->optionsStale = false;
     menu->builtOptionCount = lr->core.optionCount;
-    SDL_strlcpy(menu->builtCoreName, lr->core.libraryName, sizeof(menu->builtCoreName));
+    menu->builtCoreGeneration = lr->coreGeneration;
 }
 
 /**
