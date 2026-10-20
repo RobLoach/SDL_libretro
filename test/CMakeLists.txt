@@ -43,6 +43,8 @@ if(SDL_LIBRETRO_PHYSFS)
     #   test_disc.zip     - a .cue sheet must beat a plain candidate
     #   test_nested.zip   - content in a subdirectory is still found
     #   test_second.zip   - a second need_fullpath zip with distinct bytes
+    #   test_basename.zip - a base-name match must have a loadable extension
+    #   test_siblings.zip - need_fullpath content beside a file in a subdirectory
     set(TEST_ZIP_STAGING "${CMAKE_CURRENT_BINARY_DIR}/test_zip_staging")
     file(MAKE_DIRECTORY ${TEST_ZIP_STAGING})
     file(MAKE_DIRECTORY ${TEST_ZIP_STAGING}/sub/dir)
@@ -54,6 +56,11 @@ if(SDL_LIBRETRO_PHYSFS)
     file(WRITE ${TEST_ZIP_STAGING}/disc.cue "CUE SHEET PICK")
     file(WRITE ${TEST_ZIP_STAGING}/sub/dir/nested.txt "NESTED PICK")
     file(WRITE ${TEST_ZIP_STAGING}/second.vfs "SECOND ZIP PICK")
+    file(WRITE ${TEST_ZIP_STAGING}/test_basename.nfo "WRONG NFO PICK")
+    file(WRITE ${TEST_ZIP_STAGING}/test_basename.txt "BASENAME PICK")
+    file(MAKE_DIRECTORY ${TEST_ZIP_STAGING}/siblings/data)
+    configure_file(test_content.txt ${TEST_ZIP_STAGING}/siblings/game.vfs COPYONLY)
+    file(WRITE ${TEST_ZIP_STAGING}/siblings/data/track.bin "TRACK")
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar cf
         ${CMAKE_CURRENT_BINARY_DIR}/test_content.zip --format=zip test_content.txt
         WORKING_DIRECTORY ${TEST_ZIP_STAGING})
@@ -72,6 +79,12 @@ if(SDL_LIBRETRO_PHYSFS)
     execute_process(COMMAND ${CMAKE_COMMAND} -E tar cf
         ${CMAKE_CURRENT_BINARY_DIR}/test_second.zip --format=zip second.vfs
         WORKING_DIRECTORY ${TEST_ZIP_STAGING})
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar cf
+        ${CMAKE_CURRENT_BINARY_DIR}/test_basename.zip --format=zip test_basename.nfo test_basename.txt
+        WORKING_DIRECTORY ${TEST_ZIP_STAGING})
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar cf
+        ${CMAKE_CURRENT_BINARY_DIR}/test_siblings.zip --format=zip game.vfs data/track.bin
+        WORKING_DIRECTORY ${TEST_ZIP_STAGING}/siblings)
     target_compile_definitions(SDL_libretro_test PRIVATE
         TEST_CORE_NOVFS_PATH="$<TARGET_FILE:test_core_novfs>"
         TEST_CONTENT_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_content.zip"
@@ -79,7 +92,9 @@ if(SDL_LIBRETRO_PHYSFS)
         TEST_PRIORITY_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_priority.zip"
         TEST_DISC_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_disc.zip"
         TEST_NESTED_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_nested.zip"
-        TEST_SECOND_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_second.zip")
+        TEST_SECOND_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_second.zip"
+        TEST_BASENAME_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_basename.zip"
+        TEST_SIBLINGS_ZIP_PATH="${CMAKE_CURRENT_BINARY_DIR}/test_siblings.zip")
 else()
     # The test opts into PhysFS in source; turn it back off.
     target_compile_definitions(SDL_libretro_test PRIVATE SDL_LIBRETRO_DISABLE_PHYSFS)

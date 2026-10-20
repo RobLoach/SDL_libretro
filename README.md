@@ -97,7 +97,7 @@ To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake o
 SDL_Libretro_LoadGame(lr, "game.zip");
 ```
 
-Cores that set `block_extract` in their `.info` file, or that list `zip` as a supported extension, get the raw `.zip` instead of the content inside it.
+Cores that set `block_extract` in their `.info` file, or that list `zip` as a supported extension, get the raw `.zip` instead of the content inside it. Cores that need a file path, but read it from the OS rather than the libretro VFS, get the whole archive extracted to a temp directory, so content like a `.cue` sheet finds its tracks; it's removed when the game unloads.
 
 ### Config
 

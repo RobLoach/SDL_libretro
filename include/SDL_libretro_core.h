@@ -654,6 +654,12 @@ static void SDL_Libretro_ResetContentState(SDL_Libretro* lr) {
         lr->core.contentTempPath[0] = '\0';
     }
 
+    // Remove an archive extracted for a need_fullpath core, with everything in it.
+    if (lr->core.contentTempDir[0] != '\0') {
+        SDL_Libretro_RemoveTree(lr->core.contentTempDir);
+        lr->core.contentTempDir[0] = '\0';
+    }
+
     if (lr->core.gameInfoExt.persistent_data) {
         SDL_free((void*)lr->core.gameInfoExt.data);
     }
@@ -988,10 +994,63 @@ bool SDL_Libretro_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 
 /**
  * @internal
+ * Get the frontend's temp directory, creating it if needed.
+ *
+ * It's "<save directory>/tmp/", falling back to "<pref path>/tmp/", then
+ * "<base path>/tmp/".
+ *
+ * @returns true when the directory exists, with its path in `dir`.
+ */
+static bool SDL_Libretro_GetTempDirectory(SDL_Libretro* lr, char* dir, size_t dirSize) {
+    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
+    if (saveDir && saveDir[0]) {
+        SDL_snprintf(dir, dirSize, "%s/tmp/", saveDir);
+    }
+    else if (SDL_Libretro_GetPrefDirectory(dir, dirSize)) {
+        SDL_strlcat(dir, "/tmp/", dirSize);
+    }
+    else {
+        const char* base = SDL_GetBasePath();
+        SDL_snprintf(dir, dirSize, "%stmp/", base ? base : "./");
+    }
+    if (!SDL_CreateDirectory(dir)) {
+        return SDL_SetError("[SDL_Libretro] Failed to create temp directory '%s': %s", dir, SDL_GetError());
+    }
+    return true;
+}
+
+/**
+ * @internal
+ * SDL_EnumerateDirectory() callback for SDL_Libretro_RemoveTree().
+ */
+static SDL_EnumerationResult SDLCALL SDL_Libretro_RemoveTreeEntry(void* userdata, const char* dirname, const char* fname) {
+    (void)userdata;
+    char path[SDL_LIBRETRO_MAX_PATH];
+    size_t len = SDL_strlen(dirname);
+    bool slash = len > 0 && (dirname[len - 1] == '/' || dirname[len - 1] == '\\');
+    SDL_snprintf(path, sizeof(path), "%s%s%s", dirname, slash ? "" : "/", fname);
+    SDL_PathInfo info;
+    if (SDL_GetPathInfo(path, &info) && info.type == SDL_PATHTYPE_DIRECTORY) {
+        SDL_EnumerateDirectory(path, SDL_Libretro_RemoveTreeEntry, NULL);
+    }
+    SDL_RemovePath(path);
+    return SDL_ENUM_CONTINUE;
+}
+
+/**
+ * @internal
+ * Remove a directory and everything in it.
+ */
+static void SDL_Libretro_RemoveTree(const char* path) {
+    SDL_EnumerateDirectory(path, SDL_Libretro_RemoveTreeEntry, NULL);
+    SDL_RemovePath(path);
+}
+
+/**
+ * @internal
  * Spill a stream to a new file in the frontend's temp directory.
  *
- * The temp directory is "<save directory>/tmp", falling back to "<pref
- * path>/tmp", then "<base path>/tmp", and is created on demand. The file keeps
+ * The temp directory comes from SDL_Libretro_GetTempDirectory(). The file keeps
  * the file name of `path` (uniquified with a "-<n>" suffix if it's taken), so
  * cores that look at the name or extension see the original. The caller owns
  * the file and must remove it once it's no longer needed.
@@ -1017,19 +1076,7 @@ static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, co
 
     // Pick the temp directory and make sure it exists.
     char dir[SDL_LIBRETRO_MAX_PATH];
-    const char* saveDir = SDL_Libretro_GetSaveDirectory(lr);
-    if (saveDir && saveDir[0]) {
-        SDL_snprintf(dir, sizeof(dir), "%s/tmp/", saveDir);
-    }
-    else if (SDL_Libretro_GetPrefDirectory(dir, sizeof(dir))) {
-        SDL_strlcat(dir, "/tmp/", sizeof(dir));
-    }
-    else {
-        const char* base = SDL_GetBasePath();
-        SDL_snprintf(dir, sizeof(dir), "%stmp/", base ? base : "./");
-    }
-    if (!SDL_CreateDirectory(dir)) {
-        SDL_SetError("[SDL_Libretro] Failed to create temp directory '%s': %s", dir, SDL_GetError());
+    if (!SDL_Libretro_GetTempDirectory(lr, dir, sizeof(dir))) {
         SDL_free(fileData);
         return false;
     }

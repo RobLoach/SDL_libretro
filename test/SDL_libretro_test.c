@@ -2183,6 +2183,17 @@ static int SDLCALL test_PhysFSPickPriority(void *arg) {
             "Base-name match beats the other candidate, got '%.13s'", sram);
     }
 
+#ifdef TEST_BASENAME_ZIP_PATH
+    // test_basename.zip holds "test_basename.nfo" and "test_basename.txt"; the
+    // .nfo sorts first and matches the archive's base name, but the core can't
+    // load it.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_BASENAME_ZIP_PATH) == true,
+        "PhysFS_LoadGame succeeds with the base-name zip");
+    sram = (const char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram != NULL && sramSize >= 13 && SDL_memcmp(sram, "BASENAME PICK", 13) == 0,
+        "Base-name match skips an extension the core can't load, got '%.14s'", sram ? sram : "");
+#endif
+
     // test_disc.zip holds "data.txt" and "disc.cue"; the core supports "cue",
     // so the disc metadata must win over the plain candidate.
     SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_DISC_ZIP_PATH) == true,
@@ -2313,26 +2324,27 @@ static int SDLCALL test_PhysFSSpillFallback(void *arg) {
     SDLTest_AssertCheck(lr->core.usedVFS == false, "Core has not requested the VFS before load");
     SDLTest_AssertCheck(SDL_GetPathInfo(saveDir, NULL) == true, "LoadCore created the default save directory");
 
-    // A file already sitting at the spill's natural name must survive the
-    // load/unload cycle untouched. Clear any leftover from a crashed prior
+    // A directory already sitting at the extraction's natural name must survive
+    // the load/unload cycle untouched. Clear any leftover from a crashed prior
     // run first so the uniquified name is deterministic.
-    char tmpDir[1024], keepPath[1024], uniquePath[1024];
+    char tmpDir[1024], keepDir[1024], keepPath[1024], uniqueDir[1024], extractedPath[1024];
     SDL_snprintf(tmpDir, sizeof(tmpDir), "%s/tmp", saveDir);
-    SDL_snprintf(keepPath, sizeof(keepPath), "%s/game.vfs", tmpDir);
-    SDL_snprintf(uniquePath, sizeof(uniquePath), "%s/game-1.vfs", tmpDir);
-    SDL_CreateDirectory(tmpDir);
-    SDL_RemovePath(uniquePath);
-    SDLTest_AssertCheck(SDL_SaveFile(keepPath, "KEEP", 4) == true, "Pre-existing 'game.vfs' created");
+    SDL_snprintf(keepDir, sizeof(keepDir), "%s/test_fullpath", tmpDir);
+    SDL_snprintf(keepPath, sizeof(keepPath), "%s/keep.txt", keepDir);
+    SDL_snprintf(uniqueDir, sizeof(uniqueDir), "%s/test_fullpath-1/", tmpDir);
+    SDL_snprintf(extractedPath, sizeof(extractedPath), "%sgame.vfs", uniqueDir);
+    SDL_Libretro_RemoveTree(uniqueDir);
+    SDL_CreateDirectory(keepDir);
+    SDLTest_AssertCheck(SDL_SaveFile(keepPath, "KEEP", 4) == true, "Pre-existing 'test_fullpath' directory created");
 
     SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_FULLPATH_ZIP_PATH) == true,
         "PhysFS_LoadGame succeeds for a full-path core that doesn't use the VFS");
-    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after spill-fallback load");
-    SDLTest_AssertCheck(lr->core.contentTempPath[0] != '\0',
-        "Content was spilled to a real file, not served virtually");
-    SDLTest_AssertCheck(SDL_strcmp(lr->core.contentTempPath, uniquePath) == 0,
-        "Spill avoided the pre-existing 'game.vfs': %s", lr->core.contentTempPath);
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after extraction load");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.contentTempDir, uniqueDir) == 0,
+        "Extraction avoided the pre-existing directory: %s", lr->core.contentTempDir);
+    SDLTest_AssertCheck(SDL_GetPathInfo(extractedPath, NULL) == true, "Content was extracted to a real file, not served virtually");
     SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetGameName(lr), "game") == 0,
-        "Game name ignores the uniquified temp name, got '%s'", SDL_Libretro_GetGameName(lr));
+        "Game name is the content's, got '%s'", SDL_Libretro_GetGameName(lr));
 
     // The core read the spilled file; the bytes match the file that was zipped.
     size_t expectedSize = 0;
@@ -2346,14 +2358,34 @@ static int SDLCALL test_PhysFSSpillFallback(void *arg) {
     SDL_free(expected);
 
     SDL_Libretro_UnloadGame(lr);
-    SDLTest_AssertCheck(SDL_GetPathInfo(uniquePath, NULL) == false, "Spilled file removed on unload");
+    SDLTest_AssertCheck(SDL_GetPathInfo(uniqueDir, NULL) == false, "Extracted archive removed on unload");
 
     size_t keepSize = 0;
     char* keep = (char*)SDL_LoadFile(keepPath, &keepSize);
     SDLTest_AssertCheck(keep != NULL && keepSize == 4 && SDL_memcmp(keep, "KEEP", 4) == 0,
-        "Pre-existing 'game.vfs' untouched");
+        "Pre-existing directory untouched");
     SDL_free(keep);
-    SDL_RemovePath(keepPath);
+    SDL_Libretro_RemoveTree(keepDir);
+
+#ifdef TEST_SIBLINGS_ZIP_PATH
+    // Content that refers to other files in the archive finds them, like a
+    // .cue sheet's tracks, here in a subdirectory. Reload the core, since
+    // loading path-only content had it ask for the VFS.
+    SDL_Libretro_LoadCore(lr, TEST_CORE_NOVFS_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame(lr, TEST_SIBLINGS_ZIP_PATH) == true,
+        "PhysFS_LoadGame succeeds with content beside other files");
+    char siblingPath[1024];
+    SDL_snprintf(siblingPath, sizeof(siblingPath), "%sdata/track.bin", lr->core.contentTempDir);
+    size_t siblingSize = 0;
+    char* sibling = (char*)SDL_LoadFile(siblingPath, &siblingSize);
+    SDLTest_AssertCheck(sibling && siblingSize == 5 && SDL_memcmp(sibling, "TRACK", 5) == 0,
+        "The rest of the archive was extracted beside the content: %s", siblingPath);
+    SDL_free(sibling);
+    char siblingsDir[1024];
+    SDL_strlcpy(siblingsDir, lr->core.contentTempDir, sizeof(siblingsDir));
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(SDL_GetPathInfo(siblingsDir, NULL) == false, "The whole extracted tree is removed on unload");
+#endif
 
     SDL_Libretro_PhysFS_Quit(lr);
     SDL_Libretro_Destroy(lr);
