@@ -40,9 +40,13 @@ SDL_Libretro* lr = SDL_Libretro_Create();
 SDL_Libretro_LoadCore(lr, "core.so");
 SDL_Libretro_LoadGame(lr, "game.rom");
 
-while (!SDL_Libretro_ShouldQuit(lr)) {
+bool running = true;
+while (running && !SDL_Libretro_ShouldQuit(lr)) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
+        if (event.type == SDL_EVENT_QUIT) {
+            running = false;
+        }
         SDL_Libretro_HandleEvent(lr, &event);
     }
 

@@ -39,8 +39,9 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Run until the window closes or the core asks to shut down.
     bool running = true;
-    while (running) {
+    while (running && !SDL_Libretro_ShouldQuit(lr)) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_EVENT_QUIT) {
