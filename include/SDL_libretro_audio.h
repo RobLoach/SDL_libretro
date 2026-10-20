@@ -1,7 +1,7 @@
 /**
  * SDL_libretro - audio subsystem
  *
- * Pushes libretro's S16 stereo samples directly to SDL3 via SDL_PutAudioStreamData(). 
+ * Pushes libretro's S16 stereo samples directly to SDL3 via SDL_PutAudioStreamData().
  * SDL handles the format conversion and volume gain.
  *
  * @file SDL_libretro_audio.h

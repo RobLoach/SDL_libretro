@@ -39,7 +39,8 @@ static const SDL_GamepadButton SDL_Libretro_DefaultGamepadButtons[SDL_LIBRETRO_M
  */
 static SDL_GamepadButton SDL_Libretro_RetroJoypadToGamepadButton(const SDL_Libretro* lr, unsigned port, unsigned button) {
     return port < SDL_LIBRETRO_MAX_USERS && button < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS
-        ? lr->gamepadButtons[port][button] : SDL_GAMEPAD_BUTTON_INVALID;
+               ? lr->gamepadButtons[port][button]
+               : SDL_GAMEPAD_BUTTON_INVALID;
 }
 
 /**

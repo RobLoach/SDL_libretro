@@ -162,7 +162,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if (subsystemArg != 0) {
         // e.g. "core.so --subsystem sgb a.gb b.gb"; a core must precede the flag.
         corePath = subsystemArg > 1 ? argv[1] : NULL;
-    } else {
+    }
+    else {
         corePath = argc > 2 ? argv[1] : NULL;
         gamePath = argc > 2 ? argv[2] : (argc > 1 ? argv[1] : NULL);
     }
@@ -210,7 +211,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if (subsystemArg != 0) {
         if (!subsystemIdent || subsystemPathCount == 0) {
             SDL_Log("Usage: <core> --subsystem <ident> \"path1\" [\"path2\" ...]");
-        } else if (!SDL_Libretro_LoadGameSpecial(lr, subsystemIdent, subsystemPaths, subsystemPathCount)) {
+        }
+        else if (!SDL_Libretro_LoadGameSpecial(lr, subsystemIdent, subsystemPaths, subsystemPathCount)) {
             SDL_Log("Failed to load subsystem '%s': %s", subsystemIdent, SDL_GetError());
         }
     }

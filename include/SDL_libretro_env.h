@@ -1068,8 +1068,8 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             struct retro_core_option_v2_definition* defs =
                 (struct retro_core_option_v2_definition*)SDL_calloc(defCount + 1, sizeof(*defs));
             struct retro_core_option_v2_category* cats = catCount > 0
-                ? (struct retro_core_option_v2_category*)SDL_calloc(catCount + 1, sizeof(*cats))
-                : NULL;
+                                                             ? (struct retro_core_option_v2_category*)SDL_calloc(catCount + 1, sizeof(*cats))
+                                                             : NULL;
             if (!defs || (catCount > 0 && !cats)) {
                 SDL_free(defs);
                 SDL_free(cats);

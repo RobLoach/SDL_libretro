@@ -142,12 +142,12 @@
  * The Language combobox entries, separated by a |: Auto, then the
  * RETRO_LANGUAGE_* values in enum order.
  */
-#define SDL_LIBRETRO_MENU_LANGUAGE_NAMES                                              \
-    "Auto|English|Japanese|French|Spanish|German|Italian|Dutch|"                      \
-    "Portuguese (Brazil)|Portuguese (Portugal)|Russian|Korean|"                       \
-    "Chinese (Traditional)|Chinese (Simplified)|Esperanto|Polish|Vietnamese|Arabic|"  \
-    "Greek|Turkish|Slovak|Persian|Hebrew|Asturian|Finnish|Indonesian|Swedish|"        \
-    "Ukrainian|Czech|Catalan (Valencia)|Catalan|British English|Hungarian|"           \
+#define SDL_LIBRETRO_MENU_LANGUAGE_NAMES                                             \
+    "Auto|English|Japanese|French|Spanish|German|Italian|Dutch|"                     \
+    "Portuguese (Brazil)|Portuguese (Portugal)|Russian|Korean|"                      \
+    "Chinese (Traditional)|Chinese (Simplified)|Esperanto|Polish|Vietnamese|Arabic|" \
+    "Greek|Turkish|Slovak|Persian|Hebrew|Asturian|Finnish|Indonesian|Swedish|"       \
+    "Ukrainian|Czech|Catalan (Valencia)|Catalan|British English|Hungarian|"          \
     "Belarusian|Galician|Norwegian|Irish|Thai"
 
 /**
@@ -701,12 +701,9 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
     SDL_Libretro_MenuAddBackButton(menu->aboutButton, "About");
 
     // Frontend
-    SDL_Libretro_MenuAboutLine(menu, "SDL_libretro %d.%d.%d",
-        SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
+    SDL_Libretro_MenuAboutLine(menu, "SDL_libretro %d.%d.%d", SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
     int sdlVersion = SDL_GetVersion();
-    SDL_Libretro_MenuAboutLine(menu, "SDL %d.%d.%d %s",
-        SDL_VERSIONNUM_MAJOR(sdlVersion), SDL_VERSIONNUM_MINOR(sdlVersion), SDL_VERSIONNUM_MICRO(sdlVersion),
-        SDL_GetRevision());
+    SDL_Libretro_MenuAboutLine(menu, "SDL %d.%d.%d %s", SDL_VERSIONNUM_MAJOR(sdlVersion), SDL_VERSIONNUM_MINOR(sdlVersion), SDL_VERSIONNUM_MICRO(sdlVersion), SDL_GetRevision());
     const char* rendererName = SDL_GetRendererName(lr->renderer);
     SDL_Libretro_MenuAboutLine(menu, "Renderer: %s", rendererName != NULL ? rendererName : "Unknown");
 
@@ -736,8 +733,7 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuAboutLine(menu, "Size: %dx%d @ %.2f FPS", width, height, SDL_Libretro_GetFPS(lr));
         int rotation = SDL_Libretro_GetRotation(lr);
         if (rotation != 0) {
-            SDL_Libretro_MenuAboutLine(menu, "Aspect Ratio: %.3f (rotated %d)",
-                SDL_Libretro_GetAspectRatio(lr), rotation * 90);
+            SDL_Libretro_MenuAboutLine(menu, "Aspect Ratio: %.3f (rotated %d)", SDL_Libretro_GetAspectRatio(lr), rotation * 90);
         }
         else {
             SDL_Libretro_MenuAboutLine(menu, "Aspect Ratio: %.3f", SDL_Libretro_GetAspectRatio(lr));
@@ -822,8 +818,7 @@ static void SDL_Libretro_MenuVSyncChanged(SDL_LibretroMenu* menu, void* userdata
 static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
     // Keep the capacity and interval the app configured.
-    SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true,
-                                  menu->lr->rewindCapacity, menu->lr->rewindCaptureInterval);
+    SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true, menu->lr->rewindCapacity, menu->lr->rewindCaptureInterval);
 }
 
 /**
@@ -879,35 +874,38 @@ static void SDL_Libretro_MenuMuteChanged(SDL_LibretroMenu* menu, void* userdata)
  * rune-to-scancode lookups resolve to the primary. Printable keys are
  * handled by the ASCII fallbacks in the lookups below.
  */
-static const struct { SDL_Scancode scancode; nk_rune rune; } SDL_Libretro_MenuKeyRunes[] = {
-    { SDL_SCANCODE_RETURN, NK_CONSOLE_KEY_ENTER },
-    { SDL_SCANCODE_KP_ENTER, NK_CONSOLE_KEY_ENTER },
-    { SDL_SCANCODE_TAB, NK_CONSOLE_KEY_TAB },
-    { SDL_SCANCODE_BACKSPACE, NK_CONSOLE_KEY_BACKSPACE },
-    { SDL_SCANCODE_ESCAPE, NK_CONSOLE_KEY_ESCAPE },
-    { SDL_SCANCODE_DELETE, NK_CONSOLE_KEY_DELETE },
-    { SDL_SCANCODE_UP, NK_CONSOLE_KEY_UP },
-    { SDL_SCANCODE_DOWN, NK_CONSOLE_KEY_DOWN },
-    { SDL_SCANCODE_LEFT, NK_CONSOLE_KEY_LEFT },
-    { SDL_SCANCODE_RIGHT, NK_CONSOLE_KEY_RIGHT },
-    { SDL_SCANCODE_LSHIFT, NK_CONSOLE_KEY_SHIFT },
-    { SDL_SCANCODE_RSHIFT, NK_CONSOLE_KEY_SHIFT },
-    { SDL_SCANCODE_LCTRL, NK_CONSOLE_KEY_CTRL },
-    { SDL_SCANCODE_RCTRL, NK_CONSOLE_KEY_CTRL },
-    { SDL_SCANCODE_LALT, NK_CONSOLE_KEY_ALT },
-    { SDL_SCANCODE_RALT, NK_CONSOLE_KEY_ALT },
-    { SDL_SCANCODE_F1, NK_CONSOLE_KEY_F1 },
-    { SDL_SCANCODE_F2, NK_CONSOLE_KEY_F2 },
-    { SDL_SCANCODE_F3, NK_CONSOLE_KEY_F3 },
-    { SDL_SCANCODE_F4, NK_CONSOLE_KEY_F4 },
-    { SDL_SCANCODE_F5, NK_CONSOLE_KEY_F5 },
-    { SDL_SCANCODE_F6, NK_CONSOLE_KEY_F6 },
-    { SDL_SCANCODE_F7, NK_CONSOLE_KEY_F7 },
-    { SDL_SCANCODE_F8, NK_CONSOLE_KEY_F8 },
-    { SDL_SCANCODE_F9, NK_CONSOLE_KEY_F9 },
-    { SDL_SCANCODE_F10, NK_CONSOLE_KEY_F10 },
-    { SDL_SCANCODE_F11, NK_CONSOLE_KEY_F11 },
-    { SDL_SCANCODE_F12, NK_CONSOLE_KEY_F12 },
+static const struct {
+    SDL_Scancode scancode;
+    nk_rune rune;
+} SDL_Libretro_MenuKeyRunes[] = {
+    {SDL_SCANCODE_RETURN, NK_CONSOLE_KEY_ENTER},
+    {SDL_SCANCODE_KP_ENTER, NK_CONSOLE_KEY_ENTER},
+    {SDL_SCANCODE_TAB, NK_CONSOLE_KEY_TAB},
+    {SDL_SCANCODE_BACKSPACE, NK_CONSOLE_KEY_BACKSPACE},
+    {SDL_SCANCODE_ESCAPE, NK_CONSOLE_KEY_ESCAPE},
+    {SDL_SCANCODE_DELETE, NK_CONSOLE_KEY_DELETE},
+    {SDL_SCANCODE_UP, NK_CONSOLE_KEY_UP},
+    {SDL_SCANCODE_DOWN, NK_CONSOLE_KEY_DOWN},
+    {SDL_SCANCODE_LEFT, NK_CONSOLE_KEY_LEFT},
+    {SDL_SCANCODE_RIGHT, NK_CONSOLE_KEY_RIGHT},
+    {SDL_SCANCODE_LSHIFT, NK_CONSOLE_KEY_SHIFT},
+    {SDL_SCANCODE_RSHIFT, NK_CONSOLE_KEY_SHIFT},
+    {SDL_SCANCODE_LCTRL, NK_CONSOLE_KEY_CTRL},
+    {SDL_SCANCODE_RCTRL, NK_CONSOLE_KEY_CTRL},
+    {SDL_SCANCODE_LALT, NK_CONSOLE_KEY_ALT},
+    {SDL_SCANCODE_RALT, NK_CONSOLE_KEY_ALT},
+    {SDL_SCANCODE_F1, NK_CONSOLE_KEY_F1},
+    {SDL_SCANCODE_F2, NK_CONSOLE_KEY_F2},
+    {SDL_SCANCODE_F3, NK_CONSOLE_KEY_F3},
+    {SDL_SCANCODE_F4, NK_CONSOLE_KEY_F4},
+    {SDL_SCANCODE_F5, NK_CONSOLE_KEY_F5},
+    {SDL_SCANCODE_F6, NK_CONSOLE_KEY_F6},
+    {SDL_SCANCODE_F7, NK_CONSOLE_KEY_F7},
+    {SDL_SCANCODE_F8, NK_CONSOLE_KEY_F8},
+    {SDL_SCANCODE_F9, NK_CONSOLE_KEY_F9},
+    {SDL_SCANCODE_F10, NK_CONSOLE_KEY_F10},
+    {SDL_SCANCODE_F11, NK_CONSOLE_KEY_F11},
+    {SDL_SCANCODE_F12, NK_CONSOLE_KEY_F12},
 };
 
 /**
@@ -1064,8 +1062,7 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
         nk_console_set_tooltip(player, "Gamepad buttons for this player's retro controller; the triggers stay analog");
 
         nk_console_set_tooltip(
-            SDL_Libretro_MenuOnChanged(nk_console_combobox(player, "Analog to Digital", "None|Left|Right", '|', &padPort->analogIndex),
-                                       &SDL_Libretro_MenuAnalogToDigitalChanged, padPort),
+            SDL_Libretro_MenuOnChanged(nk_console_combobox(player, "Analog to Digital", "None|Left|Right", '|', &padPort->analogIndex), &SDL_Libretro_MenuAnalogToDigitalChanged, padPort),
             "The chosen analog stick also presses the D-Pad directions");
 
         for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
@@ -1074,7 +1071,8 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
             padPort->binds[i].button = i;
             SDL_Libretro_MenuOnChanged(
                 nk_console_input_gamepad(player, SDL_Libretro_JoypadButtonNames[i], -1, NULL, &padPort->binds[i].captured),
-                &SDL_Libretro_MenuPadBindChanged, &padPort->binds[i]);
+                &SDL_Libretro_MenuPadBindChanged,
+                &padPort->binds[i]);
         }
     }
 }
@@ -1312,8 +1310,7 @@ static void SDL_Libretro_MenuBuildOptionWidget(SDL_LibretroMenu* menu, nk_consol
 
     if (SDL_Libretro_MenuOptionIsBoolean(option)) {
         state->checked = (nk_bool)SDL_Libretro_MenuValueTruthy(option->value);
-        widget = SDL_Libretro_MenuAddCheckbox(menu, parent, label, &state->checked, NULL,
-                                              &SDL_Libretro_MenuOptionCheckboxChanged, state);
+        widget = SDL_Libretro_MenuAddCheckbox(menu, parent, label, &state->checked, NULL, &SDL_Libretro_MenuOptionCheckboxChanged, state);
     }
     else {
         // The combobox reads the pipe-separated list lazily, so keep it alive in the state.
@@ -1328,8 +1325,7 @@ static void SDL_Libretro_MenuBuildOptionWidget(SDL_LibretroMenu* menu, nk_consol
             }
         }
 
-        widget = SDL_Libretro_MenuOnChanged(nk_console_combobox(parent, label, state->displayList, '|', &state->selected),
-                                            &SDL_Libretro_MenuOptionChanged, state);
+        widget = SDL_Libretro_MenuOnChanged(nk_console_combobox(parent, label, state->displayList, '|', &state->selected), &SDL_Libretro_MenuOptionChanged, state);
     }
 
     if (option->info != NULL && option->info[0] != '\0') {
@@ -1581,11 +1577,8 @@ static void SDL_Libretro_MenuSettingChanged(nk_console* widget, void* user_data)
  * Create a textedit widget under @p parent and wire it to the consolidated
  * Settings callback.
  */
-static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const char* label,
-                                                       SDL_LibretroMenu* menu,
-                                                       char* buffer, size_t bufferSize) {
-    return SDL_Libretro_MenuOnChanged(nk_console_textedit(parent, label, buffer, bufferSize),
-                                      &SDL_Libretro_MenuSettingChanged, menu);
+static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const char* label, SDL_LibretroMenu* menu, char* buffer, size_t bufferSize) {
+    return SDL_Libretro_MenuOnChanged(nk_console_textedit(parent, label, buffer, bufferSize), &SDL_Libretro_MenuSettingChanged, menu);
 }
 
 /**
@@ -1593,17 +1586,14 @@ static nk_console* SDL_Libretro_MenuAddSettingTextedit(nk_console* parent, const
  * Create a directory-picker widget under @p parent and wire it to the
  * consolidated Settings callback.
  */
-static nk_console* SDL_Libretro_MenuAddSettingDir(nk_console* parent, const char* label,
-                                                  SDL_LibretroMenu* menu,
-                                                  char* buffer, size_t bufferSize) {
+static nk_console* SDL_Libretro_MenuAddSettingDir(nk_console* parent, const char* label, SDL_LibretroMenu* menu, char* buffer, size_t bufferSize) {
 #ifdef __EMSCRIPTEN__
     // The web build's virtual file system isn't worth browsing.
     return SDL_Libretro_MenuAddSettingTextedit(parent, label, menu, buffer, bufferSize);
 #else
     // nk_console_dir (not dir_action) keeps the label in its own column, so
     // the directory type stays visible next to the picked path.
-    return SDL_Libretro_MenuOnChanged(nk_console_dir(parent, label, buffer, (int)bufferSize),
-                                      &SDL_Libretro_MenuSettingChanged, menu);
+    return SDL_Libretro_MenuOnChanged(nk_console_dir(parent, label, buffer, (int)bufferSize), &SDL_Libretro_MenuSettingChanged, menu);
 #endif
 }
 
@@ -1691,8 +1681,7 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
         }
 
         SDL_snprintf(state->label, sizeof(state->label), "Port %u", port + 1);
-        SDL_Libretro_MenuOnChanged(nk_console_combobox(menu->controllersButton, state->label, state->deviceList, '|', &state->selected),
-                                   &SDL_Libretro_MenuPortDeviceChanged, state);
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(menu->controllersButton, state->label, state->deviceList, '|', &state->selected), &SDL_Libretro_MenuPortDeviceChanged, state);
         anyWidget = true;
     }
 
@@ -2201,8 +2190,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console* general = SDL_Libretro_MenuAddSubmenu(settings, "General", NK_SYMBOL_TRIANGLE_RIGHT);
     SDL_Libretro_MenuSyncSettingsBuffers(menu);
     nk_console_set_tooltip(
-        SDL_Libretro_MenuAddSettingTextedit(general, "Username", menu,
-                                            menu->usernameBuffer, sizeof(menu->usernameBuffer)),
+        SDL_Libretro_MenuAddSettingTextedit(general, "Username", menu, menu->usernameBuffer, sizeof(menu->usernameBuffer)),
         "Reported to cores that ask for a username");
 
     // Rewind toggle, with its memory budget below it.
@@ -2210,37 +2198,30 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuAddCheckbox(menu, general, "Rewind", &menu->rewindChecked, NULL, &SDL_Libretro_MenuRewindChanged, NULL),
         "Capture state snapshots so gameplay can rewind");
     nk_console_set_tooltip(
-        SDL_Libretro_MenuOnChanged(nk_console_property_int(general, "Rewind Buffer (MB)", 0, &menu->rewindBufferMB, 1024, 8, 1.0f),
-                                   &SDL_Libretro_MenuRewindBufferChanged, menu),
+        SDL_Libretro_MenuOnChanged(nk_console_property_int(general, "Rewind Buffer (MB)", 0, &menu->rewindBufferMB, 1024, 8, 1.0f), &SDL_Libretro_MenuRewindBufferChanged, menu),
         "Memory the rewind buffer may use; 0 for no limit");
     nk_console_set_tooltip(
-        SDL_Libretro_MenuOnChanged(nk_console_combobox(general, "Language", SDL_LIBRETRO_MENU_LANGUAGE_NAMES, '|', &menu->languageIndex),
-                                   &SDL_Libretro_MenuLanguageChanged, menu),
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(general, "Language", SDL_LIBRETRO_MENU_LANGUAGE_NAMES, '|', &menu->languageIndex), &SDL_Libretro_MenuLanguageChanged, menu),
         "Reported to cores; applies when the next core loads. Auto follows the system locale");
 
     // Audio & Video
     nk_console* audioVideo = SDL_Libretro_MenuAddSubmenu(settings, "Audio & Video", NK_SYMBOL_TRIANGLE_RIGHT);
 
-    SDL_Libretro_MenuOnChanged(nk_console_knob_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f),
-                               &SDL_Libretro_MenuVolumeChanged, menu);
+    SDL_Libretro_MenuOnChanged(nk_console_knob_int(audioVideo, "Volume", 0, &menu->volumePercent, 100, 5, 1.0f), &SDL_Libretro_MenuVolumeChanged, menu);
     nk_console_set_tooltip(
         SDL_Libretro_MenuAddCheckbox(menu, audioVideo, "Mute", &menu->muteChecked, NULL, &SDL_Libretro_MenuMuteChanged, NULL),
         "Silence the audio; unmuting restores the volume");
     SDL_Libretro_MenuAddCheckbox(menu, audioVideo, "Fullscreen", &menu->fullscreenChecked, NULL, &SDL_Libretro_MenuFullscreenChanged, NULL);
     SDL_Libretro_MenuAddCheckbox(menu, audioVideo, "VSync", &menu->vsyncChecked, NULL, &SDL_Libretro_MenuVSyncChanged, NULL);
     nk_console_set_tooltip(
-        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Filter", "Nearest|Linear", '|', &menu->filterIndex),
-                                   &SDL_Libretro_MenuFilterChanged, menu),
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Filter", "Nearest|Linear", '|', &menu->filterIndex), &SDL_Libretro_MenuFilterChanged, menu),
         "Nearest keeps pixels sharp; Linear smooths the scaling");
     nk_console_set_tooltip(
-        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex),
-                                   &SDL_Libretro_MenuFitModeChanged, menu),
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex), &SDL_Libretro_MenuFitModeChanged, menu),
         "Aspect keeps the ratio; Integer locks whole-number scales; Stretch fills the window");
-    SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex),
-                               &SDL_Libretro_MenuStyleChanged, menu);
+    SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex), &SDL_Libretro_MenuStyleChanged, menu);
     nk_console_set_tooltip(
-        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex),
-                                   &SDL_Libretro_MenuUIScaleChanged, menu),
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex), &SDL_Libretro_MenuUIScaleChanged, menu),
         "Menu size; Auto picks one from the resolution");
 
     // Core Options, populated lazily once a core registers options.
@@ -2266,8 +2247,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
         SDL_strlcat(menu->mousePortList, item, sizeof(menu->mousePortList));
     }
     nk_console_set_tooltip(
-        SDL_Libretro_MenuOnChanged(nk_console_combobox(keyboard, "Mouse Port", menu->mousePortList, '|', &menu->mousePortIndex),
-                                   &SDL_Libretro_MenuMousePortChanged, menu),
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(keyboard, "Mouse Port", menu->mousePortList, '|', &menu->mousePortIndex), &SDL_Libretro_MenuMousePortChanged, menu),
         "The controller port the mouse, pointer and lightgun drive");
 
     for (int i = 0; i < SDL_LIBRETRO_MAX_JOYPAD_BUTTONS; i++) {
@@ -2275,7 +2255,8 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
         menu->keyBinds[i].button = i;
         SDL_Libretro_MenuOnChanged(
             nk_console_input_key(keyboard, SDL_Libretro_JoypadButtonNames[i], &menu->keyBinds[i].rune),
-            &SDL_Libretro_MenuKeyBindChanged, &menu->keyBinds[i]);
+            &SDL_Libretro_MenuKeyBindChanged,
+            &menu->keyBinds[i]);
     }
 
     // Gamepad bindings and analog-to-digital, one page per player.
@@ -2287,14 +2268,10 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     // Directories
     nk_console* directories = SDL_Libretro_MenuAddSubmenu(settings, "Directories", NK_SYMBOL_TRIANGLE_RIGHT);
 
-    SDL_Libretro_MenuAddSettingDir(directories, "Cores", menu,
-                                   menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
-    SDL_Libretro_MenuAddSettingDir(directories, "Saves", menu,
-                                   menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
-    SDL_Libretro_MenuAddSettingDir(directories, "System", menu,
-                                   menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
-    SDL_Libretro_MenuAddSettingDir(directories, "Content", menu,
-                                   menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Cores", menu, menu->coreDirBuffer, sizeof(menu->coreDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Saves", menu, menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "System", menu, menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
+    SDL_Libretro_MenuAddSettingDir(directories, "Content", menu, menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
 }
 
 /**
@@ -2323,7 +2300,8 @@ static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
 #else
     menu->loadGameButton = SDL_Libretro_MenuOnChanged(
         nk_console_file_action(menu->console, "Load Game", menu->loadGamePath, sizeof(menu->loadGamePath)),
-        &SDL_Libretro_MenuGameFileChanged, menu);
+        &SDL_Libretro_MenuGameFileChanged,
+        menu);
     if (lr->fileBrowserStartDirectory[0] != '\0') {
         nk_console_file_set_directory(menu->loadGameButton, lr->fileBrowserStartDirectory);
     }
@@ -2845,8 +2823,8 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
 
     menu->uiBuilt = true;
     nk_console_render_window(menu->console, "SDL_libretro", nk_rect(0.0f, 0.0f, logicalW, logicalH), NK_WINDOW_SCROLL_AUTO_HIDE |
-                                                                                                                  // Show the window title only on the top level.
-                                                                                                                  ((nk_console_active_parent(menu->console) == menu->console) ? NK_WINDOW_TITLE : 0));
+                                                                                                         // Show the window title only on the top level.
+                                                                                                         ((nk_console_active_parent(menu->console) == menu->console) ? NK_WINDOW_TITLE : 0));
 }
 
 /**

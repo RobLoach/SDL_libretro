@@ -586,19 +586,23 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu);
  * Display names for the RETRO_DEVICE_ID_JOYPAD_* buttons, indexed by id.
  * Doubles as the config keys for the player 1 keyboard bindings.
  */
+// clang-format off
 static const char* SDL_Libretro_JoypadButtonNames[SDL_LIBRETRO_MAX_JOYPAD_BUTTONS] = {
     "B", "Y", "Select", "Start", "Up", "Down", "Left", "Right",
     "A", "X", "L", "R", "L2", "R2", "L3", "R3",
 };
+// clang-format on
 
 /**
  * @internal
  * Display names for the SDL_LibretroAnalogToDigital modes, indexed by mode.
  * Doubles as the config values for the per-port analog-to-digital setting.
  */
+// clang-format off
 static const char* SDL_Libretro_AnalogToDigitalNames[SDL_LIBRETRO_ANALOG_TO_DIGITAL_COUNT] = {
     "None", "Left", "Right",
 };
+// clang-format on
 
 /**
  * @internal

@@ -69,17 +69,13 @@ static void SDL_Libretro_ReserveEvents(void) {
     // the range in one block.
     const Uint32 next = SDL_RegisterEvents(1);
     if (next == 0 || next >= SDL_EVENT_LIBRETRO) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "[SDL_Libretro] Registered user events reach the SDL_EVENT_LIBRETRO range (0x%x-0x%x); they may collide",
-            (unsigned)SDL_EVENT_LIBRETRO, (unsigned)SDL_EVENT_LIBRETRO_LAST);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Registered user events reach the SDL_EVENT_LIBRETRO range (0x%x-0x%x); they may collide", (unsigned)SDL_EVENT_LIBRETRO, (unsigned)SDL_EVENT_LIBRETRO_LAST);
         return;
     }
     const int count = (int)(SDL_EVENT_LIBRETRO_LAST - next);
     const Uint32 base = SDL_RegisterEvents(count);
     if (base == 0 || base > SDL_EVENT_LIBRETRO) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,
-            "[SDL_Libretro] Failed to reserve the SDL_EVENT_LIBRETRO range (0x%x-0x%x); registered user events may collide",
-            (unsigned)SDL_EVENT_LIBRETRO, (unsigned)SDL_EVENT_LIBRETRO_LAST);
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to reserve the SDL_EVENT_LIBRETRO range (0x%x-0x%x); registered user events may collide", (unsigned)SDL_EVENT_LIBRETRO, (unsigned)SDL_EVENT_LIBRETRO_LAST);
     }
 }
 
@@ -631,8 +627,10 @@ static void SDL_Libretro_FillGameInfoExt(struct retro_game_info_ext* entry, cons
     char* sep = SDL_strrchr(buffer, '/');
     char* backslash = SDL_strrchr(buffer, '\\');
     if (!sep || (backslash && backslash > sep)) sep = backslash;
-    if (sep) *sep = '\0';
-    else buffer[0] = '\0';
+    if (sep)
+        *sep = '\0';
+    else
+        buffer[0] = '\0';
     entry->dir = SDL_strdup(buffer);
 }
 
@@ -1210,8 +1208,7 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
         }
     }
     if (numPaths > subsys->num_roms || missingRequired) {
-        SDL_SetError("[SDL_Libretro] Subsystem '%s' expects %u ROM(s) (%u required), got %u",
-            subsys->desc ? subsys->desc : (subsys->ident ? subsys->ident : ""), subsys->num_roms, requiredCount, numPaths);
+        SDL_SetError("[SDL_Libretro] Subsystem '%s' expects %u ROM(s) (%u required), got %u", subsys->desc ? subsys->desc : (subsys->ident ? subsys->ident : ""), subsys->num_roms, requiredCount, numPaths);
         return false;
     }
 
@@ -1671,9 +1668,7 @@ static void SDL_Libretro_PushEvent(SDL_Libretro* lr, Uint32 type, void* data) {
  */
 static bool SDLCALL SDL_Libretro_KeepUnclaimedEnvEvent(void* userdata, SDL_Event* event) {
     const SDL_UserEvent* pushed = (const SDL_UserEvent*)userdata;
-    return !(event->type == pushed->type &&
-        event->user.data1 == pushed->data1 &&
-        event->user.reserved == pushed->reserved);
+    return !(event->type == pushed->type && event->user.data1 == pushed->data1 && event->user.reserved == pushed->reserved);
 }
 
 /**
