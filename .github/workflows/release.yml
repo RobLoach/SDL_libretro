@@ -1,0 +1,35 @@
+name: Release
+
+# GitHub's generated "Source code" archives leave out git submodules, which
+# the build needs, so attach a source archive that includes them.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Archive source with submodules
+        run: |
+          set -euo pipefail
+          name="SDL_libretro-${GITHUB_REF_NAME}"
+          out="$RUNNER_TEMP/$name.tar"
+          git archive --prefix="$name/" -o "$out" HEAD
+          git submodule foreach --quiet --recursive \
+              "git archive --prefix=\"$name/\$displaypath/\" -o \"$RUNNER_TEMP/submodule.tar\" HEAD && tar --concatenate --file=\"$out\" \"$RUNNER_TEMP/submodule.tar\""
+          rm -f "$RUNNER_TEMP/submodule.tar"
+          gzip -9 "$out"
+          echo "ARCHIVE=$out.gz" >> "$GITHUB_ENV"
+
+      - name: Upload to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" "$ARCHIVE" --clobber

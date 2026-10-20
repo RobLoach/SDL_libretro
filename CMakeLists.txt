@@ -6,6 +6,18 @@ project(SDL_libretro
 )
 
 list(PREPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+
+# The library needs libretro.h and SDL_ini.h from the git submodules, which
+# GitHub's generated "Source code" archives leave out.
+foreach(SDL_LIBRETRO_VENDOR_FILE
+        vendor/libretro-common/include/libretro.h
+        vendor/SDL_ini/SDL_ini.h)
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/${SDL_LIBRETRO_VENDOR_FILE}")
+        message(FATAL_ERROR "${SDL_LIBRETRO_VENDOR_FILE} is missing. Run: git submodule update --init, "
+            "or use the SDL_libretro-<version>.tar.gz release archive, which includes the submodules.")
+    endif()
+endforeach()
+
 find_package(SDL3 REQUIRED)
 
 # Development conveniences and the optional components default to on only
