@@ -13,9 +13,11 @@ jobs:
   source:
     runs-on: ubuntu-latest
     steps:
+      # Only the top-level submodules; the build uses those, not the copies
+      # nested inside nuklear_console and nuklear_gamepad.
       - uses: actions/checkout@v7
         with:
-          submodules: recursive
+          submodules: true
 
       - name: Archive source with submodules
         run: |
@@ -23,7 +25,7 @@ jobs:
           name="SDL_libretro-${GITHUB_REF_NAME}"
           out="$RUNNER_TEMP/$name.tar"
           git archive --prefix="$name/" -o "$out" HEAD
-          git submodule foreach --quiet --recursive \
+          git submodule foreach --quiet \
               "git archive --prefix=\"$name/\$displaypath/\" -o \"$RUNNER_TEMP/submodule.tar\" HEAD && tar --concatenate --file=\"$out\" \"$RUNNER_TEMP/submodule.tar\""
           rm -f "$RUNNER_TEMP/submodule.tar"
           gzip -9 "$out"
