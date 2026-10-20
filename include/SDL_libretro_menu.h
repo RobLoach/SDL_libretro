@@ -428,7 +428,7 @@ static void SDL_Libretro_MenuWebLoadGameClicked(SDL_LibretroMenu* menu, void* us
 static void SDL_Libretro_MenuSaveStateClicked(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
     char savePath[SDL_LIBRETRO_MAX_PATH];
-    if (SDL_Libretro_GetSavePath(menu->lr, ".sav", savePath, sizeof(savePath)) > 0 &&
+    if (SDL_Libretro_GetSavePath(menu->lr, ".state", savePath, sizeof(savePath)) > 0 &&
         SDL_Libretro_SaveState(menu->lr, savePath)) {
         nk_console_show_message(menu->console, "State saved");
     }
@@ -443,7 +443,7 @@ static void SDL_Libretro_MenuSaveStateClicked(SDL_LibretroMenu* menu, void* user
 static void SDL_Libretro_MenuLoadStateClicked(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
     char savePath[SDL_LIBRETRO_MAX_PATH];
-    if (SDL_Libretro_GetSavePath(menu->lr, ".sav", savePath, sizeof(savePath)) > 0 &&
+    if (SDL_Libretro_GetSavePath(menu->lr, ".state", savePath, sizeof(savePath)) > 0 &&
         SDL_Libretro_LoadState(menu->lr, savePath)) {
         SDL_Libretro_SetMenuOpen(menu, false);
     }

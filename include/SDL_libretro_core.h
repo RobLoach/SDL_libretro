@@ -421,7 +421,7 @@ static const char* SDL_Libretro_GetExtension(const char* path) {
 /**
  * Build a path in the save directory for the currently loaded content.
  *
- * Produces "<saveDirectory>/<contentName><extension>" (or just "<contentName><extension>" when no save directory is set). Handy for deriving SRAM (".srm"), RTC (".rtc"), or save-state file names without hardcoding them.
+ * Produces "<saveDirectory>/<contentName><extension>" (or just "<contentName><extension>" when no save directory is set). Handy for deriving SRAM (".srm"), RTC (".rtc"), or save-state (".state") file names without hardcoding them.
  *
  * @param lr the libretro context.
  * @param extension the extension to append, including the dot (NULL or "" for none).

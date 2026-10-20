@@ -298,14 +298,14 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     // Save State
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F2) {
         char savePath[4096];
-        SDL_Libretro_GetSavePath(lr, ".sav", savePath, sizeof(savePath));
+        SDL_Libretro_GetSavePath(lr, ".state", savePath, sizeof(savePath));
         SDL_Libretro_SaveState(lr, savePath);
     }
 
     // Load State
     else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F4) {
         char savePath[4096];
-        SDL_Libretro_GetSavePath(lr, ".sav", savePath, sizeof(savePath));
+        SDL_Libretro_GetSavePath(lr, ".state", savePath, sizeof(savePath));
         SDL_Libretro_LoadState(lr, savePath);
     }
 

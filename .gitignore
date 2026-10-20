@@ -1,7 +1,8 @@
 build*
 .cache/
 compile_commands.json
-*.sav
+*.state
+*.srm
 /docs
 node_modules
 package-lock.json

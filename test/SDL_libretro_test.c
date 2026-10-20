@@ -1387,7 +1387,7 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, NULL) == NULL, "GetMemoryData NULL without a game");
     SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapCount(lr) == 0, "No memory map without a game");
     SDLTest_AssertCheck(SDL_Libretro_Reset(lr) == false, "Reset fails without a game");
-    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "should_not_exist.sav") == false, "SaveState fails without a game");
+    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "should_not_exist.state") == false, "SaveState fails without a game");
 
     // The LoadCore content-name default makes GetSavePath usable before a game loads.
     char buf[256];
@@ -1469,19 +1469,19 @@ static int SDLCALL test_LoadGame(void *arg) {
     SDL_Libretro_Update(lr);
     SDL_Libretro_Update(lr);
 
-    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == true, "SaveState succeeds");
-    SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
-    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.sav.tmp", NULL) == false, "SaveState leaves no temp file");
+    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.state") == true, "SaveState succeeds");
+    SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.state") == true, "LoadState succeeds");
+    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.state.tmp", NULL) == false, "SaveState leaves no temp file");
 
     // A failed save leaves the previous one intact.
     bool (*serialize)(void*, size_t) = lr->core.symbols.retro_serialize;
     lr->core.symbols.retro_serialize = test_FailSerialize;
-    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == false, "SaveState fails when the core can't serialize");
+    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.state") == false, "SaveState fails when the core can't serialize");
     lr->core.symbols.retro_serialize = serialize;
     SDL_PathInfo stateInfo;
-    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.sav", &stateInfo) && stateInfo.size == 128, "Failed save keeps the previous state");
-    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.sav.tmp", NULL) == false, "Failed save removes its temp file");
-    SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "Previous state still loads");
+    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.state", &stateInfo) && stateInfo.size == 128, "Failed save keeps the previous state");
+    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.state.tmp", NULL) == false, "Failed save removes its temp file");
+    SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.state") == true, "Previous state still loads");
 
     // Texture scale mode applies to the live texture and reads back.
     SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL) fails");
@@ -2558,19 +2558,19 @@ static int SDLCALL test_Memory(void *arg) {
 
     // Save/Load round-trip: persist pattern, scribble over it, restore.
     SDL_Libretro_SetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, pattern, 64);
-    SDLTest_AssertCheck(SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_SAVE_RAM, "test_mem.sav") == true, "SaveMemory(SAVE_RAM) true");
+    SDLTest_AssertCheck(SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_SAVE_RAM, "test_mem.srm") == true, "SaveMemory(SAVE_RAM) true");
     SDL_memset(mem, 0, 64);
-    SDLTest_AssertCheck(SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_SAVE_RAM, "test_mem.sav") == true, "LoadMemory(SAVE_RAM) true");
+    SDLTest_AssertCheck(SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_SAVE_RAM, "test_mem.srm") == true, "LoadMemory(SAVE_RAM) true");
     SDLTest_AssertCheck(SDL_memcmp(mem, pattern, 64) == 0, "LoadMemory restores saved bytes");
 
     // Unavailable type: save is a no-op success, load fails.
-    SDLTest_AssertCheck(SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_VIDEO_RAM, "test_vram.sav") == true, "SaveMemory(VIDEO_RAM) true (nothing to save)");
-    SDLTest_AssertCheck(SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_VIDEO_RAM, "test_mem.sav") == false, "LoadMemory(VIDEO_RAM) false");
+    SDLTest_AssertCheck(SDL_Libretro_SaveMemory(lr, RETRO_MEMORY_VIDEO_RAM, "test_vram.srm") == true, "SaveMemory(VIDEO_RAM) true (nothing to save)");
+    SDLTest_AssertCheck(SDL_Libretro_LoadMemory(lr, RETRO_MEMORY_VIDEO_RAM, "test_mem.srm") == false, "LoadMemory(VIDEO_RAM) false");
 
     // SRAM wrappers route to the same path.
-    SDLTest_AssertCheck(SDL_Libretro_SaveSRAM(lr, "test_sram.sav") == true, "SaveSRAM true");
+    SDLTest_AssertCheck(SDL_Libretro_SaveSRAM(lr, "test_sram.srm") == true, "SaveSRAM true");
     SDL_memset(mem, 0, 64);
-    SDLTest_AssertCheck(SDL_Libretro_LoadSRAM(lr, "test_sram.sav") == true, "LoadSRAM true");
+    SDLTest_AssertCheck(SDL_Libretro_LoadSRAM(lr, "test_sram.srm") == true, "LoadSRAM true");
     SDLTest_AssertCheck(SDL_memcmp(mem, pattern, 64) == 0, "LoadSRAM restores saved bytes");
 
     // Memory map descriptors.
@@ -2596,8 +2596,8 @@ static int SDLCALL test_Memory(void *arg) {
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    SDL_RemovePath("test_mem.sav");
-    SDL_RemovePath("test_sram.sav");
+    SDL_RemovePath("test_mem.srm");
+    SDL_RemovePath("test_sram.srm");
     return TEST_COMPLETED;
 #endif
 }
