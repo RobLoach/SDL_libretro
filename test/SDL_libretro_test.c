@@ -3824,6 +3824,21 @@ static int SDLCALL test_Menu(void *arg) {
         event.type = SDL_EVENT_KEY_DOWN;
         event.key.key = SDLK_A;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Open menu swallows gameplay input");
+
+        // A key held since before the menu opened still releases to the
+        // application, once; pressing it again in the menu makes it the menu's.
+        menu->keysHeldAtOpen[SDL_SCANCODE_SPACE] = true;
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_UP;
+        event.key.scancode = SDL_SCANCODE_SPACE;
+        event.key.key = SDLK_SPACE;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Releasing a key held at open passes through");
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Later releases of it are the menu's");
+        menu->keysHeldAtOpen[SDL_SCANCODE_SPACE] = true;
+        event.type = SDL_EVENT_KEY_DOWN;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Pressing it again in the menu is swallowed");
+        event.type = SDL_EVENT_KEY_UP;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "Releasing a key pressed in the menu is swallowed");
         SDL_zero(event);
         event.type = SDL_EVENT_QUIT;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Quit passes through an open menu");

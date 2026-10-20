@@ -221,6 +221,8 @@ struct SDL_LibretroMenu {
 
     bool open; /**< Whether the menu is currently shown. */
     bool wasOpen; /**< The open state of the previous update, to detect fresh opens. */
+    bool keysHeldAtOpen[SDL_SCANCODE_COUNT]; /**< Keys held down when the menu opened, whose releases still go to the application and core. */
+    unsigned int padButtonsHeldAtOpen[NK_GAMEPAD_MAX]; /**< nk_gamepad buttons held when the menu opened, hidden from the menu until released. */
     bool uiBuilt; /**< nk_begin ran this frame, so RenderMenu must flush and clear. */
 
     // Widgets whose visibility depends on the running game.
@@ -2532,6 +2534,22 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
         return;
     }
     menu->open = open;
+
+    // Input held while the menu opens belongs to whatever saw it pressed.
+    // The application and core still get the key releases, so nothing like
+    // a held fast-forward key sticks, and the menu doesn't take a held
+    // gamepad button's release as a click.
+    if (open) {
+        int numKeys = 0;
+        const bool* keys = SDL_GetKeyboardState(&numKeys);
+        for (int i = 0; i < SDL_SCANCODE_COUNT; i++) {
+            menu->keysHeldAtOpen[i] = keys != NULL && i < numKeys && keys[i];
+        }
+        // Buttons still hidden from an earlier open are held too.
+        for (int i = 0; i < NK_GAMEPAD_MAX; i++) {
+            menu->padButtonsHeldAtOpen[i] |= menu->gamepads.gamepads[i].buttons;
+        }
+    }
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
     }
@@ -2571,7 +2589,9 @@ void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
  *          closed, menu or event is NULL, the event is an application event
  *          (SDL_EVENT_USER and above), or it is a lifecycle event (quit,
  *          drop-file, window, and gamepad/joystick add/remove) which always
- *          passes through so the application and frontend still see it.
+ *          passes through so the application and frontend still see it. The
+ *          release of a key that was already held when the menu opened passes
+ *          through too, so the press it answers isn't left stuck down.
  *
  * @see SDL_Libretro_UpdateMenu()
  */
@@ -2606,6 +2626,20 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
     // swallowed and mean nothing to the UI.
     if (event->type >= SDL_EVENT_USER) {
         return false;
+    }
+
+    // A key held since before the menu opened releases to the application and
+    // core, which saw it pressed. A fresh press makes it the menu's.
+    if ((event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) &&
+        event->key.scancode > SDL_SCANCODE_UNKNOWN && event->key.scancode < SDL_SCANCODE_COUNT) {
+        bool* held = &menu->keysHeldAtOpen[event->key.scancode];
+        if (event->type == SDL_EVENT_KEY_UP && *held) {
+            *held = false;
+            return false;
+        }
+        if (event->type == SDL_EVENT_KEY_DOWN && !event->key.repeat) {
+            *held = false;
+        }
     }
 
     // Feed a copy so coordinate conversion doesn't mutate the caller's event.
@@ -2729,6 +2763,16 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
 
     nk_input_end(menu->ctx);
     nk_gamepad_update(&menu->gamepads);
+
+    // Hide gamepad buttons held since the menu opened until they're let go,
+    // so their release doesn't click whatever has focus.
+    for (int i = 0; i < NK_GAMEPAD_MAX; i++) {
+        struct nk_gamepad* pad = &menu->gamepads.gamepads[i];
+        unsigned int held = menu->padButtonsHeldAtOpen[i];
+        menu->padButtonsHeldAtOpen[i] = held & pad->buttons;
+        pad->buttons &= ~held;
+        pad->buttons_prev &= ~held;
+    }
 
     // Show the menu whenever there's nothing to run.
     if (!menu->open && !SDL_Libretro_IsGameReady(lr)) {
