@@ -4018,14 +4018,30 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(checkValue == true, "Checkbox value mirrors the widget state");
 
 #ifndef __EMSCRIPTEN__
-        // Load Game browses with the menu's own file browser, which needs no
-        // OS dialog (the offscreen driver here has none).
+        // Load Game opens the OS file dialog, falling back to the menu's own
+        // file browser when the dialog can't open. No dialog driver means no
+        // dialog pops up while testing.
         SDL_Libretro_SetMenuOpen(menu, true);
+#ifdef SDL_PLATFORM_LINUX
+        SDL_SetHint(SDL_HINT_FILE_DIALOG_DRIVER, "none");
         nk_console_trigger_event(menu->loadGameButton, NK_CONSOLE_EVENT_CLICKED);
-        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->loadGameButton, "Load Game opens the file browser");
+        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->loadGameButton, "Load Game falls back to the file browser without a dialog");
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(cvector_size(menu->loadGameButton->children) > 0, "The file browser lists the directory");
+        nk_console_set_active_parent(menu->console);
+        SDL_ResetHint(SDL_HINT_FILE_DIALOG_DRIVER);
+#endif
+
+        // A gamepad can't drive the OS dialog, so it goes straight to the file browser.
+        struct nk_gamepad* pad = &menu->gamepads.gamepads[0];
+        struct nk_gamepad savedPad = *pad;
+        pad->available = nk_true;
+        pad->buttons_prev = NK_GAMEPAD_BUTTON_FLAG(NK_GAMEPAD_BUTTON_A);
+        pad->buttons = 0;
+        nk_console_trigger_event(menu->loadGameButton, NK_CONSOLE_EVENT_CLICKED);
+        *pad = savedPad;
+        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->loadGameButton, "Load Game from a gamepad opens the file browser");
         nk_console_set_active_parent(menu->console);
         SDL_Libretro_SetMenuOpen(menu, false);
 #endif

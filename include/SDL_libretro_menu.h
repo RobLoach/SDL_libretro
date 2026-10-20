@@ -83,16 +83,10 @@
 #ifndef SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION
 #define NK_CONSOLE_IMPLEMENTATION
 #endif
-// Load Game uses nuklear_console's own file browser, which a gamepad can drive
-// and which works without an OS file dialog backend. Define
-// SDL_LIBRETRO_MENU_NATIVE_FILE_DIALOG to use the OS file dialog instead.
-#ifdef SDL_LIBRETRO_MENU_NATIVE_FILE_DIALOG
-#ifndef NK_CONSOLE_FILE_SDL_NATIVE_DIALOG
-#define NK_CONSOLE_FILE_SDL_NATIVE_DIALOG
-#endif
-#elif !defined(NK_CONSOLE_FILE_SDL_NATIVE_DIALOG) && !defined(NK_CONSOLE_FILE_NO_SDL_NATIVE_DIALOG)
-#define NK_CONSOLE_FILE_NO_SDL_NATIVE_DIALOG
-#endif
+// Load Game opens the OS file dialog, which nuklear_console enables with SDL3.
+// It falls back to its own file browser when a gamepad activates Load Game,
+// or the dialog can't open. Define NK_CONSOLE_FILE_NO_SDL_NATIVE_DIALOG to
+// always use the file browser.
 #ifndef SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H
 #define SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H "nuklear_console.h"
 #endif
