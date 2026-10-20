@@ -1730,6 +1730,18 @@ static int SDLCALL test_LoadGameSpecial(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecialById(lr, 1, paths, 2) == true, "LoadGameSpecialById succeeds");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after id load");
 
+    // The paths must match the subsystem's ROMs, and a rejected or failed
+    // request leaves the running game alone.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "sgb", paths, 1) == false, "Too few ROMs rejected");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "expects 2 ROM(s) (2 required), got 1") != NULL, "The error explains the ROM count: %s", SDL_GetError());
+    const char* tooMany[] = { rom0, rom1, rom1 };
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "sgb", tooMany, 3) == false, "Too many ROMs rejected");
+    const char* missingRequired[] = { rom0, NULL };
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "sgb", missingRequired, 2) == false, "A NULL required ROM rejected");
+    const char* missingFiles[] = { rom0, "definitely_missing.sfc" };
+    SDLTest_AssertCheck(SDL_Libretro_LoadGameSpecial(lr, "sgb", missingFiles, 2) == false, "A missing ROM file fails");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Rejected special loads keep the running game");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -1772,6 +1784,14 @@ static int SDLCALL test_LoadGameFailure(void *arg) {
     // The context still works: a real load afterward succeeds.
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true,
         "LoadGame succeeds after a prior failure");
+
+    // A load that can't work leaves the running game alone, whether the core
+    // wants the bytes (.txt) or the path (.vfs).
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "definitely_missing.txt") == false, "Missing data content fails");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Missing data content keeps the running game");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "definitely_missing.vfs") == false, "Missing full-path content fails");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Missing full-path content keeps the running game");
+    SDLTest_AssertCheck(SDL_strstr(SDL_Libretro_GetGameName(lr), "test_content") != NULL, "The running game is still the same one");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);

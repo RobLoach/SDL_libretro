@@ -827,9 +827,21 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
  * content identity (name, dir, ext) comes from `identityPath` when it's not
  * NULL, otherwise from `gamePath`. The core must already be loaded.
  */
+/**
+ * @internal
+ * Whether the content at `path` exists, as the core would see it.
+ */
+static bool SDL_Libretro_ContentExists(const SDL_Libretro* lr, const char* path) {
+    // Look through the VFS the core will use, which also sees PhysFS mounts.
+    if (lr->vfs_interface.stat) {
+        return (lr->vfs_interface.stat(path, NULL) & RETRO_VFS_STAT_IS_VALID) != 0;
+    }
+    return SDL_GetPathInfo(path, NULL);
+}
+
 static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, const char* identityPath, void* fileData, size_t fileSize) {
-    // Switching content: unload any game that's already running first.
-    SDL_Libretro_UnloadGame(lr);
+    // Check what can be checked before unloading anything, so a request that's
+    // bound to fail leaves the running game alone.
 
     // A core that didn't opt into no-content (SET_SUPPORT_NO_GAME) can't run without a game.
     if (!gamePath && SDL_Libretro_IsGameRequired(lr)) {
@@ -837,6 +849,25 @@ static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, 
         SDL_SetError("[SDL_Libretro] This core requires content");
         return false;
     }
+
+    // The content has to be there: read the bytes for cores that want them,
+    // or make sure the file exists for cores that want its path.
+    if (gamePath && !fileData) {
+        if (!SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(identityPath ? identityPath : gamePath))) {
+            fileData = SDL_LoadFile(gamePath, &fileSize);
+            if (!fileData) {
+                SDL_SetError("[SDL_Libretro] Failed to load game file '%s'", gamePath);
+                return false;
+            }
+        }
+        else if (!SDL_Libretro_ContentExists(lr, gamePath)) {
+            SDL_SetError("[SDL_Libretro] Game file '%s' not found", gamePath);
+            return false;
+        }
+    }
+
+    // Switching content: unload any game that's already running first.
+    SDL_Libretro_UnloadGame(lr);
 
     struct retro_game_info gameInfo = {0};
     bool persistData = false;
@@ -1099,7 +1130,9 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
  * @param paths the content file paths, one per ROM the subsystem expects.
  * @param numPaths the number of entries in `paths`; must be greater than 0.
  * @returns true on success; false if the id is unknown, the arguments are
- *          invalid, a file fails to load, or the core rejects the content.
+ *          invalid, the paths don't match the ROMs the subsystem expects, a
+ *          file fails to load, or the core rejects the content. Only a
+ *          rejection by the core unloads the game that was running.
  *
  * @see SDL_Libretro_LoadGameSpecial
  */
@@ -1116,9 +1149,24 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
         return false;
     }
 
-    SDL_Libretro_UnloadGame(lr);
+    // The paths must fit the ROMs the subsystem declares, with every required
+    // one given, or the core only rejects them with no hint why.
+    unsigned requiredCount = 0;
+    bool missingRequired = false;
+    for (unsigned i = 0; i < subsys->num_roms; i++) {
+        if (subsys->roms[i].required) {
+            requiredCount++;
+            missingRequired = missingRequired || i >= numPaths || !paths[i];
+        }
+    }
+    if (numPaths > subsys->num_roms || missingRequired) {
+        SDL_SetError("[SDL_Libretro] Subsystem '%s' expects %u ROM(s) (%u required), got %u",
+            subsys->desc ? subsys->desc : (subsys->ident ? subsys->ident : ""), subsys->num_roms, requiredCount, numPaths);
+        return false;
+    }
 
-    // Build the game info with the given data.
+    // Build the game info with the given data. The files are read before the
+    // running game is unloaded, so a missing one leaves it running.
     struct retro_game_info* gameInfos = (struct retro_game_info*)SDL_calloc(numPaths, sizeof(struct retro_game_info));
     void** fileBuffers = (void**)SDL_calloc(numPaths, sizeof(void*));
     if (!gameInfos || !fileBuffers) {
@@ -1150,7 +1198,16 @@ bool SDL_Libretro_LoadGameSpecialById(SDL_Libretro* lr, unsigned subsystemId, co
             gameInfos[i].data = fileBuffers[i];
             gameInfos[i].size = fileSize;
         }
+        else if (!SDL_Libretro_ContentExists(lr, paths[i])) {
+            SDL_SetError("[SDL_Libretro] File '%s' not found", paths[i]);
+            for (unsigned j = 0; j < i; j++) SDL_free(fileBuffers[j]);
+            SDL_free(fileBuffers);
+            SDL_free(gameInfos);
+            return false;
+        }
     }
+
+    SDL_Libretro_UnloadGame(lr);
 
     // Populate the game info from the primary path, so
     // GET_GAME_INFO_EXT is valid while loading the game.
