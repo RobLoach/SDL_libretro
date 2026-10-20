@@ -59,7 +59,7 @@ int main(int argc, char* argv[]) {
         SDL_RenderClear(renderer);
 
         // Draw the libretro context
-        SDL_Libretro_Render(renderer, lr, NULL);
+        SDL_Libretro_Render(lr, renderer, NULL);
 
         SDL_RenderPresent(renderer);
     }

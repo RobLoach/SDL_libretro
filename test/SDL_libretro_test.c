@@ -2678,7 +2678,7 @@ static int SDLCALL test_LoadGameNoRenderer(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, NULL) == true, "LoadGame succeeds without a renderer");
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after renderer-less load");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) == NULL, "No texture until a renderer is set");
-    SDLTest_AssertCheck(SDL_Libretro_Render(NULL, lr, NULL) == false, "Render fails with a NULL renderer");
+    SDLTest_AssertCheck(SDL_Libretro_Render(lr, NULL, NULL) == false, "Render fails with a NULL renderer");
 
     // The core still runs with no video attached.
     SDL_Libretro_Update(lr);
@@ -2687,7 +2687,7 @@ static int SDLCALL test_LoadGameNoRenderer(void *arg) {
     // Rendering with a renderer adopts it and builds the texture (deferred init).
     SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
-    SDLTest_AssertCheck(SDL_Libretro_Render(renderer, lr, NULL) == true, "Render adopts the renderer and draws");
+    SDLTest_AssertCheck(SDL_Libretro_Render(lr, renderer, NULL) == true, "Render adopts the renderer and draws");
     SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == renderer, "Render stored the renderer");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture created via Render's deferred init");
 
@@ -2828,7 +2828,7 @@ static int SDLCALL test_Rotation(void *arg) {
     // --- renderDstRect fit under rotation, into the full 320x240 output ---
     // 0deg: a 4:3 frame fills the 4:3 window.
     lr->core.rotation = 0;
-    SDL_Libretro_Render(renderer, lr, NULL);
+    SDL_Libretro_Render(lr, renderer, NULL);
     SDL_FRect r0 = lr->core.renderDstRect;
     SDLTest_AssertCheck(SDL_fabsf(r0.w - 320.0f) < 1.0f && SDL_fabsf(r0.h - 240.0f) < 1.0f,
         "0deg fills 320x240, got %gx%g", r0.w, r0.h);
@@ -2836,7 +2836,7 @@ static int SDLCALL test_Rotation(void *arg) {
     // 90deg: the on-screen extents swap, so the fit is portrait (aspect inverted
     // to 3:4), centered and within the window bounds.
     lr->core.rotation = 1;
-    SDL_Libretro_Render(renderer, lr, NULL);
+    SDL_Libretro_Render(lr, renderer, NULL);
     SDL_FRect r1 = lr->core.renderDstRect;
     SDLTest_AssertCheck(r1.w < r1.h, "90deg is portrait (w<h), got %gx%g", r1.w, r1.h);
     SDLTest_AssertCheck(SDL_fabsf(r1.w / r1.h - 0.75f) < 0.01f, "90deg aspect ~3:4, got %g", r1.w / r1.h);
@@ -2865,7 +2865,7 @@ static int SDLCALL test_Rotation(void *arg) {
 
     // Rendering without a rect fits the logical size, not the output pixels.
     lr->core.rotation = 0;
-    SDLTest_AssertCheck(SDL_Libretro_Render(renderer, lr, NULL), "Render with logical presentation");
+    SDLTest_AssertCheck(SDL_Libretro_Render(lr, renderer, NULL), "Render with logical presentation");
     SDL_FRect logicalRect = lr->core.renderDstRect;
     SDLTest_AssertCheck(logicalRect.x >= 0.0f && logicalRect.y >= 0.0f &&
         logicalRect.x + logicalRect.w <= 160.0f && logicalRect.y + logicalRect.h <= 120.0f,
@@ -3003,7 +3003,7 @@ static int SDLCALL test_SetRenderer(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetRenderer(lr, r2) == true, "SetRenderer(r2) swap succeeds");
     SDLTest_AssertCheck(SDL_Libretro_GetRenderer(lr) == r2, "GetRenderer returns r2 after swap");
     SDLTest_AssertCheck(SDL_Libretro_GetTexture(lr) != NULL, "Texture rebuilt on r2");
-    SDLTest_AssertCheck(SDL_Libretro_Render(r2, lr, NULL) == true, "Render works on the swapped renderer");
+    SDLTest_AssertCheck(SDL_Libretro_Render(lr, r2, NULL) == true, "Render works on the swapped renderer");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(r1);

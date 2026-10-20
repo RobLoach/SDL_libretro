@@ -13,7 +13,7 @@
  * Frame contract, with SDL_Libretro_HandleMenuEvent() called for each event:
  *
  *     if (!SDL_Libretro_IsMenuOpen(menu)) SDL_Libretro_Update(lr);
- *     SDL_Libretro_Render(renderer, lr, NULL);
+ *     SDL_Libretro_Render(lr, renderer, NULL);
  *     SDL_Libretro_UpdateMenu(menu);
  *     SDL_Libretro_RenderMenu(menu);
  *     SDL_RenderPresent(renderer);

@@ -341,7 +341,7 @@ SDL_AppResult SDL_AppIterate(void* appstate) {
     SDL_RenderClear(renderer);
 
     // Draw the libretro context
-    SDL_Libretro_Render(renderer, lr, NULL);
+    SDL_Libretro_Render(lr, renderer, NULL);
 
     // Tell them they can drop a file
     if (!SDL_Libretro_IsGameReady(lr)) {

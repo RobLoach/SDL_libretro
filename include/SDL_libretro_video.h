@@ -294,14 +294,14 @@ static void SDL_Libretro_FitRect(const SDL_Libretro* lr, SDL_FRect* rect, bool r
 /**
  * Render the libretro context in the given renderer.
  *
- * @param renderer the renderer to draw into; must not be NULL.
  * @param lr the libretro context.
+ * @param renderer the renderer to draw into; must not be NULL.
  * @param dstRect the destination rectangle, or NULL to fit within the renderer's logical size, or its current output size when logical presentation is disabled.
  * @returns true on success, false on invalid arguments or if there is nothing to draw yet.
  *
  * @see SDL_Libretro_SetRenderer()
  */
-bool SDL_Libretro_Render(SDL_Renderer* renderer, SDL_Libretro* lr, const SDL_FRect* dstRect) {
+bool SDL_Libretro_Render(SDL_Libretro* lr, SDL_Renderer* renderer, const SDL_FRect* dstRect) {
     if (!lr || !renderer) return false;
 
     // Adopt the renderer if it changed or isn't initialized.
