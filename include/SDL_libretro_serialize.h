@@ -31,6 +31,55 @@
 #define SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES ((size_t)256 * 1024 * 1024)
 #endif
 
+// Save Files
+
+/**
+ * @internal
+ * Open a temporary file next to `file` to write a save into.
+ *
+ * Saves are written to "<file>.tmp" and only renamed over `file` by
+ * SDL_Libretro_CommitSaveFile() once they're complete, so a failed save
+ * leaves the previous one intact.
+ *
+ * @param file the save file that will be replaced.
+ * @param tempPath receives the temporary file's path.
+ * @param tempPathSize the size of `tempPath`.
+ * @returns the stream to write to, or NULL with SDL_GetError() set.
+ */
+static SDL_IOStream* SDL_Libretro_OpenSaveFile(const char* file, char* tempPath, size_t tempPathSize) {
+    if ((size_t)SDL_snprintf(tempPath, tempPathSize, "%s.tmp", file) >= tempPathSize) {
+        SDL_SetError("[SDL_Libretro] Save path is too long: %s", file);
+        return NULL;
+    }
+    return SDL_IOFromFile(tempPath, "wb");
+}
+
+/**
+ * @internal
+ * Close a stream from SDL_Libretro_OpenSaveFile() and, if everything was
+ * written, move it into place over `file`. Otherwise the temporary file is
+ * removed and `file` is left untouched.
+ *
+ * @param io the stream from SDL_Libretro_OpenSaveFile(); always closed.
+ * @param written whether the whole save was written to `io`.
+ * @param tempPath the temporary file's path.
+ * @param file the save file to replace.
+ * @returns true when `file` now holds the new save.
+ */
+static bool SDL_Libretro_CommitSaveFile(SDL_IOStream* io, bool written, const char* tempPath, const char* file) {
+    // Writers like SDL_IOprintf() don't all report failures, but the stream
+    // remembers them; and closing flushes, so a full disk can fail there too.
+    bool ok = written && SDL_GetIOStatus(io) != SDL_IO_STATUS_ERROR;
+    ok = SDL_CloseIO(io) && ok;
+    if (ok && !SDL_RenamePath(tempPath, file)) {
+        ok = false;
+    }
+    if (!ok) {
+        SDL_RemovePath(tempPath);
+    }
+    return ok;
+}
+
 // Disk Control
 
 /**
@@ -442,9 +491,10 @@ bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
         return false;
     }
 
-    SDL_IOStream* io = SDL_IOFromFile(file, "wb");
+    char tempPath[SDL_LIBRETRO_MAX_PATH];
+    SDL_IOStream* io = SDL_Libretro_OpenSaveFile(file, tempPath, sizeof(tempPath));
     if (!io) return false;
-    return SDL_Libretro_SaveState_IO(lr, io, true);
+    return SDL_Libretro_CommitSaveFile(io, SDL_Libretro_SaveState_IO(lr, io, false), tempPath, file);
 }
 
 /**
@@ -745,9 +795,10 @@ bool SDL_Libretro_SaveMemory(SDL_Libretro* lr, unsigned memoryType, const char* 
     // Nothing to save, so don't create an empty file.
     if (!mem || size == 0) return true;
 
-    SDL_IOStream* io = SDL_IOFromFile(file, "wb");
+    char tempPath[SDL_LIBRETRO_MAX_PATH];
+    SDL_IOStream* io = SDL_Libretro_OpenSaveFile(file, tempPath, sizeof(tempPath));
     if (!io) return false;
-    bool ok = SDL_Libretro_SaveMemory_IO(lr, memoryType, io, true);
+    bool ok = SDL_Libretro_CommitSaveFile(io, SDL_Libretro_SaveMemory_IO(lr, memoryType, io, false), tempPath, file);
     if (ok) {
         SDL_Log("[SDL_Libretro] %s saved to %s (%zu bytes)", SDL_Libretro_GetMemoryTypeName(memoryType), file, size);
     }

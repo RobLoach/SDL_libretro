@@ -12,6 +12,13 @@ static Uint64 test_fakeTicksNS = 0;
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_test.h>
 
+/* A retro_serialize stand-in that always fails, for testing failed saves. */
+static bool test_FailSerialize(void* data, size_t size) {
+    (void)data;
+    (void)size;
+    return false;
+}
+
 static int SDLCALL test_CreateDestroy(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     SDLTest_AssertCheck(lr != NULL, "SDL_Libretro_Create returned non-NULL");
@@ -1339,6 +1346,17 @@ static int SDLCALL test_LoadGame(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == true, "SaveState succeeds");
     SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "LoadState succeeds");
+    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.sav.tmp", NULL) == false, "SaveState leaves no temp file");
+
+    // A failed save leaves the previous one intact.
+    bool (*serialize)(void*, size_t) = lr->core.symbols.retro_serialize;
+    lr->core.symbols.retro_serialize = test_FailSerialize;
+    SDLTest_AssertCheck(SDL_Libretro_SaveState(lr, "test_state.sav") == false, "SaveState fails when the core can't serialize");
+    lr->core.symbols.retro_serialize = serialize;
+    SDL_PathInfo stateInfo;
+    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.sav", &stateInfo) && stateInfo.size == 128, "Failed save keeps the previous state");
+    SDLTest_AssertCheck(SDL_GetPathInfo("test_state.sav.tmp", NULL) == false, "Failed save removes its temp file");
+    SDLTest_AssertCheck(SDL_Libretro_LoadState(lr, "test_state.sav") == true, "Previous state still loads");
 
     // Texture scale mode applies to the live texture and reads back.
     SDLTest_AssertCheck(SDL_Libretro_SetScaleMode(NULL, SDL_SCALEMODE_LINEAR) == false, "SetScaleMode(NULL) fails");

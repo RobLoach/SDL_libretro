@@ -272,7 +272,11 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
         INI_SetString(lr->ini, section, "AnalogToDigital", SDL_Libretro_AnalogToDigitalNames[lr->analogToDigital[port]]);
     }
 
-    return INI_Save(lr->ini, lr->iniFile);
+    // Write through a temporary file, so a failed save can't truncate the config.
+    char tempPath[SDL_LIBRETRO_MAX_PATH];
+    SDL_IOStream* io = SDL_Libretro_OpenSaveFile(lr->iniFile, tempPath, sizeof(tempPath));
+    if (!io) return false;
+    return SDL_Libretro_CommitSaveFile(io, INI_Save_IO(lr->ini, io, false), tempPath, lr->iniFile);
 }
 
 /**
