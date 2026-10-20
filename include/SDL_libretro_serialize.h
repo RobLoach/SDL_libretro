@@ -1099,50 +1099,17 @@ static bool SDL_Libretro_RewindDecodeDelta(const unsigned char* delta, size_t de
 #endif /* SDL_LIBRETRO_ENABLE_REWIND_DELTA */
 
 /**
- * Enable or disable the rewind system.
+ * @internal
+ * Allocate the rewind buffers for the loaded game's current serialize size.
  *
- * When enabled, a circular buffer of serialized core states is maintained so that setting a negative speed (via SDL_Libretro_SetSpeed()) rewinds gameplay. The buffer is allocated lazily once a game is loaded and the core's serialize size is known.
+ * Leaves the rewind settings alone, so a failure can be retried later.
  *
- * History is bounded by two independent limits: the snapshot count (`bufferFrames`) and the delta memory budget (see SDL_Libretro_SetRewindMemoryLimit(), which defaults to SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES at context creation). Whichever is reached first caps the rewind depth. This call does not change the memory budget, a budget you set beforehand, including 0 (unbounded), is preserved.
- *
- * Enable `SDL_LIBRETRO_ENABLE_REWIND_DELTA` to use the XOR compression between frames to reduce memory at the expense of performance.
- *
- * @param lr the libretro context.
- * @param enabled true to enable, false to disable.
- * @param bufferFrames maximum number of state snapshots to keep (0 for a sensible default of 300, roughly 5 seconds at 60 fps).
- * @param captureInterval capture a snapshot every N frames (0 for the default of 1, i.e. every frame). Provide a larger number in order to allow a longer rewind duration.
- * @returns true on success, false on allocation failure or if the core does not support serialization.
- * @see SDL_Libretro_SetRewindMemoryLimit()
+ * @returns true on success, false when the core reports no state size or on allocation failure.
  */
-bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
-    if (!lr) {
-        return SDL_InvalidParamError("lr");
-    }
-
-    SDL_Libretro_RewindFree(lr);
-
-    if (!enabled) {
-        lr->rewindEnabled = false;
-        return true;
-    }
-
-    // Sane defaults.
-    if (bufferFrames == 0) bufferFrames = 300;
-    if (captureInterval == 0) captureInterval = 1;
-
-    // Allow enabling rewind, when a core isn't loaded.
-    if (!SDL_Libretro_IsCoreReady(lr)) {
-        lr->rewindEnabled = true;
-        lr->rewindCapacity = bufferFrames;
-        lr->rewindCaptureInterval = captureInterval;
-        return true;
-    }
-
-    // Figure out how large the state needs to be.
+static bool SDL_Libretro_RewindAllocate(SDL_Libretro* lr) {
     size_t slotSize = lr->core.symbols.retro_serialize_size();
     if (slotSize == 0) {
         SDL_SetError("[SDL_Libretro] Core does not support serialization");
-        lr->rewindEnabled = false;
         return false;
     }
 
@@ -1154,7 +1121,7 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     // Initialize the rewind slots.
     unsigned char* ref = (unsigned char*)SDL_calloc(1, slotSize);
     unsigned char* scratch = (unsigned char*)SDL_malloc(slotSize);
-    SDL_LibretroRewindDelta* entries = (SDL_LibretroRewindDelta*)SDL_calloc(bufferFrames, sizeof(*entries));
+    SDL_LibretroRewindDelta* entries = (SDL_LibretroRewindDelta*)SDL_calloc(lr->rewindCapacity, sizeof(*entries));
     unsigned char* encScratch = NULL;
     bool ok = (ref && scratch && entries);
 #ifdef SDL_LIBRETRO_ENABLE_REWIND_DELTA
@@ -1168,7 +1135,6 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
         SDL_free(encScratch);
         SDL_free(entries);
         SDL_SetError("[SDL_Libretro] Failed to allocate rewind buffers");
-        lr->rewindEnabled = false;
         return false;
     }
 
@@ -1179,15 +1145,60 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     lr->rewindEntries = entries;
     lr->rewindSlotSize = slotSize;
     lr->rewindBytes = 0;
-    lr->rewindCapacity = bufferFrames;
-    lr->rewindCaptureInterval = captureInterval;
     lr->rewindHead = 0;
     lr->rewindCount = 0;
     lr->rewindFrameCounter = 0;
-    lr->rewindEnabled = true;
     lr->rewindHasReference = false;
     lr->rewindActive = false;
     return true;
+}
+
+/**
+ * Enable or disable the rewind system.
+ *
+ * When enabled, a circular buffer of serialized core states is maintained so that setting a negative speed (via SDL_Libretro_SetSpeed()) rewinds gameplay. The buffer is allocated lazily once a game is loaded and the core's serialize size is known. The setting itself carries across games and cores: a core that reports no state size yet (see RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE) gets its buffer once it does.
+ *
+ * History is bounded by two independent limits: the snapshot count (`bufferFrames`) and the delta memory budget (see SDL_Libretro_SetRewindMemoryLimit(), which defaults to SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES at context creation). Whichever is reached first caps the rewind depth. This call does not change the memory budget, a budget you set beforehand, including 0 (unbounded), is preserved.
+ *
+ * Enable `SDL_LIBRETRO_ENABLE_REWIND_DELTA` to use the XOR compression between frames to reduce memory at the expense of performance.
+ *
+ * @param lr the libretro context.
+ * @param enabled true to enable, false to disable.
+ * @param bufferFrames maximum number of state snapshots to keep (0 for a sensible default of 300, roughly 5 seconds at 60 fps).
+ * @param captureInterval capture a snapshot every N frames (0 for the default of 1, i.e. every frame). Provide a larger number in order to allow a longer rewind duration.
+ * @returns true on success, false on allocation failure or if the loaded game reports no state size. Rewind stays enabled either way, and the buffer is allocated once it can be.
+ * @see SDL_Libretro_SetRewindMemoryLimit()
+ */
+bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned bufferFrames, unsigned captureInterval) {
+    if (!lr) {
+        return SDL_InvalidParamError("lr");
+    }
+
+    SDL_Libretro_RewindFree(lr);
+
+    if (!enabled) {
+        lr->rewindEnabled = false;
+        // Without rewind a negative speed would leave the game stuck.
+        if (lr->core.speed < 0.0f) {
+            SDL_Libretro_SetSpeed(lr, 1.0f);
+        }
+        return true;
+    }
+
+    // Sane defaults.
+    if (bufferFrames == 0) bufferFrames = 300;
+    if (captureInterval == 0) captureInterval = 1;
+
+    lr->rewindEnabled = true;
+    lr->rewindCapacity = bufferFrames;
+    lr->rewindCaptureInterval = captureInterval;
+
+    // The serialize size is only defined while a game is loaded, so the
+    // buffer waits for one.
+    if (!SDL_Libretro_IsGameReady(lr)) {
+        return true;
+    }
+    return SDL_Libretro_RewindAllocate(lr);
 }
 
 /**
@@ -1312,7 +1323,13 @@ bool SDL_Libretro_SetRewindMemoryDuration(SDL_Libretro* lr, double seconds) {
  * Captures the current instance state into the rewind buffer.
  */
 static void SDL_Libretro_RewindCapture(SDL_Libretro* lr) {
-    if (!lr->rewindEnabled || !lr->rewindReference) return;
+    if (!lr->rewindEnabled) return;
+
+    // Some cores report no state size until they've run a frame
+    // (RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE), so allocate once they do.
+    if (!lr->rewindReference) {
+        if (lr->core.symbols.retro_serialize_size() == 0 || !SDL_Libretro_RewindAllocate(lr)) return;
+    }
 
     lr->rewindFrameCounter++;
     if (lr->rewindFrameCounter < lr->rewindCaptureInterval) return;

@@ -848,12 +848,12 @@ static int SDLCALL test_Rewind(void *arg) {
 
     SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(NULL, true, 100, 1) == false, "SetRewindEnabled(NULL) false");
 
-    // Negative speed only accepted when rewind is enabled.
+    // Negative speed only accepted when there's a rewind buffer to step back through.
     SDL_Libretro_SetSpeed(lr, -1.0f);
     SDLTest_AssertCheck(lr->core.speed == 0.0f, "Negative speed clamped without rewind");
     SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
     SDL_Libretro_SetSpeed(lr, -1.0f);
-    SDLTest_AssertCheck(lr->core.speed == -1.0f, "Negative speed accepted with rewind");
+    SDLTest_AssertCheck(lr->core.speed == 0.0f, "Negative speed clamped until a game is loaded");
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
@@ -872,8 +872,11 @@ static void rewind_stub_run(void) {
     // Nothing.
 }
 
+static bool g_rewindStubReady = true;
+
 static size_t rewind_stub_size(void) {
-    return sizeof(g_rewindState);
+    // Like RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE cores, no size until ready.
+    return g_rewindStubReady ? sizeof(g_rewindState) : 0;
 }
 
 static bool rewind_stub_serialize(void* data, size_t size) {
@@ -956,6 +959,26 @@ static int SDLCALL test_RewindBuffer(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lr) == (size_t)60 * sizeof(g_rewindState), "Duration budget equals snapshots * state size");
     SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(lr, 0.0) == false, "Non-positive duration rejected");
     SDLTest_AssertCheck(SDL_Libretro_SetRewindMemoryDuration(NULL, 1.0) == false, "NULL context rejected");
+
+    // With a buffer, negative speed rewinds; disabling rewind mid-rewind resumes play.
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(lr->core.speed == -1.0f, "Negative speed accepted with a rewind buffer");
+    SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
+    SDLTest_AssertCheck(lr->core.speed == 1.0f, "Disabling rewind mid-rewind resumes normal speed");
+
+    // A core with no state size yet keeps rewind enabled, and gets its buffer
+    // on the first capture once it reports one.
+    SDL_Libretro_SetRewindMemoryLimit(lr, 0);
+    g_rewindStubReady = false;
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, true, 16, 1) == false, "Enabling reports the missing state size");
+    SDLTest_AssertCheck(SDL_Libretro_GetRewindEnabled(lr) == true, "Rewind stays enabled without a state size");
+    SDLTest_AssertCheck(lr->rewindReference == NULL, "No buffer without a state size");
+    SDL_Libretro_RewindCapture(lr);
+    SDLTest_AssertCheck(lr->rewindReference == NULL, "Capture waits for a state size");
+    g_rewindStubReady = true;
+    SDL_Libretro_RewindCapture(lr);
+    SDL_Libretro_RewindCapture(lr);
+    SDLTest_AssertCheck(lr->rewindReference != NULL && lr->rewindCount == 1, "Capture allocates once the core reports a size");
 
     SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
     lr->core.symbols.handle = NULL; /* let Destroy skip core teardown (stub has no real module/symbols) */

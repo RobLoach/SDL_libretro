@@ -807,9 +807,10 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
 
     SDL_Log("[SDL_Libretro] Game loaded: %s [%ux%u @ %.2ffps]", lr->core.contentName, lr->core.width, lr->core.height, lr->core.fps);
 
-    // Allocate rewind buffer now that serialize size is known.
-    if (lr->rewindEnabled && !lr->rewindReference && lr->rewindCapacity > 0) {
-        SDL_Libretro_SetRewindEnabled(lr, true, lr->rewindCapacity, lr->rewindCaptureInterval);
+    // Allocate the rewind buffer now that the serialize size is known. A core
+    // that doesn't report one yet gets it on a later capture instead.
+    if (lr->rewindEnabled && !lr->rewindReference && lr->core.symbols.retro_serialize_size() > 0) {
+        SDL_Libretro_RewindAllocate(lr);
     }
 
     SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GAME_LOADED, lr->core.contentName);
@@ -1970,7 +1971,8 @@ float SDL_Libretro_GetVolume(const SDL_Libretro* lr) {
  * 1.0f is normal speed, values above it fast-forward (e.g. 2.0f), values
  * between 0 and 1 run in slow motion, and 0.0f pauses. A negative value
  * rewinds at that rate (-1.0f is real time) when rewind is enabled with
- * SDL_Libretro_SetRewindEnabled(); otherwise it is clamped to 0.0f (paused).
+ * SDL_Libretro_SetRewindEnabled() and the game's state can be captured;
+ * otherwise it is clamped to 0.0f (paused).
  * Audio is pitched to match. The speed resets to 1.0f whenever a core is
  * loaded, and the call is ignored while the core has a fast-forward override
  * active that inhibits toggling.
@@ -1987,7 +1989,7 @@ void SDL_Libretro_SetSpeed(SDL_Libretro* lr, float speed) {
 
     if (lr->core.fastforwardOverrideActive && lr->core.fastforwardOverride.inhibit_toggle) return;
 
-    if (speed < 0.0f && lr->rewindEnabled) {
+    if (speed < 0.0f && lr->rewindEnabled && lr->rewindReference) {
         lr->core.speed = speed;
         if (lr->core.audioStream) {
             lr->core.drcAdjustment = 1.0f;
