@@ -3666,19 +3666,32 @@ static int SDLCALL test_EventRange(void *arg) {
 static int SDLCALL test_Events(void *arg) {
     (void)arg;
 
-    // The event space sits in the SDL user event range; the experimental
-    // flag is masked off so every command fits below the lifecycle events.
+    // The event space sits in the SDL user event range, with every
+    // environment command below the lifecycle events.
     SDLTest_AssertCheck(SDL_EVENT_LIBRETRO >= SDL_EVENT_USER, "SDL_EVENT_LIBRETRO is a user event");
     SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_LAST <= SDL_EVENT_LAST, "The libretro events fit the SDL event range");
     SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED <= SDL_EVENT_LIBRETRO_LAST, "The lifecycle events fit the libretro range");
-    SDLTest_AssertCheck((SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE) <= SDL_EVENT_LAST,
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE) == (SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE),
         "Plain commands OR directly onto SDL_EVENT_LIBRETRO");
-    SDLTest_AssertCheck((SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT & ~RETRO_ENVIRONMENT_EXPERIMENTAL)) < (Uint32)SDL_EVENT_LIBRETRO_CORE_LOADED,
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT) != SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS),
+        "An experimental command doesn't collide with the plain one sharing its number");
+    SDLTest_AssertCheck(SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_EXPERIMENTAL | 0x3FF) <= SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST &&
+        SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_PRIVATE | 0x3FF) <= SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST &&
+        SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST < (Uint32)SDL_EVENT_LIBRETRO_CORE_LOADED,
         "Env events stay below the lifecycle events");
+    SDLTest_AssertCheck(SDL_LIBRETRO_ENVIRONMENT_COMMAND(SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT)) == RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT &&
+        SDL_LIBRETRO_ENVIRONMENT_COMMAND(SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE)) == RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE,
+        "SDL_LIBRETRO_ENVIRONMENT_COMMAND() recovers the command, flags included");
 
     SDL_Init(SDL_INIT_EVENTS);
     SDL_Libretro* lr = SDL_Libretro_Create();
-    const Uint32 cameraEvent = SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL);
+    const Uint32 cameraEvent = SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE);
+
+    // A command number the event range can't hold isn't reported at all,
+    // rather than posing as another command or a lifecycle event.
+    SDL_FlushEvents(SDL_EVENT_FIRST, SDL_EVENT_LAST);
+    SDLTest_AssertCheck(SDL_Libretro_PushEnvEvent(lr, 0xF06, NULL) == false, "An out-of-range command reports unhandled");
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_SHUTDOWN, NULL) == 0, "An out-of-range command can't pose as SHUTDOWN");
 
     // An unwatched env command lands in the queue with the context in data1
     // and the core's pointer in data2, and reports unhandled to the core.

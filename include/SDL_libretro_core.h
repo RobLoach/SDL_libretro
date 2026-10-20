@@ -1679,9 +1679,8 @@ static bool SDLCALL SDL_Libretro_KeepUnclaimedEnvEvent(void* userdata, SDL_Event
 /**
  * @internal
  * Reports an environment command the library doesn't handle itself as
- * SDL_EVENT_LIBRETRO | cmd, masking off the experimental and private flags
- * since they don't fit the SDL event range. data2 is the command's data
- * pointer.
+ * SDL_EVENT_LIBRETRO_ENVIRONMENT(cmd). data2 is the command's data pointer.
+ * Commands that type can't encode aren't reported.
  *
  * Each push is tagged with a process-wide sequence number in user.reserved,
  * which applications don't read, so a claimed push can remove exactly its own
@@ -1694,10 +1693,17 @@ static bool SDLCALL SDL_Libretro_KeepUnclaimedEnvEvent(void* userdata, SDL_Event
  *         the event by returning false; the claim still counts.
  */
 static bool SDL_Libretro_PushEnvEvent(SDL_Libretro* lr, unsigned cmd, void* data) {
+    // Only commands that map onto their own event type are reported, so an
+    // out-of-range number can't pose as another command or a library event.
+    unsigned flags = cmd & (unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE);
+    if ((cmd & ~flags) >= 0x400 || flags == (unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE)) {
+        return false;
+    }
+
     static SDL_AtomicInt sequence;
     SDL_Event event;
     SDL_zero(event);
-    event.user.type = SDL_EVENT_LIBRETRO | (cmd & ~(unsigned)(RETRO_ENVIRONMENT_EXPERIMENTAL | RETRO_ENVIRONMENT_PRIVATE));
+    event.user.type = SDL_EVENT_LIBRETRO_ENVIRONMENT(cmd);
     event.user.reserved = (Uint32)SDL_AddAtomicInt(&sequence, 1) + 1;
     event.user.data1 = lr;
     event.user.data2 = data;

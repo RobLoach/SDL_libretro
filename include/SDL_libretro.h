@@ -232,11 +232,8 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  * SDL_UserEvent, with event->user.data1 the SDL_Libretro* that sent it.
  *
  * Environment commands the library doesn't handle itself arrive as
- * `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*`, with the data pointer the core
- * passed in event->user.data2. The RETRO_ENVIRONMENT_EXPERIMENTAL and
- * RETRO_ENVIRONMENT_PRIVATE flags don't fit the SDL event range, so commands
- * carrying them need the flag masked off: `SDL_EVENT_LIBRETRO |
- * (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`.
+ * `SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_*)`, with the data pointer
+ * the core passed in event->user.data2.
  *
  * The data pointer is only valid while the core waits inside the environment
  * call, so to implement a command, handle the event from an
@@ -262,6 +259,43 @@ bool SDL_Libretro_GetInputDescriptor(const SDL_Libretro* lr, unsigned index, uns
  * event falls within SDL_EVENT_LIBRETRO to SDL_EVENT_LIBRETRO_LAST.
  */
 #define SDL_EVENT_LIBRETRO_LAST (SDL_EVENT_LIBRETRO | 0xFFF)
+
+/**
+ * The SDL event type a RETRO_ENVIRONMENT_* command arrives as, when
+ * SDL_libretro leaves the command to the application.
+ *
+ * The command number takes the low ten bits, and the
+ * RETRO_ENVIRONMENT_EXPERIMENTAL and RETRO_ENVIRONMENT_PRIVATE flags each get
+ * a bit of their own, so commands that share a number, like
+ * RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS and the experimental
+ * RETRO_ENVIRONMENT_SET_HW_SHARED_CONTEXT, stay apart. Plain commands come out
+ * as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*`. It's a constant expression,
+ * so it works as a `case` label:
+ *
+ *     case SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE):
+ *
+ * Commands numbered 0x400 and up, or carrying both flags, aren't reported.
+ *
+ * @see SDL_LIBRETRO_ENVIRONMENT_COMMAND()
+ * @see SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST
+ */
+#define SDL_EVENT_LIBRETRO_ENVIRONMENT(cmd) (SDL_EVENT_LIBRETRO | ((cmd) & 0x3FF) | (((cmd) >> 6) & 0xC00))
+
+/**
+ * The last SDL event type an environment command can arrive as. Events from
+ * SDL_EVENT_LIBRETRO to here are environment commands.
+ *
+ * @see SDL_EVENT_LIBRETRO_ENVIRONMENT()
+ */
+#define SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST (SDL_EVENT_LIBRETRO | 0xBFF)
+
+/**
+ * The RETRO_ENVIRONMENT_* command, flags included, that an environment event
+ * type stands for; the reverse of SDL_EVENT_LIBRETRO_ENVIRONMENT().
+ *
+ * @see SDL_EVENT_LIBRETRO_ENVIRONMENT()
+ */
+#define SDL_LIBRETRO_ENVIRONMENT_COMMAND(type) ((((type) - SDL_EVENT_LIBRETRO) & 0x3FF) | ((((type) - SDL_EVENT_LIBRETRO) & 0xC00) << 6))
 
 #define SDL_EVENT_LIBRETRO_CORE_LOADED (SDL_EVENT_LIBRETRO | 0xF00) /**< A core finished loading; data2 is the core name, valid until the next load or unload. @see SDL_Libretro_GetCoreName() */
 #define SDL_EVENT_LIBRETRO_GAME_LOADED (SDL_EVENT_LIBRETRO | 0xF01) /**< A game finished loading, whether directly or through the menu; data2 is the game name, valid until the next load or unload. @see SDL_Libretro_GetGameName() */

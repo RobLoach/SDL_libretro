@@ -140,7 +140,7 @@ SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent
 
 Every SDL_libretro event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_LAST`, a fixed range in the SDL user events. The first `SDL_Libretro_Create()` reserves it through [`SDL_RegisterEvents()`](https://wiki.libsdl.org/SDL3/SDL_RegisterEvents), so events the application registers afterwards never collide with it; events registered before then should stay below `SDL_EVENT_LIBRETRO`, or a warning is logged.
 
-- Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_*` — for example `SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_CAN_DUPE`. Commands carrying the `RETRO_ENVIRONMENT_EXPERIMENTAL` (or `RETRO_ENVIRONMENT_PRIVATE`) flag need it masked off, since it doesn't fit the SDL event range: `SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL)`. The data pointer the core passed rides along in `event->user.data2`.
+- Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_*)`, for example `SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE)`. Experimental and private commands get event types of their own, so they don't collide with plain commands that share their number, and `SDL_LIBRETRO_ENVIRONMENT_COMMAND(event->type)` turns the type back into the command. Every environment event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST`. The data pointer the core passed rides along in `event->user.data2`.
 - `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu. `data2` is the core or game name.
 - `SDL_EVENT_LIBRETRO_CORE_UNLOADED` / `SDL_EVENT_LIBRETRO_GAME_UNLOADED`: The core or game was unloaded; unloading a core reports the game first.
 - `SDL_EVENT_LIBRETRO_SHUTDOWN`: The core requested shutdown, mirroring `SDL_Libretro_ShouldQuit()`.
@@ -153,7 +153,7 @@ while (SDL_PollEvent(&event)) {
         case SDL_EVENT_LIBRETRO_GAME_LOADED:
             SDL_Log("Loaded: %s", (const char*)event.user.data2);
             break;
-        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
+        case SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE):
             SDL_Log("Core asked for location services");
             break;
     }
@@ -164,7 +164,7 @@ An environment command's `data2` pointer is only valid while the core waits insi
 
 ```c
 static bool SDLCALL MyEventWatch(void* userdata, SDL_Event* event) {
-    if (event->type == (SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL))) {
+    if (event->type == SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE)) {
         struct retro_camera_callback* camera = event->user.data2;
         // ... fill in the camera interface ...
         event->user.code = 1; // Tell the core the command succeeded.

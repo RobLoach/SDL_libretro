@@ -1282,7 +1282,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         // Anything else, including commands the library chooses not to
         // implement (camera, location, hardware rendering, achievements):
         // let the application implement the command through an event watch
-        // on SDL_EVENT_LIBRETRO | cmd.
+        // on SDL_EVENT_LIBRETRO_ENVIRONMENT(cmd).
         default: {
             if (SDL_Libretro_PushEnvEvent(lr, cmd, data)) {
                 return true;

@@ -47,7 +47,7 @@ static void SDL_Libretro_AppUpdateWindowTitle(AppContext* app) {
  *
  * The lifecycle events keep the window title current and close the menu when
  * a game arrives, the menu events are logged, and
- * SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_* events report environment
+ * SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_*) events report environment
  * commands that SDL_libretro doesn't handle itself. Implementing one of
  * those would take an SDL_AddEventWatch() callback instead, so the core's
  * data pointer in user.data2 is still valid; this app only logs them.
@@ -96,20 +96,18 @@ static bool SDL_Libretro_AppHandleLibretroEvent(AppContext* app, const SDL_Event
             // SDL_Log("Menu closed");
             return true;
 
-        // Environment commands the library leaves to the application. Plain
-        // commands OR onto SDL_EVENT_LIBRETRO; experimental ones need their
-        // flag masked off, since it doesn't fit the SDL event range.
-        case SDL_EVENT_LIBRETRO | RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE:
+        // Environment commands the library leaves to the application.
+        case SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE):
             SDL_Log("Core asked for location services; not available in this app");
             return true;
-        case SDL_EVENT_LIBRETRO | (RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE & ~RETRO_ENVIRONMENT_EXPERIMENTAL):
+        case SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE):
             SDL_Log("Core asked for a camera interface; not available in this app");
             return true;
 
         // Any other environment command: log the number for diagnostics.
         default:
-            if (event->type >= SDL_EVENT_LIBRETRO && event->type < SDL_EVENT_LIBRETRO_CORE_LOADED) {
-                SDL_Log("Core called unhandled environment command %u", (unsigned)(event->type - SDL_EVENT_LIBRETRO));
+            if (event->type >= SDL_EVENT_LIBRETRO && event->type <= SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST) {
+                SDL_Log("Core called unhandled environment command 0x%x", (unsigned)SDL_LIBRETRO_ENVIRONMENT_COMMAND(event->type));
                 return true;
             }
             return false;
