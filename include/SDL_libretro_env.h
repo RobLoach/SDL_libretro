@@ -677,7 +677,10 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             return true;
         }
 
-        case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS: {
+        // SET_SERIALIZATION_QUIRKS_2 is a newer number for the same command,
+        // with the same data; cores use either.
+        case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS:
+        case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS_2: {
             if (!data) return true;
             lr->core.serializationQuirks = *(const uint64_t*)data;
             // Report that we support variable-size states so cores that flag

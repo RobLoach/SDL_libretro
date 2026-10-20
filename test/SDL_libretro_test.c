@@ -616,6 +616,31 @@ static int SDLCALL test_OptionValuesFull(void *arg) {
 #endif
 }
 
+/* Both numbers for SET_SERIALIZATION_QUIRKS record the core's quirks and
+   report the frontend's support back. */
+static int SDLCALL test_SerializationQuirks(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    uint64_t quirks = RETRO_SERIALIZATION_QUIRK_INCOMPLETE;
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks) == true &&
+        (quirks & RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE) != 0 && lr->core.serializationQuirks == RETRO_SERIALIZATION_QUIRK_INCOMPLETE,
+        "SET_SERIALIZATION_QUIRKS is handled");
+    quirks = RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE;
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS_2, &quirks) == true &&
+        (quirks & RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE) != 0 && lr->core.serializationQuirks == RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE,
+        "SET_SERIALIZATION_QUIRKS_2 is handled the same way");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_OptionReregister(void *arg) {
     (void)arg;
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -4329,6 +4354,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_UpdateOptionVisibility, "Update option visibility via core callback"),
     LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
     LIBRETRO_TEST_CASE(test_OptionValuesFull,  "An option can use every value slot"),
+    LIBRETRO_TEST_CASE(test_SerializationQuirks, "SET_SERIALIZATION_QUIRKS and _2 are handled alike"),
     LIBRETRO_TEST_CASE(test_OptionReregister, "Re-registering an option updates it"),
     LIBRETRO_TEST_CASE(test_CategoryReregister, "Re-registering a category updates it"),
     LIBRETRO_TEST_CASE(test_RewindConfig,     "Rewind settings round-trip through the config"),
