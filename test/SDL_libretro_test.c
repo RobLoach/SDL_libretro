@@ -4109,6 +4109,16 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_RenderMenu(menu);
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
+
+        // A core with no options to show hides the page, and doesn't leave
+        // the user stuck inside it.
+        for (unsigned i = 0; i < lr->core.optionCount; i++) {
+            lr->core.options[i].visible = false;
+        }
+        SDL_Libretro_MenuBuildOptions(menu);
+        SDLTest_AssertCheck(menu->optionsButton->visible == nk_false, "Core Options hides with nothing to show");
+        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->optionsButton->parent,
+            "Hiding Core Options while it's open goes back to its parent");
         nk_console_set_active_parent(menu->console);
 #endif
 

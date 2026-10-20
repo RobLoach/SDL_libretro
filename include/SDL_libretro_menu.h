@@ -1372,6 +1372,11 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
         }
     }
     if (shown == 0) {
+        // The page is going away; don't strand the user on it with nothing
+        // left to navigate, not even a way back.
+        if (nk_console_active_parent(menu->console) == menu->optionsButton) {
+            nk_console_set_active_parent(menu->optionsButton->parent);
+        }
         menu->optionsButton->visible = nk_false;
         return;
     }
@@ -1379,6 +1384,9 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
 
     menu->optionStates = (SDL_LibretroMenuOptionState*)SDL_calloc(count, sizeof(SDL_LibretroMenuOptionState));
     if (menu->optionStates == NULL) {
+        if (nk_console_active_parent(menu->console) == menu->optionsButton) {
+            nk_console_set_active_parent(menu->optionsButton->parent);
+        }
         menu->optionsButton->visible = nk_false;
         return;
     }
