@@ -731,7 +731,10 @@ static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char*
  * @return True if the core was successfully loaded.
  */
 static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath) {
-    if (!lr || !gamePath) return false;
+    if (!lr || !gamePath) {
+        SDL_SetError("[SDL_Libretro] No core loaded, and no content to pick one by");
+        return false;
+    }
 
     // The game's file extension.
     const char* extension = SDL_Libretro_GetExtension(gamePath);
@@ -741,6 +744,7 @@ static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath)
     }
 
     // Try to load cores that match the extension.
+    bool claimed = false;
     for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
         // Check if the extension is in the lr->coreLibrary[i] list.
         if (!SDL_Libretro_ExtensionInList(extension, lr->coreLibrary[i].supported_extensions)) {
@@ -748,12 +752,16 @@ static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath)
         }
 
         // A candidate core claims this extension, try loading it.
+        claimed = true;
         if (SDL_Libretro_LoadCore(lr, lr->coreLibrary[i].path)) {
             return true;
         }
     }
 
-    SDL_SetError("[SDL_Libretro] No core found for extension '%s'", extension);
+    // When a core claimed the extension but failed to load, its error says why.
+    if (!claimed) {
+        SDL_SetError("[SDL_Libretro] No core found for extension '%s'", extension);
+    }
     return false;
 }
 
@@ -948,11 +956,8 @@ static bool SDL_Libretro_LoadGameCommon(SDL_Libretro* lr, const char* gamePath, 
  */
 static bool SDL_Libretro_LoadGameFile(SDL_Libretro* lr, const char* gamePath) {
     // Try to find what can be loaded with it.
-    if (!SDL_Libretro_IsCoreReady(lr)) {
-        if (!SDL_Libretro_LoadCoreForGame(lr, gamePath)) {
-            SDL_SetError("[SDL_Libretro] Core not loaded");
-            return false;
-        }
+    if (!SDL_Libretro_IsCoreReady(lr) && !SDL_Libretro_LoadCoreForGame(lr, gamePath)) {
+        return false;
     }
 
     return SDL_Libretro_LoadGameCommon(lr, gamePath, NULL, NULL, 0);
@@ -1130,12 +1135,9 @@ bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* p
     }
 
     // Try to find what can be loaded with it.
-    if (!SDL_Libretro_IsCoreReady(lr)) {
-        if (!SDL_Libretro_LoadCoreForGame(lr, path)) {
-            if (closeio) SDL_CloseIO(src);
-            SDL_SetError("[SDL_Libretro] Core not loaded");
-            return false;
-        }
+    if (!SDL_Libretro_IsCoreReady(lr) && !SDL_Libretro_LoadCoreForGame(lr, path)) {
+        if (closeio) SDL_CloseIO(src);
+        return false;
     }
 
     // The raw-case extension drives the need_fullpath resolution.

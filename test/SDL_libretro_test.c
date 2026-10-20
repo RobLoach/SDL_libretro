@@ -200,6 +200,34 @@ static void test_RemoveCoreDir(const char* dir) {
     SDL_RemovePath(dir);
 }
 
+/* A core that claims the content's extension but fails to load reports why,
+   rather than that no core was found. */
+static int SDLCALL test_CoreLoadError(void *arg) {
+    (void)arg;
+    const char* dir = "/tmp/sdl_libretro_core_load_error";
+    test_RemoveCoreDir(dir);
+    SDL_CreateDirectory(dir);
+
+    // "broken" claims .txt, but its library isn't a loadable core.
+    char broken[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(broken, sizeof(broken), "%s/broken%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_SaveFile(broken, "not a core", 10);
+    test_WriteCoreInfo(dir, "broken", "Broken", "txt", NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetCoreDirectory(lr, dir);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "game.txt") == false, "A core that won't load fails the game load");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "Failed to load core") != NULL,
+        "The error is the core's load failure: %s", SDL_GetError());
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, "game.xyz") == false, "Content no core claims fails");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "No core found for extension 'xyz'") != NULL,
+        "The error says no core claims it: %s", SDL_GetError());
+
+    SDL_Libretro_Destroy(lr);
+    test_RemoveCoreDir(dir);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_CoreLibrarySorted(void *arg) {
 #ifndef TEST_CORE_PATH
     SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
@@ -4353,6 +4381,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_StateQueries,     "Query getters on fresh context"),
     LIBRETRO_TEST_CASE(test_NullSafety,       "All getters handle NULL without crashing"),
     LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
+    LIBRETRO_TEST_CASE(test_CoreLoadError,     "A claimed core that fails to load reports why"),
     LIBRETRO_TEST_CASE(test_CoreLibrarySorted, "Core library is sorted by name"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_DRCDisable,       "Disabling DRC unwinds the ratio nudge"),
