@@ -297,7 +297,7 @@ struct SDL_LibretroMenu {
     // About page, rebuilt each time it opens. The labels read the arena
     // lazily, so it must stay allocated for as long as the menu.
     nk_console* aboutButton;
-    char aboutText[2048]; /**< Packed NUL-separated label lines. */
+    char aboutText[4096]; /**< Packed NUL-separated label lines. */
     size_t aboutTextLength;
 };
 
@@ -685,7 +685,7 @@ static void SDL_Libretro_MenuAboutLine(SDL_LibretroMenu* menu, const char* forma
 /**
  * @internal
  * Rebuild the About page from the current frontend, core and content state,
- * adding only the lines that apply.
+ * adding only the lines that apply, then the cores available to load.
  */
 static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
@@ -731,6 +731,19 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
         }
         else {
             SDL_Libretro_MenuAboutLine(menu, "Aspect Ratio: %.3f", SDL_Libretro_GetAspectRatio(lr));
+        }
+    }
+
+    // The cores in the core directory that can be loaded: a .info file
+    // without its core library beside it doesn't count.
+    unsigned availableCores = 0;
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        availableCores += SDL_GetPathInfo(lr->coreLibrary[i].path, NULL) ? 1 : 0;
+    }
+    SDL_Libretro_MenuAboutLine(menu, "Available Cores: %u", availableCores);
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        if (SDL_GetPathInfo(lr->coreLibrary[i].path, NULL)) {
+            SDL_Libretro_MenuAboutLine(menu, "  %s", lr->coreLibrary[i].corename);
         }
     }
 

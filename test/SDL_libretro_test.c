@@ -4267,6 +4267,32 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(aboutHasContent, "About shows the loaded content");
         SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
 
+        // About lists the cores that can be loaded, skipping a .info file
+        // whose core library is missing.
+        const char* aboutCoreDir = "/tmp/sdl_libretro_about_cores";
+        test_RemoveCoreDir(aboutCoreDir);
+        SDL_CreateDirectory(aboutCoreDir);
+        char aboutCorePath[SDL_LIBRETRO_MAX_PATH];
+        SDL_snprintf(aboutCorePath, sizeof(aboutCorePath), "%s/text%s", aboutCoreDir, SDL_LIBRETRO_CORE_EXTENSION);
+        SDL_CopyFile(TEST_CORE_PATH, aboutCorePath);
+        test_WriteCoreInfo(aboutCoreDir, "text", "Text Core", "txt", NULL);
+        test_WriteCoreInfo(aboutCoreDir, "missing", "Missing Core", "zzz", NULL);
+        SDL_Libretro_SetCoreDirectory(lr, aboutCoreDir);
+        SDL_Libretro_MenuBuildAbout(menu);
+        bool aboutHasCount = false;
+        bool aboutHasCoreName = false;
+        bool aboutHasMissing = false;
+        for (size_t offset = 0; offset < menu->aboutTextLength; offset += SDL_strlen(menu->aboutText + offset) + 1) {
+            const char* line = menu->aboutText + offset;
+            aboutHasCount |= SDL_strcmp(line, "Available Cores: 1") == 0;
+            aboutHasCoreName |= SDL_strcmp(line, "  Text Core") == 0;
+            aboutHasMissing |= SDL_strstr(line, "Missing Core") != NULL;
+        }
+        SDLTest_AssertCheck(aboutHasCount, "About counts the available cores");
+        SDLTest_AssertCheck(aboutHasCoreName, "About lists an available core by name");
+        SDLTest_AssertCheck(!aboutHasMissing, "About skips a core whose library is missing");
+        test_RemoveCoreDir(aboutCoreDir);
+
         // Reloading the same core while the menu stays open frees the option
         // strings Core Options borrows, so it must rebuild before it draws.
         SDL_Libretro_UnloadCore(lr);
