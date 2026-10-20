@@ -1552,6 +1552,37 @@ static int SDLCALL test_FrameTime(void *arg) {
 #endif
 }
 
+/* A core's shutdown request stops it running, and doesn't outlive its game. */
+static int SDLCALL test_Shutdown(void *arg) {
+    (void)arg;
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    struct retro_frame_time_callback ftcb = { test_FrameTimeCallback, 16666 };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_FRAME_TIME_CALLBACK, &ftcb);
+
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(lr) == false, "No shutdown requested yet");
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SHUTDOWN, NULL) == true, "SHUTDOWN accepted");
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(lr) == true, "ShouldQuit after the core's request");
+
+    test_frameTimeCount = 0;
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_frameTimeCount == 0, "The core doesn't run after requesting shutdown");
+
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(lr) == false, "Unloading the game clears the request");
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "Another game loads");
+    SDLTest_AssertCheck(SDL_Libretro_ShouldQuit(lr) == false, "The new game runs");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_GameInfoExt(void *arg) {
 #if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
@@ -4078,6 +4109,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_FrameTime,         "Frame-time callback receives measured deltas"),
+    LIBRETRO_TEST_CASE(test_Shutdown,         "A shutdown request stops the core until its game unloads"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
     LIBRETRO_TEST_CASE(test_StartCoreWithoutContent, "Start a library core without content"),

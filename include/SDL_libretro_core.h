@@ -1246,6 +1246,8 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     // Unload the game before closing audio and video.
     lr->core.symbols.retro_unload_game();
     lr->core.gameLoaded = false;
+    // A shutdown request was for the game that's now gone.
+    lr->core.shutdown = false;
     SDL_Libretro_ResetContentState(lr);
     SDL_Libretro_StopRumble(lr);
 
@@ -1378,9 +1380,9 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t frameTimeUsec) {
  *
  * The core is paced to its own frame rate scaled by the speed, so this may run
  * zero, one, or several core frames per call. Pending video and audio
- * reinitializations happen here. Nothing runs while the speed is 0, and a
- * negative speed steps backwards through the rewind buffer when rewind is
- * enabled.
+ * reinitializations happen here. Nothing runs while the speed is 0, or once
+ * the core has requested shutdown, and a negative speed steps backwards
+ * through the rewind buffer when rewind is enabled.
  *
  * @param lr the libretro context. Does nothing when lr is NULL or no game is loaded.
  *
@@ -1388,7 +1390,8 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t frameTimeUsec) {
  * @see SDL_Libretro_Render()
  */
 void SDL_Libretro_Update(SDL_Libretro* lr) {
-    if (!lr || !lr->core.gameLoaded) return;
+    // Once the core asks to shut down, it doesn't expect to run again.
+    if (!lr || !lr->core.gameLoaded || lr->core.shutdown) return;
 
     // Pending Video Driver Reinit
     if (lr->core.videoReinitPending) {
@@ -1441,7 +1444,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
 
         // Mute audio and neutralize input for the throwaway re-runs that produce the displayed frames while scrubbing backward.
         lr->rewindActive = true;
-        while (lr->core.speedAccumulator >= stepPeriod && maxTicks-- > 0) {
+        while (lr->core.speedAccumulator >= stepPeriod && maxTicks-- > 0 && !lr->core.shutdown) {
             lr->core.speedAccumulator -= stepPeriod;
             if (!SDL_Libretro_RewindStepState(lr)) break;
             lr->core.symbols.retro_run();
@@ -1505,13 +1508,15 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
 
     // Run the required number of ticks.
     retro_usec_t frameTimeUsec = SDL_Libretro_FrameTimeDelta(lr, referenceUsec, ticks);
-    for (int i = 0; i < ticks; i++) {
+    for (int i = 0; i < ticks && !lr->core.shutdown; i++) {
         SDL_Libretro_Tick(lr, frameTimeUsec);
     }
 }
 
 /**
  * Indicates whether or not the core has requested to shutdown.
+ *
+ * The request lasts until the game unloads, so loading another game clears it.
  *
  * @param lr the libretro context.
  * @returns true when the core requested to shut down, false otherwise or when lr is NULL.
