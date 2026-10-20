@@ -13,6 +13,15 @@ if(NOT TARGET SDL_libretro_app)
     return()
 endif()
 
+# Cores written in C++, like snes9x, import libc++ from the frontend. Linking
+# the app as C++ links libc++ in, and MAIN_MODULE exports all of it to the
+# cores; recent Emscripten releases no longer link C programs that way.
+enable_language(CXX)
+set_target_properties(SDL_libretro_app PROPERTIES LINKER_LANGUAGE CXX)
+
+# Enabling C++ re-reads Emscripten's platform file, which resets the suffix to .js.
+set(CMAKE_EXECUTABLE_SUFFIX ".html")
+
 # Preload the Core Files. DownloadCores only warns when a download fails, so
 # skip any core file that's missing rather than failing the link. Each flag
 # is a SHELL: group so the repeated --preload-file isn't de-duplicated.
@@ -39,6 +48,8 @@ target_sources(SDL_libretro_app PRIVATE
     "${SDL_LIBRETRO_COMMON_DIR}/compat/compat_strl.c"
     "${SDL_LIBRETRO_COMMON_DIR}/compat/compat_posix_string.c"
     "${SDL_LIBRETRO_COMMON_DIR}/string/stdstring.c"
+    "${SDL_LIBRETRO_COMMON_DIR}/encodings/encoding_crc32.c"
+    "${SDL_LIBRETRO_COMMON_DIR}/encodings/encoding_deflate.c"
     "${SDL_LIBRETRO_COMMON_DIR}/encodings/encoding_utf.c"
     "${SDL_LIBRETRO_COMMON_DIR}/file/file_path.c"
     "${SDL_LIBRETRO_COMMON_DIR}/file/file_path_io.c"
@@ -57,19 +68,27 @@ set(SDL_LIBRETRO_CORE_EXPORTS
     filestream_tell
     filestream_gets
     filestream_vfs_init
+    filestream_read_file
     rfopen
     rfclose
     rfread
     rfgets
+    rfgetc
+    rfeof
     rfseek
     rftell
+    rinflate_new
+    rinflate_free
+    rinflate_set_in
+    rinflate_set_out
+    rinflate_process
     fill_pathname_join
     strlcpy_retro__
     strlcat_retro__
 )
 list(TRANSFORM SDL_LIBRETRO_CORE_EXPORTS PREPEND "-Wl,--export=")
 
-# Confiugure the Emscripten options
+# Configure the Emscripten options
 target_link_options(SDL_libretro_app PRIVATE
     -sMAIN_MODULE=1 # Enables dynamic linking with dlopen()
     -sGL_ENABLE_GET_PROC_ADDRESS=1 # Allows cores to resolve GL at runtime
