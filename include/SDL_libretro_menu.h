@@ -360,12 +360,16 @@ static bool SDL_Libretro_MenuLoadGameNow(SDL_LibretroMenu* menu, const char* pat
 
 /**
  * @internal
- * Fill coreChoices with the scanned cores that list the path's extension.
+ * Fill coreChoices with the scanned cores that best fit the path: those that
+ * list its extension, narrowed to the ones whose database names the folder
+ * it's in (like "Nintendo - Game Boy") when any do. With no core listing the
+ * extension, the cores matching the folder alone.
  *
  * @return The number of candidates collected.
  */
 static int SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, const char* path) {
     SDL_Libretro* lr = menu->lr;
+    menu->coreChoicesCount = 0;
 
     // Match on the real content extension. For an archive that's the extension
     // of the file inside it, so the picker keys on the actual system rather than
@@ -377,28 +381,34 @@ static int SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, const 
         contentPath = resolved;
     }
 #endif
-
     const char* extension = SDL_Libretro_GetExtension(contentPath);
-    if (extension[0] == '\0') {
+
+    // The folder comes from the OS path, even for content inside an archive.
+    char folder[SDL_LIBRETRO_MAX_PATH];
+    SDL_Libretro_GetFolderName(folder, sizeof(folder), path);
+
+    // Only the best matches are offered, the same ones the loader tries first.
+    int best = 0;
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        int score = SDL_Libretro_CoreMatchScore(&lr->coreLibrary[i], extension, folder);
+        best = score > best ? score : best;
+    }
+    if (best == 0) {
         return 0;
     }
 
-    menu->coreChoicesCount = 0;
-    if (lr->coreLibraryCount > 0) {
-        const SDL_Libretro_CoreInfo** grown = (const SDL_Libretro_CoreInfo**)SDL_realloc(
-            (void*)menu->coreChoices, lr->coreLibraryCount * sizeof(const SDL_Libretro_CoreInfo*));
-        if (grown == NULL) {
-            return 0;
-        }
-        menu->coreChoices = grown;
+    const SDL_Libretro_CoreInfo** grown = (const SDL_Libretro_CoreInfo**)SDL_realloc(
+        (void*)menu->coreChoices,
+        lr->coreLibraryCount * sizeof(const SDL_Libretro_CoreInfo*));
+    if (grown == NULL) {
+        return 0;
     }
+    menu->coreChoices = grown;
 
     for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
-        if (lr->coreLibrary[i].path == NULL ||
-            !SDL_Libretro_ExtensionInList(extension, lr->coreLibrary[i].supported_extensions)) {
-            continue;
+        if (SDL_Libretro_CoreMatchScore(&lr->coreLibrary[i], extension, folder) == best) {
+            menu->coreChoices[menu->coreChoicesCount++] = &lr->coreLibrary[i];
         }
-        menu->coreChoices[menu->coreChoicesCount++] = &lr->coreLibrary[i];
     }
     return menu->coreChoicesCount;
 }

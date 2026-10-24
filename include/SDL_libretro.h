@@ -618,13 +618,15 @@ static const char* SDL_Libretro_AnalogToDigitalNames[SDL_LIBRETRO_ANALOG_TO_DIGI
  * @internal
  * A core discovered in the core directory, read from its libretro .info file.
  *
- * Used to pick a core by name or by content extension.
+ * Used to pick a core by name, by content extension, or by the folder the
+ * content is in.
  *
  * @see SDL_Libretro_SetCoreDirectory()
  */
 typedef struct SDL_Libretro_CoreInfo {
     char* corename; /**< The core's display name (corename in the .info file). */
     char* supported_extensions; /**< The content extensions the core supports, separated by "|". */
+    char* database; /**< The No-Intro/Redump names of the core's systems, separated by "|" (like "Nintendo - Game Boy"), or NULL. */
     char* path; /**< The path to the core's shared library. */
     bool needs_fullpath; /**< The core loads content from its path rather than from memory. */
     bool supports_no_game; /**< The core can start without content. */

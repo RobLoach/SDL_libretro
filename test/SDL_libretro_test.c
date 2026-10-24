@@ -270,8 +270,76 @@ static int SDLCALL test_CoreLibrarySorted(void *arg) {
     }
 
     // The first match in sorted order wins.
-    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/tmp/game.sortext") == true, "LoadCoreForGame finds a core");
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/tmp/game.sortext", NULL) == true, "LoadCoreForGame finds a core");
     SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, zcore) == 0, "Sorted first core was loaded, got '%s'", lr->core.corePath);
+
+    SDL_Libretro_Destroy(lr);
+    test_RemoveCoreDir(dir);
+    return TEST_COMPLETED;
+#endif
+}
+
+static int SDLCALL test_CoreForFolder(void *arg) {
+    // The folder name is the one holding the file, whichever the separator.
+    char folder[SDL_LIBRETRO_MAX_PATH];
+    SDL_Libretro_GetFolderName(folder, sizeof(folder), "/roms/Nintendo - Game Boy/tetris.gb");
+    SDLTest_AssertCheck(SDL_strcmp(folder, "Nintendo - Game Boy") == 0, "Folder of a / path, got '%s'", folder);
+    SDL_Libretro_GetFolderName(folder, sizeof(folder), "C:\\roms\\Sony - PlayStation\\game.cue");
+    SDLTest_AssertCheck(SDL_strcmp(folder, "Sony - PlayStation") == 0, "Folder of a \\ path, got '%s'", folder);
+    SDL_Libretro_GetFolderName(folder, sizeof(folder), "tetris.gb");
+    SDLTest_AssertCheck(folder[0] == '\0', "No folder for a bare file name, got '%s'", folder);
+
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    const char* dir = "/tmp/sdl_libretro_folder_cores";
+    test_RemoveCoreDir(dir);
+    SDL_CreateDirectory(dir);
+
+    // "Aardvark" sorts first and also claims .gb, so it wins on the extension
+    // alone; "Gameboy" only wins when the folder names its system.
+    test_WriteCoreInfo(dir, "acore", "Aardvark", "gb|gba", "database = \"Nintendo - Game Boy Advance\"\n");
+    test_WriteCoreInfo(dir, "gcore", "Gameboy", "gb|gbc", "database = \"Nintendo - Game Boy|Nintendo - Game Boy Color\"\n");
+    char acore[SDL_LIBRETRO_MAX_PATH], gcore[SDL_LIBRETRO_MAX_PATH];
+    SDL_snprintf(acore, sizeof(acore), "%s/acore%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_snprintf(gcore, sizeof(gcore), "%s/gcore%s", dir, SDL_LIBRETRO_CORE_EXTENSION);
+    SDL_CopyFile(TEST_CORE_PATH, acore);
+    SDL_CopyFile(TEST_CORE_PATH, gcore);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetCoreDirectory(lr, dir);
+    SDLTest_AssertCheck(lr->coreLibraryCount == 2 && lr->coreLibrary[1].database != NULL &&
+        SDL_strcmp(lr->coreLibrary[1].database, "Nintendo - Game Boy|Nintendo - Game Boy Color") == 0,
+        "The core library reads the database field");
+
+    // Extension alone: the first sorted core.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/roms/tetris.gb", NULL) == true, "Core found by extension");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, acore) == 0, "Extension alone picks the first core, got '%s'", lr->core.corePath);
+    SDL_Libretro_UnloadCore(lr);
+
+    // Extension and folder: the core whose database names the folder.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/roms/nintendo - game boy/tetris.gb", NULL) == true, "Core found by extension and folder");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, gcore) == 0, "The folder narrows the extension match, got '%s'", lr->core.corePath);
+    SDL_Libretro_UnloadCore(lr);
+
+    // Unknown or missing extension: the folder alone.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/roms/Nintendo - Game Boy Color/zelda.bin", NULL) == true, "Core found by folder alone");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, gcore) == 0, "Folder fallback picks the matching core, got '%s'", lr->core.corePath);
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/roms/Nintendo - Game Boy Advance/metroid", NULL) == true, "Core found by folder without an extension");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, acore) == 0, "Extension-less content picks the folder's core, got '%s'", lr->core.corePath);
+    SDL_Libretro_UnloadCore(lr);
+
+    // The folder can come from another path, like the archive holding the content.
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "game/zelda.bin", "/roms/Nintendo - Game Boy/zelda.zip") == true, "Core found by the archive's folder");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, gcore) == 0, "Archive folder picks the matching core, got '%s'", lr->core.corePath);
+    SDL_Libretro_UnloadCore(lr);
+
+    // Neither matches.
+    SDL_ClearError();
+    SDLTest_AssertCheck(SDL_Libretro_LoadCoreForGame(lr, "/roms/Sega - Mega Drive - Genesis/sonic.bin", NULL) == false, "No core for an unknown extension and folder");
+    SDLTest_AssertCheck(SDL_strstr(SDL_GetError(), "No core found for extension 'bin'") != NULL, "Error names the extension, got '%s'", SDL_GetError());
 
     SDL_Libretro_Destroy(lr);
     test_RemoveCoreDir(dir);
@@ -4488,7 +4556,7 @@ static int SDLCALL test_MenuCorePicker(void *arg) {
     char infoPath[4096];
     char infoPathNovfs[4096];
     const char* info1 = "corename = \"Test Core\"\nsupported_extensions = \"txt\"\n";
-    const char* info2 = "corename = \"Test Core NoVFS\"\nsupported_extensions = \"txt\"\n";
+    const char* info2 = "corename = \"Test Core NoVFS\"\nsupported_extensions = \"txt\"\ndatabase = \"Test System\"\n";
     SDL_snprintf(infoPath, sizeof(infoPath), "%s/test_core.info", coreDir);
     SDL_snprintf(infoPathNovfs, sizeof(infoPathNovfs), "%s/test_core_novfs.info", coreDir);
     SDL_SaveFile(infoPath, info1, SDL_strlen(info1));
@@ -4522,6 +4590,12 @@ static int SDLCALL test_MenuCorePicker(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "Menu closes after the picked core loads");
         SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->console,
             "Navigation resets to the top level");
+
+        // A folder named in a core's database narrows the candidates to it.
+        SDLTest_AssertCheck(SDL_Libretro_MenuCollectCoreCandidates(menu, "/roms/Test System/game.txt") == 1 &&
+            SDL_strcmp(menu->coreChoices[0]->corename, "Test Core NoVFS") == 0, "The folder narrows the candidates");
+        SDLTest_AssertCheck(SDL_Libretro_MenuCollectCoreCandidates(menu, "/roms/Test System/game") == 1,
+            "The folder alone finds a candidate");
 
         // With a single matching core, the game loads directly.
         SDL_RemovePath(infoPathNovfs);
@@ -4558,6 +4632,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_DirectorySetters, "Directory and username setters"),
     LIBRETRO_TEST_CASE(test_CoreLoadError,     "A claimed core that fails to load reports why"),
     LIBRETRO_TEST_CASE(test_CoreLibrarySorted, "Core library is sorted by name"),
+    LIBRETRO_TEST_CASE(test_CoreForFolder,     "Core picked by the content's folder"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
     LIBRETRO_TEST_CASE(test_DRCDisable,       "Disabling DRC unwinds the ratio nudge"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),

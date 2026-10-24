@@ -576,7 +576,7 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     }
 
     // The core must be loaded to resolve need_fullpath for the picked file.
-    if (!SDL_Libretro_IsCoreReady(lr) && !SDL_Libretro_LoadCoreForGame(lr, virtualPath)) {
+    if (!SDL_Libretro_IsCoreReady(lr) && !SDL_Libretro_LoadCoreForGame(lr, virtualPath, gamePath)) {
         SDL_Libretro_PhysFS_ClearMount(lr);
         return false;
     }
