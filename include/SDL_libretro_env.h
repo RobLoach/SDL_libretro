@@ -1015,9 +1015,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             if (!opt->key) return false;
             for (unsigned i = 0; i < lr->core.optionCount; i++) {
                 if (lr->core.options[i].key && SDL_strcmp(lr->core.options[i].key, opt->key) == 0) {
-                    lr->core.options[i].visible = opt->visible;
-                    // Only the app needs to refresh; the option's value is unchanged, so don't make GET_VARIABLE_UPDATE report true to the core.
-                    lr->core.optionsDirtyApp = true;
+                    // Display callbacks re-send every option's visibility, so
+                    // only an actual flip counts as a change. Only the app needs
+                    // to refresh; the option's value is unchanged, so don't make
+                    // GET_VARIABLE_UPDATE report true to the core.
+                    if (lr->core.options[i].visible != opt->visible) {
+                        lr->core.options[i].visible = opt->visible;
+                        SDL_Libretro_MarkOptionsChanged(lr);
+                    }
                     return true;
                 }
             }
