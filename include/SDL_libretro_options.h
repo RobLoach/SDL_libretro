@@ -6,6 +6,42 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_OPTIONS_IMPL_ONCE)
 #define SDL_LIBRETRO_OPTIONS_IMPL_ONCE
 
+/**
+ * Reports SDL_EVENT_LIBRETRO_OPTIONS_CHANGED. At most one such event sits in
+ * the queue at a time, so change bursts (option registration, a config load)
+ * coalesce.
+ *
+ * @internal
+ */
+static void SDL_Libretro_PushOptionsChanged(SDL_Libretro* lr) {
+    if (!SDL_HasEvent(SDL_EVENT_LIBRETRO_OPTIONS_CHANGED)) {
+        SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_OPTIONS_CHANGED, NULL);
+    }
+}
+
+/**
+ * Flags a change only the application needs to see (visibility, text) for
+ * SDL_Libretro_AreOptionsDirty(), and reports it. GET_VARIABLE_UPDATE is left
+ * alone, since no value changed.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MarkOptionsChanged(SDL_Libretro* lr) {
+    lr->core.optionsDirtyApp = true;
+    SDL_Libretro_PushOptionsChanged(lr);
+}
+
+/**
+ * Flags an option value change for both the core (GET_VARIABLE_UPDATE) and
+ * the application (SDL_Libretro_AreOptionsDirty()), and reports it.
+ *
+ * @internal
+ */
+static void SDL_Libretro_MarkOptionsDirty(SDL_Libretro* lr) {
+    lr->core.optionsDirtyCore = true;
+    SDL_Libretro_MarkOptionsChanged(lr);
+}
+
 static char* SDL_Libretro_Strdup(const char* s) {
     if (!s) return SDL_strdup("");
     return SDL_strdup(s);
@@ -128,6 +164,7 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
         // The core hasn't read a new option yet, so it isn't flagged as updated.
         copy.visible = true;
         lr->core.options[lr->core.optionCount++] = copy;
+        SDL_Libretro_PushOptionsChanged(lr);
         return;
     }
 
@@ -149,7 +186,7 @@ static void SDL_Libretro_InitCoreOption(SDL_Libretro* lr, const char* key, const
         slot->value = copy.value;
         lr->core.optionsDirtyCore = true;
     }
-    lr->core.optionsDirtyApp = true;
+    SDL_Libretro_MarkOptionsChanged(lr);
 }
 
 static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* key, const char* desc, const char* info) {
@@ -172,7 +209,7 @@ static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* ke
             SDL_free((void*)existing->info);
             existing->desc = newDesc;
             existing->info = newInfo;
-            lr->core.optionsDirtyApp = true;
+            SDL_Libretro_MarkOptionsChanged(lr);
             return;
         }
     }
@@ -327,8 +364,7 @@ bool SDL_Libretro_SetOptionValue(SDL_Libretro* lr, const char* key, const char* 
     }
     SDL_free((void*)opt->value);
     opt->value = dup;
-    lr->core.optionsDirtyCore = true;
-    lr->core.optionsDirtyApp = true;
+    SDL_Libretro_MarkOptionsDirty(lr);
     return true;
 }
 
@@ -432,8 +468,7 @@ bool SDL_Libretro_ResetOption(SDL_Libretro* lr, const char* key) {
     }
     SDL_free((void*)opt->value);
     opt->value = dupicateValue;
-    lr->core.optionsDirtyCore = true;
-    lr->core.optionsDirtyApp = true;
+    SDL_Libretro_MarkOptionsDirty(lr);
     return true;
 }
 
@@ -453,8 +488,7 @@ void SDL_Libretro_ResetAllOptions(SDL_Libretro* lr) {
         SDL_free((void*)opt->value);
         opt->value = dupicateValue;
     }
-    lr->core.optionsDirtyCore = true;
-    lr->core.optionsDirtyApp = true;
+    SDL_Libretro_MarkOptionsDirty(lr);
 }
 
 /**

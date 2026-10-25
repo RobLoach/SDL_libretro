@@ -7,6 +7,30 @@
 #if defined(SDL_LIBRETRO_IMPLEMENTATION) && !defined(SDL_LIBRETRO_MESSAGES_IMPL_ONCE)
 #define SDL_LIBRETRO_MESSAGES_IMPL_ONCE
 
+/**
+ * Event filter dropping queued SDL_EVENT_LIBRETRO_MESSAGE events whose text
+ * is userdata.
+ *
+ * @internal
+ */
+static bool SDLCALL SDL_Libretro_OsdKeepEvent(void* userdata, SDL_Event* event) {
+    return event->type != SDL_EVENT_LIBRETRO_MESSAGE || event->user.data2 != userdata;
+}
+
+/**
+ * Frees a queued message's text, withdrawing any SDL_EVENT_LIBRETRO_MESSAGE
+ * still pointing at it so data2 never dangles.
+ *
+ * @internal
+ */
+static void SDL_Libretro_OsdFree(SDL_LibretroOsdEntry* entry) {
+    if (entry->msg) {
+        SDL_FilterEvents(SDL_Libretro_OsdKeepEvent, entry->msg);
+        SDL_free(entry->msg);
+        entry->msg = NULL;
+    }
+}
+
 static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durationSec, unsigned priority, enum retro_message_type type, int8_t progress) {
     if (!lr || !msg || msg[0] == '\0') return;
 
@@ -34,8 +58,7 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
     int slot = -1;
     for (int i = 0; i < lr->osdQueueCount; i++) {
         if (now > lr->osdQueue[i].endTimeMs) {
-            SDL_free(lr->osdQueue[i].msg);
-            lr->osdQueue[i].msg = NULL;
+            SDL_Libretro_OsdFree(&lr->osdQueue[i]);
             slot = i;
             break;
         }
@@ -59,6 +82,9 @@ static void SDL_Libretro_OsdPush(SDL_Libretro* lr, const char* msg, double durat
     lr->osdQueue[slot].priority = priority;
     lr->osdQueue[slot].type = type;
     lr->osdQueue[slot].progress = progress;
+
+    // Report the new message; data2 stays valid while it's queued.
+    SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_MESSAGE, lr->osdQueue[slot].msg);
 }
 
 /**
@@ -71,8 +97,7 @@ static void SDL_Libretro_OsdExpire(SDL_Libretro* lr) {
 
     for (int i = 0; i < lr->osdQueueCount; i++) {
         if (now > lr->osdQueue[i].endTimeMs) {
-            SDL_free(lr->osdQueue[i].msg);
-            lr->osdQueue[i].msg = NULL;
+            SDL_Libretro_OsdFree(&lr->osdQueue[i]);
             continue;
         }
         if (dst != i) {
@@ -130,7 +155,7 @@ void SDL_Libretro_SetMessage(SDL_Libretro* lr, const char* msg, double duration)
     if (!lr) return;
     if (!msg || msg[0] == '\0') {
         for (int i = 0; i < lr->osdQueueCount; i++) {
-            SDL_free(lr->osdQueue[i].msg);
+            SDL_Libretro_OsdFree(&lr->osdQueue[i]);
         }
         lr->osdQueueCount = 0;
         return;
