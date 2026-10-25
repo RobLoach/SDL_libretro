@@ -416,27 +416,25 @@ static const char* SDL_Libretro_GetExtension(const char* path) {
 
 /**
  * @internal
- * The name of the folder holding `path` ("" if none): "roms/Nintendo - Game
- * Boy/tetris.gb" > "Nintendo - Game Boy".
+ * Whether a folder in `path` is named in the "|"-separated `pipeList`:
+ * "roms/Nintendo - Game Boy/Europe/tetris.gb" checks "roms", "Nintendo -
+ * Game Boy" and "Europe".
  */
-static void SDL_Libretro_GetFolderName(char* dst, size_t dstSize, const char* path) {
-    if (!dst || dstSize == 0) return;
-    dst[0] = '\0';
-    if (!path) return;
-
-    // Find the last separator, then the one before it.
-    const char* end = NULL;
+static bool SDL_Libretro_FolderInList(const char* path, const char* pipeList) {
+    if (!path || !pipeList) return false;
     const char* start = path;
     for (const char* p = path; *p; p++) {
-        if (*p == '/' || *p == '\\') {
-            if (end) start = end + 1;
-            end = p;
+        if (*p != '/' && *p != '\\') continue;
+        char folder[SDL_LIBRETRO_MAX_PATH];
+        size_t len = (size_t)(p - start);
+        if (len > 0 && len < sizeof(folder)) {
+            SDL_memcpy(folder, start, len);
+            folder[len] = '\0';
+            if (SDL_Libretro_ExtensionInList(folder, pipeList)) return true;
         }
+        start = p + 1;
     }
-    if (!end) return;
-
-    size_t len = (size_t)(end - start);
-    SDL_strlcpy(dst, start, (len + 1 < dstSize) ? len + 1 : dstSize);
+    return false;
 }
 
 /**
@@ -748,61 +746,90 @@ static const char* SDL_Libretro_SetContentIdentity(SDL_Libretro* lr, const char*
 
 /**
  * @internal
- * How well a library core fits content with the given extension, in the
- * given folder: 3 when the core supports the extension and its database
- * names the folder (No-Intro/Redump naming, like "Nintendo - Game Boy"), 2
- * for the extension alone, 1 for the folder alone, and 0 for no match.
+ * Whether a library core takes the archive at `archivePath` unextracted: it
+ * lists the archive's extension and sets block_extract.
  */
-static int SDL_Libretro_CoreMatchScore(const SDL_Libretro_CoreInfo* info, const char* extension, const char* folder) {
-    bool byExtension = extension[0] != '\0' && SDL_Libretro_ExtensionInList(extension, info->supported_extensions);
-    bool byFolder = folder[0] != '\0' && SDL_Libretro_ExtensionInList(folder, info->database);
+static bool SDL_Libretro_CoreTakesArchive(const SDL_Libretro_CoreInfo* info, const char* archivePath) {
+    return archivePath && info->block_extract &&
+           SDL_Libretro_ExtensionInList(SDL_Libretro_GetExtension(archivePath), info->supported_extensions);
+}
+
+/**
+ * @internal
+ * How well a library core fits the content at `path`: 2 when it supports the
+ * extension, plus 1 when its database names a folder the content is in
+ * (No-Intro/Redump naming, like "Nintendo - Game Boy"). For content inside an
+ * archive, the archive's folders count too, and so does the archive itself
+ * for a core that takes it unextracted.
+ */
+static int SDL_Libretro_CoreMatchScore(const SDL_Libretro_CoreInfo* info, const char* path, const char* archivePath) {
+    const char* extension = SDL_Libretro_GetExtension(path);
+    bool byExtension = (extension[0] != '\0' && SDL_Libretro_ExtensionInList(extension, info->supported_extensions)) ||
+                       SDL_Libretro_CoreTakesArchive(info, archivePath);
+    bool byFolder = SDL_Libretro_FolderInList(path, info->database) || SDL_Libretro_FolderInList(archivePath, info->database);
     return (byExtension ? 2 : 0) + (byFolder ? 1 : 0);
+}
+
+/**
+ * @internal
+ * Fill `dst` with the library cores that fit the content, best first (see
+ * SDL_Libretro_CoreMatchScore()). A folder match alone only counts when no
+ * core supports the extension. Ties keep core library order.
+ *
+ * @param path the content path; for content inside an archive, its path there.
+ * @param archivePath the OS path of the archive holding the content, or NULL.
+ * @param dst receives pointers into the core library; room for coreLibraryCount.
+ * @param bestCount receives how many cores share the best fit, or NULL.
+ * @return the number of cores written to `dst`.
+ */
+static int SDL_Libretro_FindCoresForContent(const SDL_Libretro* lr, const char* path, const char* archivePath, const SDL_Libretro_CoreInfo** dst, int* bestCount) {
+    int count = 0;
+    if (bestCount) *bestCount = 0;
+    for (int score = 3; score > 0 && !(score == 1 && count > 0); score--) {
+        for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+            if (SDL_Libretro_CoreMatchScore(&lr->coreLibrary[i], path, archivePath) == score) {
+                dst[count++] = &lr->coreLibrary[i];
+            }
+        }
+        if (bestCount && *bestCount == 0) *bestCount = count;
+    }
+    return count;
 }
 
 /**
  * Given a game path, load the core that supports it.
  *
- * Cores supporting the file extension are tried first, those whose database
- * names the content's folder (like "Nintendo - Game Boy") ahead of the rest.
- * When no core supports the extension, cores matching the folder alone are
- * tried. Within each group, cores are tried in core library order (sorted by
- * core name, then path; see SDL_Libretro_SetCoreDirectory()), and the first
- * that loads wins.
+ * Cores are tried in the order of SDL_Libretro_FindCoresForContent(): those
+ * supporting the extension, ones whose database names a folder the content is
+ * in (like "Nintendo - Game Boy") first, then the folder alone when no core
+ * supports the extension. Ties go by core library order (sorted by core name,
+ * then path; see SDL_Libretro_SetCoreDirectory()), and the first that loads
+ * wins.
  *
- * @param gamePath the content path, for its extension.
- * @param folderPath the path whose folder is matched, or NULL for gamePath.
- *                   For content inside an archive, the archive's path.
- * @return True if the core was successfully loaded.
+ * @param gamePath the content path; for content inside an archive, its path there.
+ * @param archivePath the OS path of the archive holding the content, or NULL.
+ * @return the library entry of the loaded core, or NULL on failure.
  */
-static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath, const char* folderPath) {
+static const SDL_Libretro_CoreInfo* SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath, const char* archivePath) {
     if (!lr || !gamePath) {
         SDL_SetError("[SDL_Libretro] No core loaded, and no content to pick one by");
-        return false;
+        return NULL;
     }
 
-    const char* extension = SDL_Libretro_GetExtension(gamePath);
-    char folder[SDL_LIBRETRO_MAX_PATH];
-    SDL_Libretro_GetFolderName(folder, sizeof(folder), folderPath ? folderPath : gamePath);
-
-    // Try the best matches first. The folder alone is only a fallback for
-    // when no core claims the extension.
-    bool claimed = false;
-    for (int score = 3; score > 0 && !(score == 1 && claimed); score--) {
-        for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
-            if (SDL_Libretro_CoreMatchScore(&lr->coreLibrary[i], extension, folder) != score) {
-                continue;
-            }
-
-            // A candidate core claims this content, try loading it.
-            claimed = true;
-            if (SDL_Libretro_LoadCore(lr, lr->coreLibrary[i].path)) {
-                return true;
-            }
+    const SDL_Libretro_CoreInfo** cores = (const SDL_Libretro_CoreInfo**)SDL_malloc((lr->coreLibraryCount + 1) * sizeof(*cores));
+    if (!cores) return NULL;
+    int count = SDL_Libretro_FindCoresForContent(lr, gamePath, archivePath, cores, NULL);
+    const SDL_Libretro_CoreInfo* loaded = NULL;
+    for (int i = 0; !loaded && i < count; i++) {
+        if (SDL_Libretro_LoadCore(lr, cores[i]->path)) {
+            loaded = cores[i];
         }
     }
+    SDL_free((void*)cores);
 
     // When a core claimed the content but failed to load, its error says why.
-    if (!claimed) {
+    if (count == 0) {
+        const char* extension = SDL_Libretro_GetExtension(gamePath);
         if (extension[0] == '\0') {
             SDL_SetError("[SDL_Libretro] Game path '%s' has no file extension", gamePath);
         }
@@ -810,7 +837,7 @@ static bool SDL_Libretro_LoadCoreForGame(SDL_Libretro* lr, const char* gamePath,
             SDL_SetError("[SDL_Libretro] No core found for extension '%s'", extension);
         }
     }
-    return false;
+    return loaded;
 }
 
 /**

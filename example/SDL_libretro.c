@@ -123,7 +123,7 @@ static bool SDL_Libretro_AppHandleLibretroEvent(AppContext* app, const SDL_Event
  * writes the dropped file into the virtual file system first.
  */
 static void SDL_Libretro_AppLoadDroppedGame(AppContext* app, const char* path) {
-    // Route through the menu so an extension claimed by several cores shows the
+    // Route through the menu so content that several cores fit shows the
     // "Select Core" picker instead of silently loading the first match. The
     // menu unloads the current core, loads the game, and closes on success;
     // the queued GAME_LOADED event retitles the window.

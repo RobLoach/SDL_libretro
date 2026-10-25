@@ -66,7 +66,7 @@ SDL_Libretro_Destroy(lr);
 
 ### Cores and Content
 
-`SDL_Libretro_SetCoreDirectory()` scans a directory for cores and their `.info` files, and returns `false` when the directory doesn't exist. The core library is sorted by core name, so when `SDL_Libretro_LoadGame()` is called with no core loaded, the first core in that order that supports the game's extension wins.
+`SDL_Libretro_SetCoreDirectory()` scans a directory for cores and their `.info` files, and returns `false` when the directory doesn't exist. The core library is sorted by core name, so when `SDL_Libretro_LoadGame()` is called with no core loaded, the first core in that order that supports the game's extension wins. Cores whose `.info` `database` names a folder the game is in (like `Nintendo - Game Boy/Europe/tetris.gb`) come first, and are used when no core supports the extension. For a `.zip`, that's the content picked from inside it, along with the folders both in and around the archive.
 
 Cores that support running without content (see `SDL_Libretro_IsGameRequired()`) start with a `NULL` game:
 
