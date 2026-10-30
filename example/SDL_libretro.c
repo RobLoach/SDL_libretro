@@ -123,12 +123,11 @@ static bool SDL_Libretro_AppHandleLibretroEvent(AppContext* app, const SDL_Event
  * writes the dropped file into the virtual file system first.
  */
 static void SDL_Libretro_AppLoadDroppedGame(AppContext* app, const char* path) {
-    SDL_Libretro_UnloadCore(app->lr);
-    // On success the queued GAME_LOADED event closes the menu and retitles
-    // the window.
-    if (!SDL_Libretro_LoadGame(app->lr, path)) {
-        SDL_Log("Failed to load game: %s", SDL_GetError());
-    }
+    // Route through the menu so content that several cores fit shows the
+    // "Select Core" picker instead of silently loading the first match. The
+    // menu unloads the current core, loads the game, and closes on success;
+    // the queued GAME_LOADED event retitles the window.
+    SDL_Libretro_MenuLoadGame(app->menu, path);
 }
 
 SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {

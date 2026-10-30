@@ -66,7 +66,7 @@ SDL_Libretro_Destroy(lr);
 
 ### Cores and Content
 
-`SDL_Libretro_SetCoreDirectory()` scans a directory for cores and their `.info` files, and returns `false` when the directory doesn't exist. The core library is sorted by core name, so when `SDL_Libretro_LoadGame()` is called with no core loaded, the first core in that order that supports the game's extension wins.
+`SDL_Libretro_SetCoreDirectory()` scans a directory for cores and their `.info` files, and returns `false` when the directory doesn't exist. The core library is sorted by core name, so when `SDL_Libretro_LoadGame()` is called with no core loaded, the first core in that order that supports the game's extension wins. Cores whose `.info` `database` names a folder the game is in (like `Nintendo - Game Boy/Europe/tetris.gb`) come first, and are used when no core supports the extension. For a `.zip`, that's the content picked from inside it, along with the folders both in and around the archive.
 
 Cores that support running without content (see `SDL_Libretro_IsGameRequired()`) start with a `NULL` game:
 
@@ -190,6 +190,12 @@ cmake --build .
 To build a release instead, download its `SDL_libretro-<version>.tar.gz`, which includes the git submodules. GitHub's generated "Source code" archives leave them out.
 
 An SDL3 already installed on the system is used when found (point `CMAKE_PREFIX_PATH` at it if it's somewhere CMake doesn't look). Otherwise, SDL3 is fetched and built via CMake FetchContent.
+
+With `SDL_LIBRETRO_DOWNLOAD_CORES` enabled (default for native builds), a few libretro cores are downloaded into the build directory for testing:
+
+- [snes9x](https://github.com/libretro/snes9x) (Super Nintendo)
+- [fceumm](https://github.com/libretro/libretro-fceumm) (Nintendo Entertainment System)
+- [genesis_plus_gx](https://github.com/libretro/Genesis-Plus-GX) (Sega Genesis / Master System / Game Gear)
 
 ### Emscripten
 
