@@ -27,8 +27,6 @@ Define `SDL_LIBRETRO_IMPLEMENTATION` in exactly one `.c` file before including t
 #include "SDL_libretro.h"
 ```
 
-All other files include `SDL_libretro.h` normally without the define.
-
 ### Quickstart
 
 ```c
@@ -64,26 +62,6 @@ SDL_Libretro_Destroy(lr);
 - [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
 - [SDL_libretro](example/SDL_libretro.c): The full-featured app, with the menu ([try it online](https://robloach.github.io/SDL_libretro/demo/))
 
-### Cores and Content
-
-`SDL_Libretro_SetCoreDirectory()` scans a directory for cores and their `.info` files, and returns `false` when the directory doesn't exist. The core library is sorted by core name, so when `SDL_Libretro_LoadGame()` is called with no core loaded, the first core in that order that supports the game's extension wins. Cores whose `.info` `database` names a folder the game is in (like `Nintendo - Game Boy/Europe/tetris.gb`) come first, and are used when no core supports the extension. For a `.zip`, that's the content picked from inside it, along with the folders both in and around the archive.
-
-Cores that support running without content (see `SDL_Libretro_IsGameRequired()`) start with a `NULL` game:
-
-```c
-SDL_Libretro_LoadCore(lr, "core.so");
-SDL_Libretro_LoadGame(lr, NULL);
-```
-
-### Input and Language
-
-- `SDL_Libretro_SetMousePort()` / `SDL_Libretro_GetMousePort()`: The one controller port the mouse drives (default `0`). Only that port answers the mouse, pointer and lightgun devices, so one mouse doesn't act as every player.
-- `SDL_Libretro_SetLanguage()` / `SDL_Libretro_GetLanguage()`: The `RETRO_LANGUAGE_*` reported to cores, detected from the system locale by default; pass `-1` to go back to detecting it. Cores usually ask while loading, so a change applies on the next core load.
-
-### Disk Control
-
-Multi-disc games swap disks with `SDL_Libretro_EjectDisk()`, `SDL_Libretro_SetDiskIndex()` and `SDL_Libretro_InsertDisk()`. With the tray ejected, `SDL_Libretro_AddDiskImage(lr, path)` or `SDL_Libretro_AddDiskImage_IO(lr, src, path, closeio)` appends an image; `path` is the name the image is known by. Depending on the core, it gets the image's bytes, or, when it needs a full path, a temp file the stream was written to.
-
 ### Zip Loading
 
 To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake option, and then let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_PHYSFS`.
@@ -97,19 +75,9 @@ To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake o
 SDL_Libretro_LoadGame(lr, "game.zip");
 ```
 
-Cores that set `block_extract` in their `.info` file, or that list `zip` as a supported extension, get the raw `.zip` instead of the content inside it. Cores that need a file path, but read it from the OS rather than the libretro VFS, get the whole archive extracted to a temp directory, so content like a `.cue` sheet finds its tracks; it's removed when the game unloads.
-
-### Config
-
-`SDL_Libretro_InitConfig(lr, org, app)` or `SDL_Libretro_InitConfigFile(lr, file)` loads settings from an `.ini` file and saves them back when the context is destroyed. Besides each core's options and the keyboard and gamepad bindings, it stores `volume`, `username`, `audiolatency`, `fitmode`, `scalemode`, `savedirectory`, `systemdirectory`, `coredirectory`, `coreassetsdirectory`, `rewindenabled`, `rewindframes`, `rewindinterval`, `rewindmemorylimit`, `mouseport`, `language` and `filebrowserdirectory`.
-
 ### Menu
 
 To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
-
-The menu reports what it does through SDL events (see the Events section below), and reacts to `SDL_EVENT_LIBRETRO_OPTIONS_CHANGED` in `SDL_Libretro_HandleMenuEvent()` to keep the Core Options page current. Applications can also add their own entries with `SDL_Libretro_AddMenuButton()` and `SDL_Libretro_AddMenuCheckbox()`, and jump straight to a page with `SDL_Libretro_OpenMenuPath(menu, "Settings/Audio & Video")`.
-
-Besides loading games and core options, the menu rebinds Player 1's keyboard (Settings > Keyboard) and each player's gamepad buttons and analog-to-digital D-Pad (Settings > Gamepad, or `SDL_Libretro_SetGamepadMapping()` and `SDL_Libretro_SetAnalogToDigital()` from code), swaps disks for multi-disk games (Disks), and shows core-reported progress messages.
 
 ```c
 #define SDL_LIBRETRO_IMPLEMENTATION
@@ -206,7 +174,7 @@ emcmake cmake -B build-web
 cmake --build build-web
 ```
 
-## Embedding on the Web
+## Web Embed
 
 The Emscripten build embeds into any webpage with [`SDL_libretro_embed.js`](example/SDL_libretro_embed.js). Serve the build output (`SDL_libretro.js`, `SDL_libretro.wasm` and `SDL_libretro.data`) together with `SDL_libretro_embed.js`, include the script, and point it at an element on the page:
 
