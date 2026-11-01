@@ -12,6 +12,7 @@
 #define SDL_LIBRETRO_IMPLEMENTATION
 #define SDL_LIBRETRO_ENABLE_PHYSFS
 #include "SDL_libretro.h"
+#include "resources/SDL_libretro_icon.h"
 
 typedef struct {
     SDL_Window* window;
@@ -172,6 +173,15 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     if (!SDL_CreateWindowAndRenderer("SDL_libretro", 800, 600, SDL_WINDOW_RESIZABLE, &window, &renderer)) {
         SDL_Log("Failed to create window: %s", SDL_GetError());
         return SDL_APP_FAILURE;
+    }
+
+    // Set the window icon from the embedded PNG.
+    SDL_Surface* icon = SDL_LoadPNG_IO(SDL_IOFromConstMem(SDL_libretro_icon_png, sizeof(SDL_libretro_icon_png)), true);
+    if (icon) {
+        SDL_SetWindowIcon(window, icon);
+        SDL_DestroySurface(icon);
+    } else {
+        SDL_Log("Failed to load window icon: %s", SDL_GetError());
     }
 
     AppContext* app = SDL_calloc(1, sizeof(AppContext));
