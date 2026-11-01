@@ -116,6 +116,14 @@
 #define SDL_LIBRETRO_MENU_FONT_HEIGHT 13
 #endif
 
+#ifndef SDL_LIBRETRO_MENU_HEADER_FONT_HEIGHT
+/**
+ * Height in pixels for the submenu page headers' font, before UI scaling.
+ * Twice the base height by default, keeping the pixel font on its grid.
+ */
+#define SDL_LIBRETRO_MENU_HEADER_FONT_HEIGHT (SDL_LIBRETRO_MENU_FONT_HEIGHT * 2)
+#endif
+
 #ifndef SDL_LIBRETRO_MENU_WINDOW_TITLE
 /**
  * The Nuklear window title of the menu.
@@ -224,6 +232,7 @@ struct SDL_LibretroMenu {
     nk_console* console;
     struct nk_gamepads gamepads;
     struct nk_font_atlas* atlas; /**< The backend's font atlas. */
+    struct nk_font* headerFont; /**< The larger font for submenu page headers, or NULL. */
     float renderScale; /**< The current UI render scale applied via SDL_SetRenderScale. */
     void* userData; /**< Generic data available to the application. */
 
@@ -602,22 +611,54 @@ static const char* SDL_Libretro_MenuPixelFormatName(enum retro_pixel_format form
 
 /**
  * @internal
- * Standard submenu header: a back button labeled like the submenu itself.
+ * Render a submenu header: the label, centered, in the larger header font.
  */
-static void SDL_Libretro_MenuAddBackButton(nk_console* parent, const char* label) {
-    nk_console_button_set_symbol(
-        nk_console_button_onclick(parent, label, &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_UP);
+static struct nk_rect SDL_Libretro_MenuHeaderRender(nk_console* widget) {
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)nk_console_user_data(widget);
+    if (menu == NULL || menu->headerFont == NULL) {
+        return nk_console_label_render(widget);
+    }
+    struct nk_context* ctx = widget->ctx;
+    nk_style_push_font(ctx, &menu->headerFont->handle);
+    // The row is laid out before the label draws, so size it for this font.
+    widget->height = (int)(menu->headerFont->handle.height + ctx->style.text.padding.y * 2.0f + ctx->style.window.min_row_height_padding * 2.0f + 0.5f);
+    struct nk_rect bounds = nk_console_label_render(widget);
+    nk_style_pop_font(ctx);
+    return bounds;
 }
 
 /**
  * @internal
- * Create a submenu button with a symbol and the standard back-button header.
+ * Standard submenu header: a non-interactive, centered label in a larger
+ * font, titled like the submenu itself. Add it first.
+ */
+static void SDL_Libretro_MenuAddHeader(nk_console* parent, const char* label) {
+    nk_console* header = nk_console_label(parent, label);
+    if (header != NULL) {
+        header->alignment = NK_TEXT_CENTERED;
+        header->render = &SDL_Libretro_MenuHeaderRender;
+    }
+}
+
+/**
+ * @internal
+ * Standard submenu footer: a Back button to the parent page. Add it last.
+ */
+static void SDL_Libretro_MenuAddBackButton(nk_console* parent) {
+    nk_console_button_set_symbol(
+        nk_console_button_onclick(parent, "Back", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_LEFT);
+}
+
+/**
+ * @internal
+ * Create a submenu button with a symbol and the standard header. The caller
+ * adds the page's widgets, then closes it with SDL_Libretro_MenuAddBackButton().
  */
 static nk_console* SDL_Libretro_MenuAddSubmenu(nk_console* parent, const char* label, enum nk_symbol_type symbol) {
     nk_console* button = nk_console_button(parent, label);
     nk_console_button_set_symbol(button, symbol);
-    SDL_Libretro_MenuAddBackButton(button, label);
+    SDL_Libretro_MenuAddHeader(button, label);
     return button;
 }
 
@@ -789,8 +830,7 @@ static void SDL_Libretro_MenuBuildCorePicker(SDL_LibretroMenu* menu) {
     }
     nk_console_free_children(menu->corePickerButton);
 
-    // Backing out cancels and returns to the top level.
-    SDL_Libretro_MenuAddBackButton(menu->corePickerButton, "Select Core");
+    SDL_Libretro_MenuAddHeader(menu->corePickerButton, "Select Core");
 
     // Explain the choice: several scanned cores can open this content.
     nk_console_label(menu->corePickerButton, "Select which core to use to load the game:");
@@ -799,6 +839,9 @@ static void SDL_Libretro_MenuBuildCorePicker(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuAddButton(menu, menu->corePickerButton, menu->coreChoices[i]->corename,
             NK_SYMBOL_NONE, &SDL_Libretro_MenuCoreChoiceClicked, (void*)menu->coreChoices[i]);
     }
+
+    // Backing out cancels and returns to the top level.
+    SDL_Libretro_MenuAddBackButton(menu->corePickerButton);
 
     SDL_Libretro_MenuSetActiveParent(menu, menu->corePickerButton);
 }
@@ -838,7 +881,7 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
 
     nk_console_free_children(menu->aboutButton);
     menu->aboutTextLength = 0;
-    SDL_Libretro_MenuAddBackButton(menu->aboutButton, "About");
+    SDL_Libretro_MenuAddHeader(menu->aboutButton, "About");
 
     // Frontend
     SDL_Libretro_MenuAboutLine(menu, "SDL_libretro %d.%d.%d", SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
@@ -894,6 +937,7 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
     }
 
     nk_console_label(menu->aboutButton, "https://github.com/RobLoach/SDL_libretro");
+    SDL_Libretro_MenuAddBackButton(menu->aboutButton);
 }
 
 /**
@@ -1203,7 +1247,7 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
 
     SDL_Libretro_MenuGuardActiveParent(menu, menu->gamepadButton);
     nk_console_free_children(menu->gamepadButton);
-    SDL_Libretro_MenuAddBackButton(menu->gamepadButton, "Gamepad");
+    SDL_Libretro_MenuAddHeader(menu->gamepadButton, "Gamepad");
 
     SDL_Libretro_MenuSyncPadBinds(menu);
     for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
@@ -1229,7 +1273,9 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
                 &SDL_Libretro_MenuPadBindChanged,
                 &padPort->binds[i]);
         }
+        SDL_Libretro_MenuAddBackButton(player);
     }
+    SDL_Libretro_MenuAddBackButton(menu->gamepadButton);
 }
 
 /**
@@ -1550,7 +1596,7 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
     }
     menu->optionStateCount = count;
 
-    SDL_Libretro_MenuAddBackButton(menu->optionsButton, "Core Options");
+    SDL_Libretro_MenuAddHeader(menu->optionsButton, "Core Options");
 
     // Uncategorized options first, directly under Core Options.
     for (unsigned i = 0; i < count; i++) {
@@ -1589,9 +1635,11 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
                 SDL_Libretro_MenuBuildOptionWidget(menu, categoryButton, i);
             }
         }
+        SDL_Libretro_MenuAddBackButton(categoryButton);
     }
 
     SDL_Libretro_MenuAddButton(menu, menu->optionsButton, "Reset to Defaults", NK_SYMBOL_TRIANGLE_LEFT, &SDL_Libretro_MenuResetOptionsClicked, NULL);
+    SDL_Libretro_MenuAddBackButton(menu->optionsButton);
 }
 
 #ifndef __EMSCRIPTEN__
@@ -1804,7 +1852,7 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
     nk_console_free_children(menu->controllersButton);
     SDL_Libretro_MenuFreePortStates(menu);
 
-    SDL_Libretro_MenuAddBackButton(menu->controllersButton, "Controllers");
+    SDL_Libretro_MenuAddHeader(menu->controllersButton, "Controllers");
 
     unsigned count = lr->core.controllerInfoCount;
     if (count > SDL_LIBRETRO_MAX_USERS) {
@@ -1840,6 +1888,7 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
         anyWidget = true;
     }
 
+    SDL_Libretro_MenuAddBackButton(menu->controllersButton);
     menu->controllersButton->visible = (nk_bool)anyWidget;
 }
 
@@ -2081,13 +2130,14 @@ static float SDL_Libretro_MenuRenderScale(SDL_LibretroMenu* menu) {
 /**
  * @internal
  * Bakes the default font at the base pixel height and makes it the active
- * style font. The font is baked once at SDL_LIBRETRO_MENU_FONT_HEIGHT;
+ * style font, alongside the larger submenu header font. The font is baked once at SDL_LIBRETRO_MENU_FONT_HEIGHT;
  * scaling is handled by SDL_SetRenderScale in the render path.
  */
 static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu) {
     if (menu->atlas != NULL) {
         nk_font_atlas_clear(menu->atlas);
         menu->atlas = NULL;
+        menu->headerFont = NULL;
     }
     struct nk_sdl* sdl = (struct nk_sdl*)menu->ctx->userdata.ptr;
     struct nk_font_config fontConfig = nk_font_config(0);
@@ -2096,6 +2146,7 @@ static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu) {
     fontConfig.pixel_snap = nk_true;
     menu->atlas = nk_sdl_font_stash_begin(menu->ctx);
     struct nk_font* font = nk_font_atlas_add_default(menu->atlas, (float)SDL_LIBRETRO_MENU_FONT_HEIGHT, &fontConfig);
+    menu->headerFont = nk_font_atlas_add_default(menu->atlas, (float)SDL_LIBRETRO_MENU_HEADER_FONT_HEIGHT, &fontConfig);
 
     int atlasWidth = 0, atlasHeight = 0;
     const void* fontImage = nk_font_atlas_bake(menu->atlas, &atlasWidth, &atlasHeight, NK_FONT_ATLAS_RGBA32);
@@ -2319,7 +2370,7 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
     }
 
     menu->disksButton->visible = nk_true;
-    SDL_Libretro_MenuAddBackButton(menu->disksButton, "Disks");
+    SDL_Libretro_MenuAddHeader(menu->disksButton, "Disks");
     menu->diskSelected = (int)SDL_Libretro_GetDiskIndex(lr);
     for (unsigned i = 0; i < count; i++) {
         char label[128];
@@ -2331,6 +2382,7 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
         // Radios report a pick as CLICKED.
         nk_console_add_event_handler(radio, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuDiskClicked, menu, NULL);
     }
+    SDL_Libretro_MenuAddBackButton(menu->disksButton);
 }
 
 /**
@@ -2358,6 +2410,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_combobox(general, "Language", SDL_LIBRETRO_MENU_LANGUAGE_NAMES, '|', &menu->languageIndex), &SDL_Libretro_MenuLanguageChanged, menu),
         "Reported to cores; applies when the next core loads. Auto follows the system locale");
+    SDL_Libretro_MenuAddBackButton(general);
 
     // Audio & Video
     nk_console* audioVideo = SDL_Libretro_MenuAddSubmenu(settings, "Audio & Video", NK_SYMBOL_TRIANGLE_RIGHT);
@@ -2378,6 +2431,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex), &SDL_Libretro_MenuUIScaleChanged, menu),
         "Menu size; Auto picks one from the resolution");
+    SDL_Libretro_MenuAddBackButton(audioVideo);
 
     // Core Options, populated lazily once a core registers options.
     menu->optionsButton = nk_console_button(settings, "Core Options");
@@ -2413,6 +2467,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
             &SDL_Libretro_MenuKeyBindChanged,
             &menu->keyBinds[i]);
     }
+    SDL_Libretro_MenuAddBackButton(keyboard);
 
     // Gamepad bindings and analog-to-digital, one page per player.
     menu->gamepadButton = nk_console_button(settings, "Gamepad");
@@ -2427,6 +2482,9 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     SDL_Libretro_MenuAddSettingDir(directories, "Saves", menu, menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
     SDL_Libretro_MenuAddSettingDir(directories, "System", menu, menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
     SDL_Libretro_MenuAddSettingDir(directories, "Content", menu, menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
+    SDL_Libretro_MenuAddBackButton(directories);
+
+    SDL_Libretro_MenuAddBackButton(settings);
 }
 
 /**

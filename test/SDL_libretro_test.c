@@ -4014,6 +4014,33 @@ static bool test_MenuStyleHasColors(SDL_LibretroMenu* menu, SDL_LibretroMenuStyl
         SDL_memcmp(&menu->ctx->style.checkbox.cursor_normal.data.color, &toggleCursor, sizeof(toggleCursor)) == 0;
 }
 
+/**
+ * Checks a submenu page's frame: a centered, non-interactive header titled
+ * like the page first, and a Back button to the parent last that returns to
+ * the parent.
+ */
+static bool test_MenuIsSubmenuPage(nk_console* page) {
+    size_t count = cvector_size(page->children);
+    if (count < 2) {
+        return false;
+    }
+    nk_console* header = page->children[0];
+    nk_console* back = page->children[count - 1];
+    if (header->type != NK_CONSOLE_LABEL || header->selectable || header->alignment != NK_TEXT_CENTERED ||
+            SDL_strcmp(header->label, page->label) != 0 || header->render == &nk_console_label_render) {
+        return false;
+    }
+    if (back->type != NK_CONSOLE_BUTTON || SDL_strcmp(back->label, "Back") != 0) {
+        return false;
+    }
+    nk_console* previous = nk_console_active_parent(page);
+    nk_console_set_active_parent(page);
+    nk_console_trigger_event(back, NK_CONSOLE_EVENT_CLICKED);
+    bool backReturns = nk_console_active_parent(page) == page->parent;
+    nk_console_set_active_parent(previous);
+    return backReturns;
+}
+
 static int SDLCALL test_Menu(void *arg) {
     // NULL safety
     SDLTest_AssertCheck(SDL_Libretro_CreateMenu(NULL) == NULL, "CreateMenu(NULL) returns NULL");
@@ -4350,8 +4377,15 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_SetLanguage(lr, -1);
 
         // The Gamepad page holds one sub-page per player.
-        SDLTest_AssertCheck(cvector_size(menu->gamepadButton->children) == (size_t)(SDL_LIBRETRO_MAX_USERS + 1),
-            "The Gamepad page lists a sub-page per player after the back button");
+        SDLTest_AssertCheck(cvector_size(menu->gamepadButton->children) == (size_t)(SDL_LIBRETRO_MAX_USERS + 2),
+            "The Gamepad page lists a sub-page per player between its header and Back");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->gamepadButton), "The Gamepad page has a header and a Back button");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->gamepadButton->children[1]), "A player page has a header and a Back button");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->gamepadButton->parent), "The Settings page has a header and a Back button");
+        SDL_Libretro_MenuBuildGamepads(menu);
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->gamepadButton), "Rebuilding the Gamepad page keeps its header first and Back last");
+        SDLTest_AssertCheck(menu->headerFont != NULL && menu->headerFont->handle.height > menu->ctx->style.font->height,
+            "Headers use a larger font");
         SDLTest_AssertCheck(SDL_strncmp(menu->padPorts[0].label, "1. ", 3) == 0,
             "Player pages are numbered by port");
 
@@ -4417,6 +4451,7 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(menu->disksButton->visible == nk_true, "Disks page appears with two disks");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->disksButton), "The Disks page has a header and a Back button");
         menu->diskSelected = 1;
         SDL_Libretro_MenuDiskClicked(NULL, menu);
         SDLTest_AssertCheck(SDL_Libretro_GetDiskIndex(lr) == 1, "The menu swap changes the disk index");
@@ -4435,6 +4470,7 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(aboutHasCore, "About shows the loaded core");
         SDLTest_AssertCheck(aboutHasContent, "About shows the loaded content");
         SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->aboutButton), "The About page has a header and a Back button");
 
         // About lists the cores that can be loaded, skipping a .info file
         // whose core library is missing.
@@ -4471,10 +4507,13 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(menu->builtOptionCount == lr->core.optionCount, "Same-core reload keeps the option count");
         SDL_Libretro_UpdateMenu(menu);
         SDLTest_AssertCheck(menu->builtCoreGeneration == lr->coreGeneration, "Same-core reload rebuilds the core pages");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->optionsButton), "The Core Options page has a header and a Back button");
         nk_console_set_active_parent(menu->optionsButton);
         SDL_Libretro_RenderMenu(menu);
         SDL_Libretro_UpdateMenu(menu);
         SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->optionsButton->activeWidget == menu->optionsButton->children[1],
+            "Opening a page focuses its first widget, not the header");
 
         // A core with no options to show hides the page, and doesn't leave
         // the user stuck inside it.
@@ -4609,6 +4648,8 @@ static int SDLCALL test_MenuCorePicker(void *arg) {
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->corePickerButton,
             "Picker is the active menu level");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->corePickerButton), "The picker has a header and a Back button");
+        nk_console_set_active_parent(menu->corePickerButton);
 
         // Choosing a candidate loads the core and the pending game.
         SDL_Libretro_MenuCoreChoiceClicked(menu, (void*)menu->coreChoices[0]);
