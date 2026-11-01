@@ -248,5 +248,3 @@ clang-format -i include/SDL_libre*
 ## License
 
 [zlib/libpng](LICENSE)
-
-The example app icon, [Game Console Gamer](https://www.svgrepo.com/svg/211761/game-console-gamer), is [CC0](https://creativecommons.org/publicdomain/zero/1.0/).
