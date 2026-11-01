@@ -157,6 +157,8 @@ cmake --build .
 
 To build a release instead, download its `SDL_libretro-<version>.tar.gz`, which includes the git submodules. GitHub's generated "Source code" archives leave them out.
 
+Run the tests with `make test` (or `ctest`), which builds anything that's missing first.
+
 An SDL3 already installed on the system is used when found (point `CMAKE_PREFIX_PATH` at it if it's somewhere CMake doesn't look). Otherwise, SDL3 is fetched and built via CMake FetchContent.
 
 With `SDL_LIBRETRO_DOWNLOAD_CORES` enabled (default for native builds), a few libretro cores are downloaded into the build directory for testing:
