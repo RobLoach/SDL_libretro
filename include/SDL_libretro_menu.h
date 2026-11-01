@@ -241,6 +241,7 @@ struct SDL_LibretroMenu {
     bool keysHeldAtOpen[SDL_SCANCODE_COUNT]; /**< Keys held down when the menu opened, whose releases still go to the application and core. */
     unsigned int padButtonsHeldAtOpen[NK_GAMEPAD_MAX]; /**< nk_gamepad buttons held when the menu opened, hidden from the menu until released. */
     bool uiBuilt; /**< nk_begin ran this frame, so RenderMenu must flush and clear. */
+    nk_console* shownPage; /**< The page rendered last frame, to detect page changes. Compared only, never dereferenced. */
 
     // Widgets whose visibility depends on the running game.
     nk_console* resumeButton;
@@ -452,13 +453,9 @@ static void SDL_Libretro_MenuSetActiveParent(SDL_LibretroMenu* menu, nk_console*
         nk_console_set_active_parent(parent);
         return;
     }
+    // SDL_Libretro_UpdateMenu() resets the scroll for the new page.
     nk_console_top_data* data = (nk_console_top_data*)menu->console->data;
     data->active_parent = parent;
-    struct nk_window* window = nk_window_find(menu->ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE);
-    if (window != NULL) {
-        window->scrollbar.x = 0;
-        window->scrollbar.y = 0;
-    }
 }
 
 #ifndef __EMSCRIPTEN__
@@ -3063,6 +3060,20 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     SDL_GetRenderOutputSize(lr->renderer, &width, &height);
     float logicalW = (float)width / menu->renderScale;
     float logicalH = (float)height / menu->renderScale;
+
+    // A page change keeps the previous page's scroll offset, which can leave a
+    // short page shifted out of view with no scrollbar. Start each page from
+    // the top and scroll its focused widget into view.
+    nk_console* page = nk_console_active_parent(menu->console);
+    if (page != menu->shownPage) {
+        menu->shownPage = page;
+        struct nk_window* window = nk_window_find(menu->ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE);
+        if (window != NULL) {
+            window->scrollbar.x = 0;
+            window->scrollbar.y = 0;
+        }
+        ((nk_console_top_data*)menu->console->data)->scroll_to_widget = page->activeWidget;
+    }
 
     menu->uiBuilt = true;
     nk_console_render_window(menu->console, SDL_LIBRETRO_MENU_WINDOW_TITLE, nk_rect(0.0f, 0.0f, logicalW, logicalH), NK_WINDOW_SCROLL_AUTO_HIDE |

@@ -4472,6 +4472,32 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(aboutHasSize, "About shows the video size");
         SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->aboutButton), "The About page has a header and a Back button");
 
+        // Backing out of About from its bottom returns to a top level that
+        // fits the window unscrolled, not left at About's offset.
+        SDL_SetWindowSize(window, 1280, 900);
+        SDL_SyncWindow(window);
+        struct nk_window* menuWindow = nk_window_find(menu->ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE);
+        nk_console* aboutBack = menu->aboutButton->children[cvector_size(menu->aboutButton->children) - 1];
+        SDL_Libretro_MenuSetActiveParent(menu, menu->aboutButton);
+        nk_console_set_active_widget(aboutBack);
+        ((nk_console_top_data*)menu->console->data)->scroll_to_widget = aboutBack;
+        for (int i = 0; i < 2; i++) {
+            SDL_Libretro_UpdateMenu(menu);
+            SDL_Libretro_RenderMenu(menu);
+        }
+        SDLTest_AssertCheck(menuWindow != NULL && menuWindow->scrollbar.y > 0,
+            "About scrolls down to its Back button, got %u", menuWindow != NULL ? menuWindow->scrollbar.y : 0);
+        nk_console_trigger_event(aboutBack, NK_CONSOLE_EVENT_CLICKED);
+        for (int i = 0; i < 2; i++) {
+            SDL_Libretro_UpdateMenu(menu);
+            SDL_Libretro_RenderMenu(menu);
+        }
+        SDLTest_AssertCheck(nk_console_active_parent(menu->console) == menu->console, "Back leaves About for the top level");
+        SDLTest_AssertCheck(menuWindow != NULL && menuWindow->scrollbar.y == 0,
+            "The top level is scrolled back up, got %u", menuWindow != NULL ? menuWindow->scrollbar.y : 0);
+        SDL_SetWindowSize(window, 320, 240);
+        SDL_SyncWindow(window);
+
         // About lists the cores that can be loaded, skipping a .info file
         // whose core library is missing.
         const char* aboutCoreDir = "/tmp/sdl_libretro_about_cores";
