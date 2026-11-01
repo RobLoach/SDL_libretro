@@ -100,4 +100,10 @@ else()
     target_compile_definitions(SDL_libretro_test PRIVATE SDL_LIBRETRO_DISABLE_PHYSFS)
 endif()
 
+# Build the project first, so `make test` works straight after configuring.
+add_test(NAME SDL_libretro_test_build
+    COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR} --config $<CONFIG>)
+set_tests_properties(SDL_libretro_test_build PROPERTIES FIXTURES_SETUP SDL_libretro_built)
+
 add_test(NAME SDL_libretro_test COMMAND SDL_libretro_test)
+set_tests_properties(SDL_libretro_test PROPERTIES FIXTURES_REQUIRED SDL_libretro_built)
