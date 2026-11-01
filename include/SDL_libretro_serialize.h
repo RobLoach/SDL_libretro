@@ -423,13 +423,27 @@ void SDL_Libretro_ResetCheats(SDL_Libretro* lr) {
 // Save States
 
 /**
+ * @internal
+ * Whether the core can save or load states yet.
+ *
+ * Cores that set RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE can't until they've run a frame.
+ */
+static bool SDL_Libretro_IsStateReady(const SDL_Libretro* lr) {
+    if (!SDL_Libretro_IsGameReady(lr)) return false;
+    return lr->core.frameRun || !(lr->core.serializationQuirks & RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE);
+}
+
+/**
  * Retrieves the size of serialized states.
  *
+ * The core is asked each time, as the size may change mid-game
+ * (RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE).
+ *
  * @param lr the libretro context.
- * @returns the size in bytes of a save state, or 0 if no game is loaded or the core does not support save states.
+ * @returns the size in bytes of a save state, or 0 if no game is loaded, the core does not support save states, or it has yet to run a frame and set RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE.
  */
 size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
-    if (!SDL_Libretro_IsGameReady(lr)) return 0;
+    if (!SDL_Libretro_IsStateReady(lr)) return 0;
     return lr->core.symbols.retro_serialize_size();
 }
 
@@ -439,7 +453,7 @@ size_t SDL_Libretro_GetStateSize(const SDL_Libretro* lr) {
  * @param lr the libretro context.
  * @param dst the destination stream.
  * @param closeio if true, close `dst` before returning (even on failure).
- * @returns true on success, false if no game is loaded, the core does not support save states, or on a serialize or write error.
+ * @returns true on success, false if no game is loaded, the core does not support save states or has yet to run a frame (RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE), or on a serialize or write error.
  *
  * @see SDL_Libretro_LoadState_IO()
  * @see SDL_Libretro_SaveState()
@@ -448,6 +462,9 @@ bool SDL_Libretro_SaveState_IO(SDL_Libretro* lr, SDL_IOStream* dst, bool closeio
     bool ok = false;
     if (!SDL_Libretro_IsGameReady(lr) || !dst) {
         SDL_SetError("[SDL_Libretro] Invalid SaveState_IO arguments");
+    }
+    else if (!SDL_Libretro_IsStateReady(lr)) {
+        SDL_SetError("[SDL_Libretro] Core must run a frame before saving state");
     }
     else {
         size_t size = lr->core.symbols.retro_serialize_size();
@@ -506,7 +523,7 @@ bool SDL_Libretro_SaveState(SDL_Libretro* lr, const char* file) {
  * @param lr the libretro context.
  * @param src the source stream.
  * @param closeio if true, close `src` before returning (even on failure).
- * @returns true on success, false if no game is loaded, the stream is empty or unreadable, or the core rejected the state.
+ * @returns true on success, false if no game is loaded, the core has yet to run a frame (RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE), the stream is empty or unreadable, or the core rejected the state.
  *
  * @see SDL_Libretro_SaveState_IO()
  * @see SDL_Libretro_LoadState()
@@ -515,6 +532,11 @@ bool SDL_Libretro_LoadState_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio
     if (!SDL_Libretro_IsGameReady(lr) || !src) {
         SDL_SetError("[SDL_Libretro] Invalid LoadState_IO arguments");
         if (closeio && src) SDL_CloseIO(src);
+        return false;
+    }
+    if (!SDL_Libretro_IsStateReady(lr)) {
+        SDL_SetError("[SDL_Libretro] Core must run a frame before loading state");
+        if (closeio) SDL_CloseIO(src);
         return false;
     }
     size_t size = 0;
@@ -1248,9 +1270,10 @@ bool SDL_Libretro_SetRewindEnabled(SDL_Libretro* lr, bool enabled, unsigned buff
     lr->rewindCapacity = bufferFrames;
     lr->rewindCaptureInterval = captureInterval;
 
-    // The serialize size is only defined while a game is loaded, so the
-    // buffer waits for one.
-    if (!SDL_Libretro_IsGameReady(lr)) {
+    // The serialize size is only defined while a game is loaded, and for
+    // RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE cores once it has run a frame,
+    // so the buffer waits until then.
+    if (!SDL_Libretro_IsStateReady(lr)) {
         return true;
     }
     return SDL_Libretro_RewindAllocate(lr);

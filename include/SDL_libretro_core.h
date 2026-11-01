@@ -863,6 +863,7 @@ static void SDL_Libretro_SetCoreCallbacks(SDL_Libretro* lr) {
  */
 static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
     lr->core.gameLoaded = true;
+    lr->core.frameRun = false;
 
     // Re-apply the app's port devices; cores expect them after retro_load_game().
     for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
@@ -899,7 +900,7 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
 
     // Allocate the rewind buffer now that the serialize size is known. A core
     // that doesn't report one yet gets it on a later capture instead.
-    if (lr->rewindEnabled && !lr->rewindReference && lr->core.symbols.retro_serialize_size() > 0) {
+    if (lr->rewindEnabled && !lr->rewindReference && SDL_Libretro_GetStateSize(lr) > 0) {
         SDL_Libretro_RewindAllocate(lr);
     }
 
@@ -1430,6 +1431,7 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     // Unload the game before closing audio and video.
     lr->core.symbols.retro_unload_game();
     lr->core.gameLoaded = false;
+    lr->core.frameRun = false;
     // A shutdown request was for the game that's now gone.
     lr->core.shutdown = false;
     SDL_Libretro_ResetContentState(lr);
@@ -1549,6 +1551,7 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t frameTimeUsec) {
 
     // Run the frame.
     lr->core.symbols.retro_run();
+    lr->core.frameRun = true;
 
     // Capture rewind state after each forward tick.
     SDL_Libretro_RewindCapture(lr);
@@ -2329,6 +2332,25 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr) {
  */
 unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr) {
     return lr ? lr->core.performanceLevel : 0;
+}
+
+/**
+ * Get the serialization quirks the core reported via SET_SERIALIZATION_QUIRKS.
+ *
+ * Only the RETRO_SERIALIZATION_QUIRK_* flags SDL_libretro knows are kept.
+ * SDL_libretro honours RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE by holding
+ * save states until the core has run a frame, and
+ * RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE by asking the core for the
+ * state size each time. The rest, like
+ * RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION, are for the application to act on.
+ *
+ * @param lr the libretro context.
+ * @returns the core's RETRO_SERIALIZATION_QUIRK_* flags, or 0 if none were set, no core is loaded, or lr is NULL.
+ *
+ * @see RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS
+ */
+uint64_t SDL_Libretro_GetSerializationQuirks(const SDL_Libretro* lr) {
+    return lr ? lr->core.serializationQuirks : 0;
 }
 
 /**
