@@ -682,10 +682,18 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS:
         case RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS_2: {
             if (!data) return true;
-            lr->core.serializationQuirks = *(const uint64_t*)data;
+            // Keep the quirks we know, and clear the rest so the core sees
+            // what the frontend understood.
+            const uint64_t known = RETRO_SERIALIZATION_QUIRK_INCOMPLETE |
+                RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE |
+                RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE |
+                RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION |
+                RETRO_SERIALIZATION_QUIRK_ENDIAN_DEPENDENT |
+                RETRO_SERIALIZATION_QUIRK_PLATFORM_DEPENDENT;
+            lr->core.serializationQuirks = *(const uint64_t*)data & known;
             // Report that we support variable-size states so cores that flag
             // RETRO_SERIALIZATION_QUIRK_CORE_VARIABLE_SIZE know we won't break.
-            *(uint64_t*)data |= RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE;
+            *(uint64_t*)data = lr->core.serializationQuirks | RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE;
             return true;
         }
 

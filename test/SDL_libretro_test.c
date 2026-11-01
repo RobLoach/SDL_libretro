@@ -757,6 +757,33 @@ static int SDLCALL test_SerializationQuirks(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS_2, &quirks) == true &&
         (quirks & RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE) != 0 && lr->core.serializationQuirks == RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE,
         "SET_SERIALIZATION_QUIRKS_2 is handled the same way");
+    SDLTest_AssertCheck(SDL_Libretro_GetSerializationQuirks(lr) == RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE, "GetSerializationQuirks reports the core's quirks");
+    SDLTest_AssertCheck(SDL_Libretro_GetSerializationQuirks(NULL) == 0, "GetSerializationQuirks(NULL) is 0");
+
+    // Unknown bits are cleared, and the frontend's own bit isn't kept as a core quirk.
+    quirks = RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION | RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE | ((uint64_t)1 << 40);
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks) == true &&
+        quirks == (RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION | RETRO_SERIALIZATION_QUIRK_FRONT_VARIABLE_SIZE) &&
+        SDL_Libretro_GetSerializationQuirks(lr) == RETRO_SERIALIZATION_QUIRK_SINGLE_SESSION,
+        "Unknown quirks are cleared");
+
+    // A MUST_INITIALIZE core can't save or load state until it has run a frame.
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    quirks = RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_SERIALIZATION_QUIRKS, &quirks);
+    unsigned char state[256];
+    SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 0, "No state size before the first frame");
+    SDLTest_AssertCheck(SDL_Libretro_SaveState_IO(lr, SDL_IOFromMem(state, sizeof(state)), true) == false, "SaveState refused before the first frame");
+    SDLTest_AssertCheck(SDL_Libretro_LoadState_IO(lr, SDL_IOFromMem(state, 128), true) == false, "LoadState refused before the first frame");
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(lr->core.frameRun == true, "A frame ran");
+    SDLTest_AssertCheck(SDL_Libretro_GetStateSize(lr) == 128, "State size known after the first frame");
+    SDLTest_AssertCheck(SDL_Libretro_SaveState_IO(lr, SDL_IOFromMem(state, sizeof(state)), true) == true, "SaveState works after the first frame");
+    SDLTest_AssertCheck(SDL_Libretro_LoadState_IO(lr, SDL_IOFromMem(state, 128), true) == true, "LoadState works after the first frame");
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(lr->core.frameRun == false, "Frame flag cleared on UnloadGame");
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(SDL_Libretro_GetSerializationQuirks(lr) == 0, "Quirks cleared on UnloadCore");
 
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
