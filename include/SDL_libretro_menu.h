@@ -907,6 +907,7 @@ static void SDL_Libretro_MenuAboutOpened(SDL_LibretroMenu* menu, void* userdata)
     nk_console_set_active_parent(menu->aboutButton);
 }
 
+#ifndef __EMSCRIPTEN__
 /**
  * @internal
  */
@@ -919,6 +920,7 @@ static void SDL_Libretro_MenuQuitClicked(SDL_LibretroMenu* menu, void* userdata)
     event.quit.timestamp = SDL_GetTicksNS();
     SDL_PushEvent(&event);
 }
+#endif /* !__EMSCRIPTEN__ */
 
 /**
  * @internal
@@ -2490,8 +2492,11 @@ static void SDL_Libretro_MenuBuildWidgets(SDL_LibretroMenu* menu) {
     // About, rebuilt by the CLICKED handler whenever the page opens.
     menu->aboutButton = SDL_Libretro_MenuAddButton(menu, menu->console, "About", NK_SYMBOL_TRIANGLE_RIGHT, &SDL_Libretro_MenuAboutOpened, NULL);
 
+#ifndef __EMSCRIPTEN__
     // Quit, kept as the last top-level entry when the app adds its own.
+    // Not on Web, where there is nothing to quit to.
     menu->quitButton = SDL_Libretro_MenuAddButton(menu, menu->console, "Quit", NK_SYMBOL_X, &SDL_Libretro_MenuQuitClicked, NULL);
+#endif
 }
 
 /**
