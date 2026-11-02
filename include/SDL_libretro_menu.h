@@ -232,6 +232,7 @@ struct SDL_LibretroMenu {
     bool keysHeldAtOpen[SDL_SCANCODE_COUNT]; /**< Keys held down when the menu opened, whose releases still go to the application and core. */
     unsigned int padButtonsHeldAtOpen[NK_GAMEPAD_MAX]; /**< nk_gamepad buttons held when the menu opened, hidden from the menu until released. */
     bool uiBuilt; /**< nk_begin ran this frame, so RenderMenu must flush and clear. */
+    nk_console* shownPage; /**< The page rendered last frame, to detect page changes. Compared only, never dereferenced. */
 
     // Widgets whose visibility depends on the running game.
     nk_console* resumeButton;
@@ -443,13 +444,9 @@ static void SDL_Libretro_MenuSetActiveParent(SDL_LibretroMenu* menu, nk_console*
         nk_console_set_active_parent(parent);
         return;
     }
+    // SDL_Libretro_UpdateMenu() resets the scroll for the new page.
     nk_console_top_data* data = (nk_console_top_data*)menu->console->data;
     data->active_parent = parent;
-    struct nk_window* window = nk_window_find(menu->ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE);
-    if (window != NULL) {
-        window->scrollbar.x = 0;
-        window->scrollbar.y = 0;
-    }
 }
 
 #ifndef __EMSCRIPTEN__
@@ -602,22 +599,23 @@ static const char* SDL_Libretro_MenuPixelFormatName(enum retro_pixel_format form
 
 /**
  * @internal
- * Standard submenu header: a back button labeled like the submenu itself.
+ * Standard submenu footer: a Back button to the parent page. Add it last.
  */
-static void SDL_Libretro_MenuAddBackButton(nk_console* parent, const char* label) {
+static void SDL_Libretro_MenuAddBackButton(nk_console* parent) {
     nk_console_button_set_symbol(
-        nk_console_button_onclick(parent, label, &nk_console_button_back),
-        NK_SYMBOL_TRIANGLE_UP);
+        nk_console_button_onclick(parent, "Back", &nk_console_button_back),
+        NK_SYMBOL_TRIANGLE_LEFT);
 }
 
 /**
  * @internal
- * Create a submenu button with a symbol and the standard back-button header.
+ * Create a submenu button with a symbol. The window title shows its label
+ * while open. The caller adds the page's widgets, then closes it with
+ * SDL_Libretro_MenuAddBackButton().
  */
 static nk_console* SDL_Libretro_MenuAddSubmenu(nk_console* parent, const char* label, enum nk_symbol_type symbol) {
     nk_console* button = nk_console_button(parent, label);
     nk_console_button_set_symbol(button, symbol);
-    SDL_Libretro_MenuAddBackButton(button, label);
     return button;
 }
 
@@ -789,9 +787,6 @@ static void SDL_Libretro_MenuBuildCorePicker(SDL_LibretroMenu* menu) {
     }
     nk_console_free_children(menu->corePickerButton);
 
-    // Backing out cancels and returns to the top level.
-    SDL_Libretro_MenuAddBackButton(menu->corePickerButton, "Select Core");
-
     // Explain the choice: several scanned cores can open this content.
     nk_console_label(menu->corePickerButton, "Select which core to use to load the game:");
 
@@ -799,6 +794,9 @@ static void SDL_Libretro_MenuBuildCorePicker(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuAddButton(menu, menu->corePickerButton, menu->coreChoices[i]->corename,
             NK_SYMBOL_NONE, &SDL_Libretro_MenuCoreChoiceClicked, (void*)menu->coreChoices[i]);
     }
+
+    // Backing out cancels and returns to the top level.
+    SDL_Libretro_MenuAddBackButton(menu->corePickerButton);
 
     SDL_Libretro_MenuSetActiveParent(menu, menu->corePickerButton);
 }
@@ -838,12 +836,8 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
 
     nk_console_free_children(menu->aboutButton);
     menu->aboutTextLength = 0;
-    SDL_Libretro_MenuAddBackButton(menu->aboutButton, "About");
 
     // Frontend
-    SDL_Libretro_MenuAboutLine(menu, "SDL_libretro %d.%d.%d", SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
-    int sdlVersion = SDL_GetVersion();
-    SDL_Libretro_MenuAboutLine(menu, "SDL %d.%d.%d %s", SDL_VERSIONNUM_MAJOR(sdlVersion), SDL_VERSIONNUM_MINOR(sdlVersion), SDL_VERSIONNUM_MICRO(sdlVersion), SDL_GetRevision());
     const char* rendererName = SDL_GetRendererName(lr->renderer);
     SDL_Libretro_MenuAboutLine(menu, "Renderer: %s", rendererName != NULL ? rendererName : "Unknown");
 
@@ -894,6 +888,7 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
     }
 
     nk_console_label(menu->aboutButton, "https://github.com/RobLoach/SDL_libretro");
+    SDL_Libretro_MenuAddBackButton(menu->aboutButton);
 }
 
 /**
@@ -1203,7 +1198,6 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
 
     SDL_Libretro_MenuGuardActiveParent(menu, menu->gamepadButton);
     nk_console_free_children(menu->gamepadButton);
-    SDL_Libretro_MenuAddBackButton(menu->gamepadButton, "Gamepad");
 
     SDL_Libretro_MenuSyncPadBinds(menu);
     for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
@@ -1229,7 +1223,9 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
                 &SDL_Libretro_MenuPadBindChanged,
                 &padPort->binds[i]);
         }
+        SDL_Libretro_MenuAddBackButton(player);
     }
+    SDL_Libretro_MenuAddBackButton(menu->gamepadButton);
 }
 
 /**
@@ -1550,8 +1546,6 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
     }
     menu->optionStateCount = count;
 
-    SDL_Libretro_MenuAddBackButton(menu->optionsButton, "Core Options");
-
     // Uncategorized options first, directly under Core Options.
     for (unsigned i = 0; i < count; i++) {
         const SDL_LibretroOption* option = SDL_Libretro_GetOptionByIndex(lr, i);
@@ -1589,9 +1583,11 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
                 SDL_Libretro_MenuBuildOptionWidget(menu, categoryButton, i);
             }
         }
+        SDL_Libretro_MenuAddBackButton(categoryButton);
     }
 
     SDL_Libretro_MenuAddButton(menu, menu->optionsButton, "Reset to Defaults", NK_SYMBOL_TRIANGLE_LEFT, &SDL_Libretro_MenuResetOptionsClicked, NULL);
+    SDL_Libretro_MenuAddBackButton(menu->optionsButton);
 }
 
 #ifndef __EMSCRIPTEN__
@@ -1804,8 +1800,6 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
     nk_console_free_children(menu->controllersButton);
     SDL_Libretro_MenuFreePortStates(menu);
 
-    SDL_Libretro_MenuAddBackButton(menu->controllersButton, "Controllers");
-
     unsigned count = lr->core.controllerInfoCount;
     if (count > SDL_LIBRETRO_MAX_USERS) {
         count = SDL_LIBRETRO_MAX_USERS;
@@ -1840,6 +1834,7 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
         anyWidget = true;
     }
 
+    SDL_Libretro_MenuAddBackButton(menu->controllersButton);
     menu->controllersButton->visible = (nk_bool)anyWidget;
 }
 
@@ -2319,7 +2314,6 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
     }
 
     menu->disksButton->visible = nk_true;
-    SDL_Libretro_MenuAddBackButton(menu->disksButton, "Disks");
     menu->diskSelected = (int)SDL_Libretro_GetDiskIndex(lr);
     for (unsigned i = 0; i < count; i++) {
         char label[128];
@@ -2331,6 +2325,7 @@ static void SDL_Libretro_MenuBuildDisks(SDL_LibretroMenu* menu) {
         // Radios report a pick as CLICKED.
         nk_console_add_event_handler(radio, NK_CONSOLE_EVENT_CLICKED, &SDL_Libretro_MenuDiskClicked, menu, NULL);
     }
+    SDL_Libretro_MenuAddBackButton(menu->disksButton);
 }
 
 /**
@@ -2358,6 +2353,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_combobox(general, "Language", SDL_LIBRETRO_MENU_LANGUAGE_NAMES, '|', &menu->languageIndex), &SDL_Libretro_MenuLanguageChanged, menu),
         "Reported to cores; applies when the next core loads. Auto follows the system locale");
+    SDL_Libretro_MenuAddBackButton(general);
 
     // Audio & Video
     nk_console* audioVideo = SDL_Libretro_MenuAddSubmenu(settings, "Audio & Video", NK_SYMBOL_TRIANGLE_RIGHT);
@@ -2378,6 +2374,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex), &SDL_Libretro_MenuUIScaleChanged, menu),
         "Menu size; Auto picks one from the resolution");
+    SDL_Libretro_MenuAddBackButton(audioVideo);
 
     // Core Options, populated lazily once a core registers options.
     menu->optionsButton = nk_console_button(settings, "Core Options");
@@ -2413,6 +2410,7 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
             &SDL_Libretro_MenuKeyBindChanged,
             &menu->keyBinds[i]);
     }
+    SDL_Libretro_MenuAddBackButton(keyboard);
 
     // Gamepad bindings and analog-to-digital, one page per player.
     menu->gamepadButton = nk_console_button(settings, "Gamepad");
@@ -2427,6 +2425,9 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     SDL_Libretro_MenuAddSettingDir(directories, "Saves", menu, menu->saveDirBuffer, sizeof(menu->saveDirBuffer));
     SDL_Libretro_MenuAddSettingDir(directories, "System", menu, menu->systemDirBuffer, sizeof(menu->systemDirBuffer));
     SDL_Libretro_MenuAddSettingDir(directories, "Content", menu, menu->browseDirBuffer, sizeof(menu->browseDirBuffer));
+    SDL_Libretro_MenuAddBackButton(directories);
+
+    SDL_Libretro_MenuAddBackButton(settings);
 }
 
 /**
@@ -2913,6 +2914,38 @@ bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path) {
 }
 
 /**
+ * @internal
+ * Renders the console in the menu window, titled with the open submenu's
+ * label, or SDL_LIBRETRO_MENU_WINDOW_TITLE on the top level.
+ *
+ * Mirrors nk_console_render_window(), which can't set a title apart from the
+ * window name. Nuklear identifies windows by name, so the name stays
+ * SDL_LIBRETRO_MENU_WINDOW_TITLE to keep its scroll and focus across pages.
+ */
+static void SDL_Libretro_MenuRenderWindow(SDL_LibretroMenu* menu, struct nk_rect bounds) {
+    struct nk_context* ctx = menu->ctx;
+    nk_console_top_data* data = (nk_console_top_data*)menu->console->data;
+    nk_console* page = nk_console_active_parent(menu->console);
+    const char* title = (page != menu->console && page->label != NULL && page->label[0] != '\0') ? page->label : SDL_LIBRETRO_MENU_WINDOW_TITLE;
+
+    // Hide the scrollbar while the page fits, as NK_WINDOW_SCROLL_AUTO_HIDE
+    // does in nk_console_render_window().
+    nk_flags flags = NK_WINDOW_TITLE | NK_WINDOW_SCROLL_AUTO_HIDE | (data->scrollbar_required ? NK_WINDOW_NO_SCROLLBAR : 0);
+    if (nk_begin_titled(ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE, title, bounds, flags)) {
+        nk_console_render(menu->console);
+    }
+    struct nk_panel* layout = ctx->current->layout;
+    data->scrollbar_required = (layout->at_y - layout->bounds.y) <= layout->bounds.h;
+    if (data->scrollbar_required) {
+        layout->flags |= NK_WINDOW_NO_SCROLLBAR;
+    }
+    else {
+        layout->flags &= ~(nk_flags)NK_WINDOW_NO_SCROLLBAR;
+    }
+    nk_end(ctx);
+}
+
+/**
  * Processes input and lays out the menu for this frame.
  *
  * Call once per frame, after the frame's events went through
@@ -3006,10 +3039,22 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     float logicalW = (float)width / menu->renderScale;
     float logicalH = (float)height / menu->renderScale;
 
+    // A page change keeps the previous page's scroll offset, which can leave a
+    // short page shifted out of view with no scrollbar. Start each page from
+    // the top and scroll its focused widget into view.
+    nk_console* page = nk_console_active_parent(menu->console);
+    if (page != menu->shownPage) {
+        menu->shownPage = page;
+        struct nk_window* window = nk_window_find(menu->ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE);
+        if (window != NULL) {
+            window->scrollbar.x = 0;
+            window->scrollbar.y = 0;
+        }
+        ((nk_console_top_data*)menu->console->data)->scroll_to_widget = page->activeWidget;
+    }
+
     menu->uiBuilt = true;
-    nk_console_render_window(menu->console, SDL_LIBRETRO_MENU_WINDOW_TITLE, nk_rect(0.0f, 0.0f, logicalW, logicalH), NK_WINDOW_SCROLL_AUTO_HIDE |
-                                                                                                                         // Show the window title only on the top level.
-                                                                                                                         ((nk_console_active_parent(menu->console) == menu->console) ? NK_WINDOW_TITLE : 0));
+    SDL_Libretro_MenuRenderWindow(menu, nk_rect(0.0f, 0.0f, logicalW, logicalH));
 }
 
 /**
