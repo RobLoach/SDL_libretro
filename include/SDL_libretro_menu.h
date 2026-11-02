@@ -838,9 +838,6 @@ static void SDL_Libretro_MenuBuildAbout(SDL_LibretroMenu* menu) {
     menu->aboutTextLength = 0;
 
     // Frontend
-    SDL_Libretro_MenuAboutLine(menu, "SDL_libretro %d.%d.%d", SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
-    int sdlVersion = SDL_GetVersion();
-    SDL_Libretro_MenuAboutLine(menu, "SDL %d.%d.%d %s", SDL_VERSIONNUM_MAJOR(sdlVersion), SDL_VERSIONNUM_MINOR(sdlVersion), SDL_VERSIONNUM_MICRO(sdlVersion), SDL_GetRevision());
     const char* rendererName = SDL_GetRendererName(lr->renderer);
     SDL_Libretro_MenuAboutLine(menu, "Renderer: %s", rendererName != NULL ? rendererName : "Unknown");
 
