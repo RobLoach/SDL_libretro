@@ -2,6 +2,8 @@
 
 A [libretro](https://www.libretro.com/) frontend library for [SDL3](https://libsdl.org/).
 
+![SDL_libretro logo](example/resources/SDL_libretro_icon_thumb.png)
+
 ## Features
 
 - Header-only C99 library
@@ -104,9 +106,7 @@ SDL_RenderPresent(renderer);
 
 ### Events
 
-SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event.
-
-Every SDL_libretro event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_LAST`, a fixed range in the SDL user events. The first `SDL_Libretro_Create()` reserves it through [`SDL_RegisterEvents()`](https://wiki.libsdl.org/SDL3/SDL_RegisterEvents), so events the application registers afterwards never collide with it; events registered before then should stay below `SDL_EVENT_LIBRETRO`, or a warning is logged.
+SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event. Every SDL_libretro event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_LAST`, a fixed range in the SDL user events. The first `SDL_Libretro_Create()` reserves it through [`SDL_RegisterEvents()`](https://wiki.libsdl.org/SDL3/SDL_RegisterEvents), so events the application registers afterwards never collide with it; events registered before then should stay below `SDL_EVENT_LIBRETRO`, or a warning is logged.
 
 - Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_*)`, for example `SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE)`. Experimental and private commands get event types of their own, so they don't collide with plain commands that share their number, and `SDL_LIBRETRO_ENVIRONMENT_COMMAND(event->type)` turns the type back into the command. Every environment event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST`. The data pointer the core passed rides along in `event->user.data2`.
 - `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu. `data2` is the core or game name.

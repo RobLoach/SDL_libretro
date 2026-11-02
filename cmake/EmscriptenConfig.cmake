@@ -5,6 +5,7 @@ set(CMAKE_EXECUTABLE_SUFFIX ".html")
 # build directory is directly servable.
 configure_file("${PROJECT_SOURCE_DIR}/example/SDL_libretro_embed.js" "${PROJECT_BINARY_DIR}/SDL_libretro_embed.js" COPYONLY)
 configure_file("${PROJECT_SOURCE_DIR}/example/SDL_libretro_embed.html" "${PROJECT_BINARY_DIR}/SDL_libretro_embed.html" COPYONLY)
+configure_file("${PROJECT_SOURCE_DIR}/example/resources/SDL_libretro_icon.png" "${PROJECT_BINARY_DIR}/SDL_libretro.png" COPYONLY) # Favicon
 
 # Everything below configures the SDL_libretro app, which needs the menu and
 # examples. It builds SDL_libretro.html, SDL_libretro.js, SDL_libretro.wasm
