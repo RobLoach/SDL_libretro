@@ -161,6 +161,15 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         gamePath = argc > 2 ? argv[2] : (argc > 1 ? argv[1] : NULL);
     }
 
+    // Describe the app. The identifier is the Wayland app ID that desktops use
+    // to find the icon. Leave CREATOR unset: it keys the pref path, along
+    // with the name, so changing either moves existing saves.
+    char version[16];
+    SDL_snprintf(version, sizeof(version), "%d.%d.%d", SDL_LIBRETRO_MAJOR_VERSION, SDL_LIBRETRO_MINOR_VERSION, SDL_LIBRETRO_MICRO_VERSION);
+    SDL_SetAppMetadata("SDL_libretro", version, "com.robloach.SDL_libretro");
+    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_URL_STRING, "https://github.com/RobLoach/SDL_libretro");
+    SDL_SetAppMetadataProperty(SDL_PROP_APP_METADATA_TYPE_STRING, "application");
+
     // Initialize
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD | SDL_INIT_EVENTS)) {
         SDL_Log("Failed to initialize SDL: %s", SDL_GetError());
