@@ -418,6 +418,7 @@ const char* SDL_Libretro_GetValidExtensions(const SDL_Libretro* lr);
 const char* SDL_Libretro_GetContentExtension(const SDL_Libretro* lr);
 bool SDL_Libretro_GetBlockExtract(const SDL_Libretro* lr);
 unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr);
+retro_proc_address_t SDL_Libretro_GetProcAddress(const SDL_Libretro* lr, const char* sym);
 uint64_t SDL_Libretro_GetSerializationQuirks(const SDL_Libretro* lr);
 enum retro_savestate_context SDL_Libretro_GetSavestateContext(const SDL_Libretro* lr);
 void SDL_Libretro_SetSavestateContext(SDL_Libretro* lr, enum retro_savestate_context context);
@@ -733,6 +734,7 @@ typedef struct SDL_LibretroCoreData {
     unsigned apiVersion;
     enum retro_pixel_format pixelFormat;
     unsigned performanceLevel; /**< @see SDL_Libretro_GetPerformanceLevel() */
+    struct retro_get_proc_address_interface procAddress; /**< @see SDL_Libretro_GetProcAddress() */
     uint64_t serializationQuirks; /**< The RETRO_SERIALIZATION_QUIRK_* flags the core set, less any the frontend doesn't know. @see SDL_Libretro_GetSerializationQuirks() */
     bool frameRun; /**< retro_run() has been called since the game loaded; states of RETRO_SERIALIZATION_QUIRK_MUST_INITIALIZE cores wait for it. */
     enum retro_savestate_context savestateContext;

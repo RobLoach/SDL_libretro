@@ -738,6 +738,58 @@ static int SDLCALL test_OptionValuesFull(void *arg) {
 #endif
 }
 
+/* GET_OVERSCAN answers with the frontend's choice to crop overscan. */
+static int SDLCALL test_GetOverscan(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    bool overscan = true;
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_OVERSCAN, &overscan) == true && overscan == false,
+        "GET_OVERSCAN reports overscan is cropped");
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_OVERSCAN, NULL) == false, "GET_OVERSCAN with NULL data fails");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
+static void RETRO_CALLCONV test_ProcAddressFunction(void) {}
+
+static retro_proc_address_t RETRO_CALLCONV test_ProcAddressLookup(const char* sym) {
+    return SDL_strcmp(sym, "test_proc") == 0 ? test_ProcAddressFunction : NULL;
+}
+
+/* SET_PROC_ADDRESS_CALLBACK lets the application look up the core's extension functions. */
+static int SDLCALL test_ProcAddress(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    SDLTest_AssertCheck(SDL_Libretro_GetProcAddress(lr, "test_proc") == NULL, "GetProcAddress is NULL without a callback");
+    struct retro_get_proc_address_interface iface = { test_ProcAddressLookup };
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK, &iface) == true, "SET_PROC_ADDRESS_CALLBACK accepted");
+    iface.get_proc_address = NULL;
+    SDLTest_AssertCheck(SDL_Libretro_GetProcAddress(lr, "test_proc") == test_ProcAddressFunction, "GetProcAddress finds the core's function");
+    SDLTest_AssertCheck(SDL_Libretro_GetProcAddress(lr, "missing") == NULL, "GetProcAddress is NULL for an unknown symbol");
+    SDLTest_AssertCheck(SDL_Libretro_GetProcAddress(lr, NULL) == NULL, "GetProcAddress with a NULL symbol is NULL");
+    SDLTest_AssertCheck(SDL_Libretro_GetProcAddress(NULL, "test_proc") == NULL, "GetProcAddress(NULL) is NULL");
+    SDL_Libretro_UnloadCore(lr);
+    SDLTest_AssertCheck(SDL_Libretro_GetProcAddress(lr, "test_proc") == NULL, "Callback cleared on UnloadCore");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 /* Both numbers for SET_SERIALIZATION_QUIRKS record the core's quirks and
    report the frontend's support back. */
 static int SDLCALL test_SerializationQuirks(void *arg) {
@@ -5000,6 +5052,8 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_OptionsDirtyIndependent, "Core and app consume independent dirty flags"),
     LIBRETRO_TEST_CASE(test_OptionValuesFull,  "An option can use every value slot"),
     LIBRETRO_TEST_CASE(test_SerializationQuirks, "SET_SERIALIZATION_QUIRKS and _2 are handled alike"),
+    LIBRETRO_TEST_CASE(test_GetOverscan, "GET_OVERSCAN reports overscan is cropped"),
+    LIBRETRO_TEST_CASE(test_ProcAddress, "SET_PROC_ADDRESS_CALLBACK backs GetProcAddress"),
     LIBRETRO_TEST_CASE(test_OptionReregister, "Re-registering an option updates it"),
     LIBRETRO_TEST_CASE(test_CategoryReregister, "Re-registering a category updates it"),
     LIBRETRO_TEST_CASE(test_OptionSetReplaced, "A new option set drops stale options"),
