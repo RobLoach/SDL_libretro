@@ -101,6 +101,10 @@ bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     }
     if (INI_HasValue(ini, NULL, "rewindmemorylimit"))
         SDL_Libretro_SetRewindMemoryLimit(lr, (size_t)INI_GetInt(ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr)));
+    if (INI_HasValue(ini, NULL, "sramautosaveinterval")) {
+        Sint64 seconds = INI_GetInt(ini, NULL, "sramautosaveinterval", (Sint64)SDL_Libretro_GetSRAMAutoSaveInterval(lr));
+        SDL_Libretro_SetSRAMAutoSaveInterval(lr, (seconds > 0 && seconds <= SDL_MAX_UINT32) ? (unsigned)seconds : 0);
+    }
     if (INI_HasValue(ini, NULL, "mouseport"))
         SDL_Libretro_SetMousePort(lr, (unsigned)INI_GetInt(ini, NULL, "mouseport", (Sint64)SDL_Libretro_GetMousePort(lr)));
     if (INI_HasValue(ini, NULL, "language")) {
@@ -260,6 +264,7 @@ static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     INI_SetInt(lr->ini, NULL, "rewindframes", (Sint64)lr->rewindCapacity);
     INI_SetInt(lr->ini, NULL, "rewindinterval", (Sint64)lr->rewindCaptureInterval);
     INI_SetInt(lr->ini, NULL, "rewindmemorylimit", (Sint64)SDL_Libretro_GetRewindMemoryLimit(lr));
+    INI_SetInt(lr->ini, NULL, "sramautosaveinterval", (Sint64)SDL_Libretro_GetSRAMAutoSaveInterval(lr));
     INI_SetInt(lr->ini, NULL, "mouseport", (Sint64)SDL_Libretro_GetMousePort(lr));
     // The raw override, so -1 keeps following the system locale.
     INI_SetInt(lr->ini, NULL, "language", (Sint64)lr->language);

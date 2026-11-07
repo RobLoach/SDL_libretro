@@ -8,15 +8,6 @@
 #define SDL_LIBRETRO_CORE_IMPL_ONCE
 
 /**
- * The clock that paces SDL_Libretro_Update() and the frame-time callback, in nanoseconds.
- *
- * Define before including the implementation to substitute a custom clock, e.g. a fake one in tests.
- */
-#ifndef SDL_LIBRETRO_GET_TICKS_NS
-#define SDL_LIBRETRO_GET_TICKS_NS() SDL_GetTicksNS()
-#endif
-
-/**
  * Reset all controller ports to the libretro default device.
  *
  * Libretro assumes ports are \c RETRO_DEVICE_JOYPAD, so we start with that.
@@ -1597,6 +1588,9 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         lr->core.runloop_frame_time_last = 0;
         return;
     }
+
+    // Periodically flush changed SRAM, so a crash doesn't lose battery saves.
+    SDL_Libretro_TickSRAMAutoSave(lr);
 
     // Keep any active rumble going until the core sets it back to 0.
     for (unsigned port = 0; port < SDL_LIBRETRO_MAX_USERS; port++) {
