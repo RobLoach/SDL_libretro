@@ -1663,6 +1663,7 @@ static bool SDL_Libretro_RewindStep(SDL_Libretro* lr) {
 
     lr->rewindActive = true;
     lr->core.symbols.retro_run();
+    SDL_Libretro_FlushSingleSamples(lr);
     lr->rewindActive = false;
     return true;
 }
