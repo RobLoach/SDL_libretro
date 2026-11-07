@@ -239,28 +239,30 @@ static void SDL_Libretro_InitCoreOptionCategory(SDL_Libretro* lr, const char* ke
     lr->core.optionCategoriesCount++;
 }
 
-static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
-    if (!lr) return;
-
-    // Options
-    if (lr->core.options) {
-        for (unsigned i = 0; i < lr->core.optionCount; i++) {
-            SDL_LibretroOption* opt = &lr->core.options[i];
-            SDL_free((void*)opt->key);
-            SDL_free((void*)opt->value);
-            SDL_free((void*)opt->defaultValue);
-            SDL_free((void*)opt->desc);
-            SDL_free((void*)opt->info);
-            SDL_free((void*)opt->category);
-            SDL_Libretro_FreeOptionValues(opt->values, opt->valuesCount);
-        }
-        SDL_free(lr->core.options);
-        lr->core.options = NULL;
+/**
+ * @internal
+ * Free an array of options, and everything they own.
+ */
+static void SDL_Libretro_FreeOptionArray(SDL_LibretroOption* options, unsigned count) {
+    if (!options) return;
+    for (unsigned i = 0; i < count; i++) {
+        SDL_LibretroOption* opt = &options[i];
+        SDL_free((void*)opt->key);
+        SDL_free((void*)opt->value);
+        SDL_free((void*)opt->defaultValue);
+        SDL_free((void*)opt->desc);
+        SDL_free((void*)opt->info);
+        SDL_free((void*)opt->category);
+        SDL_Libretro_FreeOptionValues(opt->values, opt->valuesCount);
     }
-    lr->core.optionCount = 0;
-    lr->core.optionCapacity = 0;
+    SDL_free(options);
+}
 
-    // Categories
+/**
+ * @internal
+ * Free the option categories.
+ */
+static void SDL_Libretro_FreeCoreOptionCategories(SDL_Libretro* lr) {
     if (lr->core.optionCategories) {
         for (unsigned i = 0; i < lr->core.optionCategoriesCount; i++) {
             SDL_free((void*)lr->core.optionCategories[i].key);
@@ -272,6 +274,60 @@ static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
     }
     lr->core.optionCategoriesCount = 0;
     lr->core.optionCategoriesCapacity = 0;
+}
+
+static void SDL_Libretro_FreeCoreOptions(SDL_Libretro* lr) {
+    if (!lr) return;
+    SDL_Libretro_FreeOptionArray(lr->core.options, lr->core.optionCount);
+    lr->core.options = NULL;
+    lr->core.optionCount = 0;
+    lr->core.optionCapacity = 0;
+    SDL_Libretro_FreeCoreOptionCategories(lr);
+}
+
+/**
+ * @internal
+ * Start replacing the whole option set, as each SET_VARIABLES or
+ * SET_CORE_OPTIONS* call declares every option the core has. The current
+ * options are handed back for SDL_Libretro_EndCoreOptionSet(), and the
+ * categories are dropped, so anything missing from the new set goes away.
+ */
+static void SDL_Libretro_BeginCoreOptionSet(SDL_Libretro* lr, SDL_LibretroOption** outOptions, unsigned* outCount) {
+    *outOptions = lr->core.options;
+    *outCount = lr->core.optionCount;
+    lr->core.options = NULL;
+    lr->core.optionCount = 0;
+    lr->core.optionCapacity = 0;
+    SDL_Libretro_FreeCoreOptionCategories(lr);
+}
+
+/**
+ * @internal
+ * Finish replacing the option set: options that remain keep their current
+ * value (while it's still valid) and visibility, then the old set is freed.
+ * Values for dropped options stay in the config, should the core bring them back.
+ */
+static void SDL_Libretro_EndCoreOptionSet(SDL_Libretro* lr, SDL_LibretroOption* oldOptions, unsigned oldCount) {
+    for (unsigned i = 0; i < oldCount; i++) {
+        SDL_LibretroOption* old = &oldOptions[i];
+        SDL_LibretroOption* opt = (SDL_LibretroOption*)SDL_Libretro_GetOption(lr, old->key);
+        if (!opt) continue;
+        opt->visible = old->visible;
+        if (!old->value || (opt->value && SDL_strcmp(opt->value, old->value) == 0)) continue;
+        if (SDL_Libretro_IsOptionValueValid(opt, old->value)) {
+            // Take the old value over, rather than copying it.
+            SDL_free((void*)opt->value);
+            opt->value = old->value;
+            old->value = NULL;
+        } else {
+            // The core already read the old value, so it needs to see the new one.
+            lr->core.optionsDirtyCore = true;
+        }
+    }
+    SDL_Libretro_FreeOptionArray(oldOptions, oldCount);
+    // The old option strings are gone, so anything borrowing them must rebuild.
+    lr->coreGeneration++;
+    SDL_Libretro_MarkOptionsChanged(lr);
 }
 
 /**

@@ -505,6 +505,10 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_VARIABLES: {
             // When NULL data is passed, it's just checking if the callback is available.
             if (!data) return true;
+            // The variables replace the whole option set.
+            SDL_LibretroOption* oldOptions;
+            unsigned oldCount;
+            SDL_Libretro_BeginCoreOptionSet(lr, &oldOptions, &oldCount);
             const struct retro_variable* var = (const struct retro_variable*)data;
             for (; var->key; var++) {
                 const char* label = "";
@@ -562,6 +566,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 SDL_free(values);
                 SDL_free(valueBuffer);
             }
+            SDL_Libretro_EndCoreOptionSet(lr, oldOptions, oldCount);
             return true;
         }
 
@@ -1040,8 +1045,14 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2: {
             if (!data) return false;
             const struct retro_core_options_v2* opts = (const struct retro_core_options_v2*)data;
+
+            // The definitions replace the whole option set, so no definitions leave no options.
+            SDL_LibretroOption* oldOptions;
+            unsigned oldCount;
+            SDL_Libretro_BeginCoreOptionSet(lr, &oldOptions, &oldCount);
             if (!opts->definitions) {
-                return true; // There arn't any options.
+                SDL_Libretro_EndCoreOptionSet(lr, oldOptions, oldCount);
+                return true;
             }
 
             // Register the option categories (if any) before the options that reference them.
@@ -1059,6 +1070,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
                 const char* info = SDL_Libretro_PickCoreOptionText(def->info, def->info_categorized, def->category_key);
                 SDL_Libretro_InitCoreOption(lr, def->key, defaultVal, desc, def->values, RETRO_NUM_CORE_OPTION_VALUES_MAX, info, def->category_key);
             }
+            SDL_Libretro_EndCoreOptionSet(lr, oldOptions, oldCount);
             return true;
         }
 

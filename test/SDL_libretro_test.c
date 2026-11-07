@@ -885,6 +885,64 @@ static int SDLCALL test_CategoryReregister(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* Each new option set replaces the last: dropped options and categories go,
+ * while options that remain keep their current value. */
+static int SDLCALL test_OptionSetReplaced(void *arg) {
+    (void)arg;
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+
+    static struct retro_core_option_v2_category firstCats[] = {
+        { "set_cat", "Set Category", "Dropped with the first set" },
+        { NULL, NULL, NULL },
+    };
+    static struct retro_core_option_v2_definition firstDefs[] = {
+        { "set_a", "A", NULL, NULL, NULL, "set_cat",
+          { {"a1", NULL}, {"a2", NULL}, {NULL, NULL} }, "a1" },
+        { "set_b", "B", NULL, NULL, NULL, NULL,
+          { {"b1", NULL}, {"b2", NULL}, {NULL, NULL} }, "b1" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    static struct retro_core_option_v2_definition secondDefs[] = {
+        { "set_b", "B", NULL, NULL, NULL, NULL,
+          { {"b1", NULL}, {"b2", NULL}, {NULL, NULL} }, "b1" },
+        { "set_c", "C", NULL, NULL, NULL, NULL,
+          { {"c1", NULL}, {"c2", NULL}, {NULL, NULL} }, "c1" },
+        { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
+    };
+    struct retro_core_options_v2 first = { firstCats, firstDefs };
+    struct retro_core_options_v2 second = { NULL, secondDefs };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &first);
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 2, "First set registered");
+    SDLTest_AssertCheck(SDL_Libretro_SetOptionValue(lr, "set_b", "b2") == true, "Set B to a non-default value");
+    SDL_Libretro_AreOptionsDirty(lr);
+    bool updated = false;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_VARIABLE_UPDATE, &updated);
+
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, &second);
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 2, "Second set replaces the first");
+    SDLTest_AssertCheck(SDL_Libretro_GetOption(lr, "set_a") == NULL, "Dropped option removed");
+    SDLTest_AssertCheck(SDL_Libretro_GetCategoryCount(lr) == 0, "Dropped category removed");
+    const char* c = SDL_Libretro_GetOptionValue(lr, "set_c");
+    SDLTest_AssertCheck(c && SDL_strcmp(c, "c1") == 0, "New option registered with its default");
+    const char* b = SDL_Libretro_GetOptionValue(lr, "set_b");
+    SDLTest_AssertCheck(b && SDL_strcmp(b, "b2") == 0, "Remaining option keeps its value");
+    SDLTest_AssertCheck(lr->core.optionsDirtyCore == false, "Kept value isn't an update to the core");
+    SDLTest_AssertCheck(SDL_Libretro_AreOptionsDirty(lr) == true, "App told to refresh the options");
+
+    // The legacy variables replace the set too.
+    struct retro_variable vars[] = { { "set_c", "C; c2|c1" }, { NULL, NULL } };
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_VARIABLES, vars);
+    SDLTest_AssertCheck(SDL_Libretro_GetOptionCount(lr) == 1, "SET_VARIABLES replaces the set");
+    c = SDL_Libretro_GetOptionValue(lr, "set_c");
+    SDLTest_AssertCheck(c && SDL_strcmp(c, "c1") == 0, "Remaining variable keeps its value over the new default");
+
+    SDL_Libretro_Destroy(lr);
+    SDL_Libretro_active = prevActive;
+    return TEST_COMPLETED;
+}
+
 /* Language detection, the SetLanguage override, and the *_INTL core option merges. */
 static int SDLCALL test_Language(void *arg) {
     SDL_Libretro* lr = SDL_Libretro_Create();
@@ -4895,6 +4953,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_SerializationQuirks, "SET_SERIALIZATION_QUIRKS and _2 are handled alike"),
     LIBRETRO_TEST_CASE(test_OptionReregister, "Re-registering an option updates it"),
     LIBRETRO_TEST_CASE(test_CategoryReregister, "Re-registering a category updates it"),
+    LIBRETRO_TEST_CASE(test_OptionSetReplaced, "A new option set drops stale options"),
     LIBRETRO_TEST_CASE(test_RewindConfig,     "Rewind settings round-trip through the config"),
     LIBRETRO_TEST_CASE(test_LateOptionConfig, "Late-registered options get their saved values"),
     LIBRETRO_TEST_CASE(test_ConfigUnparseable, "An unparseable config is never overwritten"),
