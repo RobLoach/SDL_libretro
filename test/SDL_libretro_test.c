@@ -4522,8 +4522,9 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->aboutButton), "The About page ends with a Back button");
 
         // Backing out of About from its bottom returns to a top level that
-        // fits the window unscrolled, not left at About's offset.
-        SDL_SetWindowSize(window, 1280, 900);
+        // fits the window unscrolled, not left at About's offset. The height
+        // is between the top level's content and About's, so only About scrolls.
+        SDL_SetWindowSize(window, 1280, 700);
         SDL_SyncWindow(window);
         struct nk_window* menuWindow = nk_window_find(menu->ctx, SDL_LIBRETRO_MENU_WINDOW_TITLE);
         nk_console* aboutBack = menu->aboutButton->children[cvector_size(menu->aboutButton->children) - 1];
