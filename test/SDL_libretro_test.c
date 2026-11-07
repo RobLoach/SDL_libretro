@@ -2653,9 +2653,32 @@ static int SDLCALL test_SRAMAutoSave(void *arg) {
     SDL_free(file);
 
     // Loading the game again restores it, over what the core started with.
+    test_fakeTicksNS = 1000 * SDL_NS_PER_SECOND;
     SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds again");
     sram = (unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &size);
     SDLTest_AssertCheck(sram && size >= 4 && SDL_memcmp(sram, "SAVE", 4) == 0, "Loading the game restores SRAM");
+
+    // The interval saves changed SRAM while the game runs, once it passes.
+    SDLTest_AssertCheck(SDL_Libretro_GetSRAMAutoSaveInterval(lr) == 0, "SRAM auto-save interval starts off");
+    SDL_Libretro_SetSRAMAutoSaveInterval(lr, 30);
+    SDLTest_AssertCheck(SDL_Libretro_GetSRAMAutoSaveInterval(lr) == 30, "SRAM auto-save interval is set");
+    SDL_RemovePath(srmPath);
+    if (sram && size >= 4) SDL_memcpy(sram, "TICK", 4);
+    test_fakeTicksNS += 20 * SDL_NS_PER_SECOND;
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(!SDL_GetPathInfo(srmPath, NULL), "SRAM isn't saved before the interval passes");
+    test_fakeTicksNS += 15 * SDL_NS_PER_SECOND;
+    SDL_Libretro_Update(lr);
+    file = (char*)SDL_LoadFile(srmPath, &fileSize);
+    SDLTest_AssertCheck(file && fileSize == size && SDL_memcmp(file, "TICK", 4) == 0, "Changed SRAM is saved once the interval passes");
+    SDL_free(file);
+
+    // Unchanged SRAM isn't rewritten.
+    SDL_RemovePath(srmPath);
+    test_fakeTicksNS += 35 * SDL_NS_PER_SECOND;
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(!SDL_GetPathInfo(srmPath, NULL), "Unchanged SRAM isn't saved again");
+    test_fakeTicksNS = 0;
 
     SDL_Libretro_Destroy(lr);
     SDL_RemovePath(srmPath);
@@ -4459,6 +4482,15 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(menu->rewindBufferMB == 32, "Rewind buffer setting syncs from the context");
         SDL_Libretro_SetRewindMemoryLimit(lr, 0);
 
+        // The SRAM Auto-Save choice sets the interval, and syncs back from it.
+        menu->sramAutoSaveIndex = 3;
+        SDL_Libretro_MenuSRAMAutoSaveChanged(NULL, menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetSRAMAutoSaveInterval(lr) == 60, "The SRAM Auto-Save choice sets the interval");
+        SDL_Libretro_SetSRAMAutoSaveInterval(lr, 45);
+        SDL_Libretro_MenuSyncSettings(menu);
+        SDLTest_AssertCheck(menu->sramAutoSaveIndex == 2, "An off-list interval shows the closest choice below it");
+        SDL_Libretro_SetSRAMAutoSaveInterval(lr, 0);
+
         // A progress-type OSD message surfaces as the top progress bar.
         SDL_Libretro_OsdPush(lr, "Working", 60.0, 0, RETRO_MESSAGE_TYPE_PROGRESS, 50);
         SDL_Libretro_SetMenuOpen(menu, true);
@@ -4638,6 +4670,7 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Libretro_SetMousePort(lrSave, 1);
     SDL_Libretro_SetLanguage(lrSave, RETRO_LANGUAGE_GERMAN);
     SDL_Libretro_SetRewindMemoryLimit(lrSave, (size_t)48 << 20);
+    SDL_Libretro_SetSRAMAutoSaveInterval(lrSave, 120);
     SDL_Libretro_Destroy(lrSave); // Writes the config file.
 
     SDL_Libretro* lrLoad = SDL_Libretro_Create();
@@ -4666,6 +4699,7 @@ static int SDLCALL test_Menu(void *arg) {
         "The Language combobox reflects the persisted language");
     SDLTest_AssertCheck(SDL_Libretro_GetRewindMemoryLimit(lrLoad) == (size_t)48 << 20,
         "Rewind memory limit persists through the config file");
+    SDLTest_AssertCheck(SDL_Libretro_GetSRAMAutoSaveInterval(lrLoad) == 120, "SRAM auto-save interval persists through the config file");
     if (menuLoad != NULL) {
         menuLoad->muteChecked = nk_false;
         SDL_Libretro_MenuMuteChanged(menuLoad, NULL);

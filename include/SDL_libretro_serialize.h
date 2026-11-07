@@ -929,15 +929,65 @@ bool SDL_Libretro_GetSRAMAutoSave(const SDL_Libretro* lr) {
 }
 
 /**
+ * Also save SRAM every few seconds while the game runs, when it changed.
+ *
+ * Guards battery saves against a crash or power loss. Only applies while
+ * SDL_Libretro_SetSRAMAutoSave() is enabled, and is checked from
+ * SDL_Libretro_Update(). SRAM that hasn't changed since it was last loaded or
+ * saved isn't rewritten. Disabled (0) by default.
+ *
+ * @param lr the libretro context.
+ * @param seconds the seconds between saves, or 0 to only save when the game unloads.
+ *
+ * @see SDL_Libretro_GetSRAMAutoSaveInterval()
+ * @see SDL_Libretro_SetSRAMAutoSave()
+ */
+void SDL_Libretro_SetSRAMAutoSaveInterval(SDL_Libretro* lr, unsigned seconds) {
+    if (lr) lr->sramAutoSaveInterval = seconds;
+}
+
+/**
+ * Get the seconds between SRAM auto-saves while the game runs.
+ *
+ * @param lr the libretro context.
+ * @returns the interval set with SDL_Libretro_SetSRAMAutoSaveInterval(), or 0 when off.
+ *
+ * @see SDL_Libretro_SetSRAMAutoSaveInterval()
+ */
+unsigned SDL_Libretro_GetSRAMAutoSaveInterval(const SDL_Libretro* lr) {
+    return lr ? lr->sramAutoSaveInterval : 0;
+}
+
+/**
+ * @internal
+ * CRC-32 of the core's SRAM, or 0 when it has none.
+ */
+static Uint32 SDL_Libretro_SRAMChecksum(SDL_Libretro* lr) {
+    size_t size = 0;
+    const void* sram = SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &size);
+    return sram != NULL ? SDL_crc32(0, sram, size) : 0;
+}
+
+/**
+ * @internal
+ * Remember the SRAM as saved now, so the interval and change check start over.
+ */
+static void SDL_Libretro_MarkSRAMSaved(SDL_Libretro* lr) {
+    lr->core.sramSavedNS = SDL_LIBRETRO_GET_TICKS_NS();
+    lr->core.sramSavedCRC = SDL_Libretro_SRAMChecksum(lr);
+}
+
+/**
  * @internal
  * Load the game's SRAM file, if SRAM auto-save is on and there is one.
  */
 static void SDL_Libretro_AutoLoadSRAM(SDL_Libretro* lr) {
     char path[SDL_LIBRETRO_MAX_PATH];
-    if (!lr->sramAutoSave || SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) == 0 || !SDL_GetPathInfo(path, NULL)) return;
-    if (!SDL_Libretro_LoadSRAM(lr, path)) {
+    if (!lr->sramAutoSave) return;
+    if (SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) != 0 && SDL_GetPathInfo(path, NULL) && !SDL_Libretro_LoadSRAM(lr, path)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to load SRAM: %s", SDL_GetError());
     }
+    SDL_Libretro_MarkSRAMSaved(lr);
 }
 
 /**
@@ -949,7 +999,33 @@ static void SDL_Libretro_AutoSaveSRAM(SDL_Libretro* lr) {
     if (!lr->sramAutoSave || !lr->core.gameLoaded || SDL_Libretro_GetSavePath(lr, ".srm", path, sizeof(path)) == 0) return;
     if (!SDL_Libretro_SaveSRAM(lr, path)) {
         SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to save SRAM: %s", SDL_GetError());
+        return;
     }
+    SDL_Libretro_MarkSRAMSaved(lr);
+}
+
+/**
+ * @internal
+ * Save the game's SRAM if SRAM auto-save is on and it changed since it was
+ * last loaded or saved.
+ */
+static void SDL_Libretro_FlushSRAM(SDL_Libretro* lr) {
+    if (!lr || !lr->sramAutoSave || !lr->core.gameLoaded) return;
+    if (SDL_Libretro_SRAMChecksum(lr) == lr->core.sramSavedCRC) {
+        lr->core.sramSavedNS = SDL_LIBRETRO_GET_TICKS_NS();
+        return;
+    }
+    SDL_Libretro_AutoSaveSRAM(lr);
+}
+
+/**
+ * @internal
+ * Flush SRAM once the auto-save interval has passed; called every update.
+ */
+static void SDL_Libretro_TickSRAMAutoSave(SDL_Libretro* lr) {
+    if (!lr->sramAutoSave || lr->sramAutoSaveInterval == 0) return;
+    if (SDL_LIBRETRO_GET_TICKS_NS() - lr->core.sramSavedNS < SDL_SECONDS_TO_NS((Uint64)lr->sramAutoSaveInterval)) return;
+    SDL_Libretro_FlushSRAM(lr);
 }
 
 /**

@@ -330,6 +330,8 @@ bool SDL_Libretro_LoadSRAM(SDL_Libretro* lr, const char* file);
 bool SDL_Libretro_LoadSRAM_IO(SDL_Libretro* lr, SDL_IOStream* src, bool closeio);
 void SDL_Libretro_SetSRAMAutoSave(SDL_Libretro* lr, bool enabled);
 bool SDL_Libretro_GetSRAMAutoSave(const SDL_Libretro* lr);
+void SDL_Libretro_SetSRAMAutoSaveInterval(SDL_Libretro* lr, unsigned seconds);
+unsigned SDL_Libretro_GetSRAMAutoSaveInterval(const SDL_Libretro* lr);
 unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr);
 bool SDL_Libretro_GetMemoryMapDescriptor(const SDL_Libretro* lr, unsigned index, Uint64* flags, void** ptr, size_t* offset, size_t* start, size_t* select, size_t* disconnect, size_t* len, const char** addrspace);
 void* SDL_Libretro_GetMapAddress(const SDL_Libretro* lr, size_t address, size_t* regionRemaining);
@@ -713,6 +715,8 @@ typedef struct SDL_LibretroCoreData {
     float speed; /**< The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */
     double speedAccumulator; /**< Fractional frames accumulated for run-loop pacing; reset with the core. */
     Uint64 lastTickNS; /**< Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call, reset with the core. */
+    Uint64 sramSavedNS; /**< When SRAM was last loaded, saved, or checked for the auto-save interval (SDL_GetTicksNS). */
+    Uint32 sramSavedCRC; /**< CRC-32 of SRAM as of sramSavedNS, so unchanged SRAM isn't rewritten. */
     unsigned width, height;
     double fps;
     double sampleRate;
@@ -874,6 +878,7 @@ struct SDL_Libretro {
     SDL_LibretroAnalogToDigital analogToDigital[SDL_LIBRETRO_MAX_USERS]; /**< Which stick, if any, also drives each port's D-Pad. @see SDL_Libretro_SetAnalogToDigital() */
     unsigned mousePort; /**< The only port the mouse, pointer, and lightgun answer on. @see SDL_Libretro_SetMousePort() */
     bool sramAutoSave; /**< Load SRAM when a game loads, and save it when the game unloads. @see SDL_Libretro_SetSRAMAutoSave() */
+    unsigned sramAutoSaveInterval; /**< Seconds between SRAM auto-saves while the game runs, or 0 for none. @see SDL_Libretro_SetSRAMAutoSaveInterval() */
     char coreDirectory[SDL_LIBRETRO_MAX_PATH];
     char saveDirectory[SDL_LIBRETRO_MAX_PATH];
     char systemDirectory[SDL_LIBRETRO_MAX_PATH];
@@ -1047,6 +1052,15 @@ static bool SDL_Libretro_CloseConfig(SDL_Libretro* lr);
 // PhysFS
 
 static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr);
+
+/**
+ * The clock that paces SDL_Libretro_Update() and the frame-time callback, in nanoseconds.
+ *
+ * Define before including the implementation to substitute a custom clock, e.g. a fake one in tests.
+ */
+#ifndef SDL_LIBRETRO_GET_TICKS_NS
+#define SDL_LIBRETRO_GET_TICKS_NS() SDL_GetTicksNS()
+#endif
 
 // Implementation fragments are included in dependency order.
 // clang-format off

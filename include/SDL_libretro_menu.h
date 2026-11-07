@@ -255,6 +255,7 @@ struct SDL_LibretroMenu {
     nk_bool muteChecked;
     nk_bool rewindChecked;
     int rewindBufferMB; /**< Rewind memory limit in MB; 0 for no limit. */
+    int sramAutoSaveIndex; /**< Index into SDL_Libretro_MenuSRAMAutoSaveSeconds. */
     int mousePortIndex; /**< The controller port the mouse drives. */
     char mousePortList[16 * SDL_LIBRETRO_MAX_USERS]; /**< "Port 1|Port 2|..." for the Mouse Port combobox. */
     int languageIndex; /**< 0 = Auto (system locale), else RETRO_LANGUAGE_* + 1. */
@@ -969,6 +970,21 @@ static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdat
     (void)userdata;
     // Keep the capacity and interval the app configured.
     SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true, menu->lr->rewindCapacity, menu->lr->rewindCaptureInterval);
+}
+
+/**
+ * @internal
+ * The SRAM Auto-Save combobox's intervals in seconds, matching its entries.
+ */
+static const unsigned SDL_Libretro_MenuSRAMAutoSaveSeconds[] = { 0, 15, 30, 60, 120, 300, 600 };
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuSRAMAutoSaveChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
+    SDL_Libretro_SetSRAMAutoSaveInterval(menu->lr, SDL_Libretro_MenuSRAMAutoSaveSeconds[menu->sramAutoSaveIndex]);
 }
 
 /**
@@ -2235,6 +2251,13 @@ static void SDL_Libretro_MenuSyncSettings(SDL_LibretroMenu* menu) {
     // rendering, and the CHANGED writeback would shrink a larger app budget.
     size_t rewindLimitMB = SDL_Libretro_GetRewindMemoryLimit(lr) >> 20;
     menu->rewindBufferMB = rewindLimitMB > 1024 ? 1024 : (int)rewindLimitMB;
+    // The closest interval at or below the app's, so an off-list one still shows.
+    menu->sramAutoSaveIndex = 0;
+    for (int i = 0; i < (int)SDL_arraysize(SDL_Libretro_MenuSRAMAutoSaveSeconds); i++) {
+        if (SDL_Libretro_MenuSRAMAutoSaveSeconds[i] <= SDL_Libretro_GetSRAMAutoSaveInterval(lr)) {
+            menu->sramAutoSaveIndex = i;
+        }
+    }
     menu->mousePortIndex = (int)SDL_Libretro_GetMousePort(lr);
     // The raw override, so a locale-detected language still shows as Auto.
     menu->languageIndex = lr->language >= 0 ? lr->language + 1 : 0;
@@ -2350,6 +2373,9 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_property_int(general, "Rewind Buffer (MB)", 0, &menu->rewindBufferMB, 1024, 8, 1.0f), &SDL_Libretro_MenuRewindBufferChanged, menu),
         "Memory the rewind buffer may use; 0 for no limit");
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuOnChanged(nk_console_combobox(general, "SRAM Auto-Save", "Off|15s|30s|1min|2min|5min|10min", '|', &menu->sramAutoSaveIndex), &SDL_Libretro_MenuSRAMAutoSaveChanged, menu),
+        "How often changed battery saves are written while playing");
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_combobox(general, "Language", SDL_LIBRETRO_MENU_LANGUAGE_NAMES, '|', &menu->languageIndex), &SDL_Libretro_MenuLanguageChanged, menu),
         "Reported to cores; applies when the next core loads. Auto follows the system locale");
@@ -2710,6 +2736,8 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
         for (int i = 0; i < NK_GAMEPAD_MAX; i++) {
             menu->padButtonsHeldAtOpen[i] |= menu->gamepads.gamepads[i].buttons;
         }
+        // The game pauses here and may not come back, so keep its battery save.
+        SDL_Libretro_FlushSRAM(menu->lr);
     }
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
