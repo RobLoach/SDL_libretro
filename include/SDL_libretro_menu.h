@@ -383,13 +383,39 @@ static int SDL_Libretro_MenuCollectCoreCandidates(SDL_LibretroMenu* menu, const 
     const char* archivePath = NULL;
 #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
     char inner[SDL_LIBRETRO_MAX_PATH];
-    if (SDL_Libretro_PhysFS_PeekContent(lr, path, inner, sizeof(inner))) {
+    if (SDL_Libretro_PhysFS_PeekContent(lr, path, "", inner, sizeof(inner))) {
         contentPath = inner;
         archivePath = path;
     }
 #endif
     SDL_Libretro_FindCoresForContent(lr, contentPath, archivePath, menu->coreChoices, &menu->coreChoicesCount);
     return menu->coreChoicesCount;
+}
+
+/**
+ * @internal
+ * Whether the loaded core takes the content at path by its valid extensions.
+ * A core that lists none takes anything. For an archive, that's by the
+ * content a load would pick from it.
+ */
+static bool SDL_Libretro_MenuCoreAcceptsContent(SDL_LibretroMenu* menu, const char* path) {
+    SDL_Libretro* lr = menu->lr;
+    if (!SDL_Libretro_IsCoreReady(lr)) {
+        return false;
+    }
+    const char* validExts = lr->core.validExtensions;
+    if (validExts[0] == '\0' || SDL_Libretro_ExtensionInList(SDL_Libretro_GetExtension(path), validExts)) {
+        return true;
+    }
+#if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+    if (SDL_strcasecmp(SDL_Libretro_GetExtension(path), "zip") == 0 && lr->core.blockExtract) {
+        return true;
+    }
+    char inner[SDL_LIBRETRO_MAX_PATH];
+    return SDL_Libretro_PhysFS_PeekContent(lr, path, validExts, inner, sizeof(inner));
+#else
+    return false;
+#endif
 }
 
 /**
@@ -406,7 +432,8 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
     // core keeps running until a choice is made. Open the menu so the picker is
     // visible even when the load was triggered from outside it (e.g. a drop
     // while a game is running); a no-op when the menu is already open.
-    if (SDL_Libretro_MenuCollectCoreCandidates(menu, menu->loadGamePath) > 1) {
+    int candidates = SDL_Libretro_MenuCollectCoreCandidates(menu, menu->loadGamePath);
+    if (candidates > 1) {
         SDL_strlcpy(menu->pendingGamePath, menu->loadGamePath, sizeof(menu->pendingGamePath));
         menu->corePickerPending = true;
         menu->loadGamePath[0] = '\0';
@@ -414,8 +441,30 @@ static void SDL_Libretro_MenuLoadPendingGame(SDL_LibretroMenu* menu) {
         return;
     }
 
-    // Drop the previous core so the loader picks the right one for the content.
-    SDL_Libretro_UnloadCore(menu->lr);
+    // No scanned core fits, so only the loaded core could open it. When it
+    // can't either, say so and leave the running game alone: in the menu
+    // when it's open, otherwise on screen over the game.
+    if (candidates == 0 && !SDL_Libretro_MenuCoreAcceptsContent(menu, menu->loadGamePath)) {
+        char fileName[128];
+        char message[192];
+        SDL_Libretro_GetFileName(fileName, sizeof(fileName), menu->loadGamePath, true);
+        SDL_snprintf(message, sizeof(message), "No core can load %s", fileName);
+        SDL_Log("%s", message);
+        if (SDL_Libretro_IsMenuOpen(menu)) {
+            nk_console_show_message(menu->console, message);
+        }
+        else {
+            SDL_Libretro_SetMessage(menu->lr, message, 3.0);
+        }
+        menu->loadGamePath[0] = '\0';
+        return;
+    }
+
+    // Drop the previous core so the loader picks the right one for the
+    // content, unless it's the only one that can.
+    if (candidates > 0) {
+        SDL_Libretro_UnloadCore(menu->lr);
+    }
     SDL_Libretro_MenuLoadGameNow(menu, menu->loadGamePath);
     menu->loadGamePath[0] = '\0';
 }
