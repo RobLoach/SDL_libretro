@@ -712,9 +712,9 @@ typedef struct SDL_LibretroCoreData {
 
     bool gameLoaded; /**< A game is currently loaded into the core (content or no-content). */
     bool shutdown; /**< Whether or not the core has requested to shutdown. */
-    float speed; /**< The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded. */
-    double speedAccumulator; /**< Fractional frames accumulated for run-loop pacing; reset with the core. */
-    Uint64 lastTickNS; /**< Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call, reset with the core. */
+    float speed; /**< The speed the core is running. 1.0f is normal, 0.5f slow motion, 1.5f fast forward, -1.0f rewind. Reset to 1.0f each time a core is loaded, and from rewind when the game unloads. */
+    double speedAccumulator; /**< Fractional frames accumulated for run-loop pacing; reset with the game. */
+    Uint64 lastTickNS; /**< Wall-clock of the previous RunFrame (SDL_GetTicksNS); 0 until first call, reset with the game. */
     Uint64 sramSavedNS; /**< When SRAM was last loaded, saved, or checked for the auto-save interval (SDL_GetTicksNS). */
     Uint32 sramSavedCRC; /**< CRC-32 of SRAM as of sramSavedNS, so unchanged SRAM isn't rewritten. */
     unsigned width, height;

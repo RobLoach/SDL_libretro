@@ -1428,6 +1428,13 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     SDL_Libretro_ResetContentState(lr);
     SDL_Libretro_StopRumble(lr);
 
+    // Restart the run loop for the next game. Rewinding needs this game's
+    // buffer, so it falls back to normal speed; pause and fast-forward stay.
+    if (lr->core.speed < 0.0f) lr->core.speed = 1.0f;
+    lr->core.lastTickNS = 0;
+    lr->core.speedAccumulator = 0.0;
+    lr->core.singleSampleCount = 0;
+
     SDL_Libretro_RewindFree(lr);
     SDL_Libretro_CloseAudio(lr);
     SDL_Libretro_CloseVideo(lr);

@@ -1805,6 +1805,43 @@ static int SDLCALL test_Shutdown(void *arg) {
 #endif
 }
 
+static int SDLCALL test_UnloadGameRunState(void *arg) {
+    (void)arg;
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRewindEnabled(lr, true, 100, 1);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    SDL_Libretro_Update(lr);
+    SDL_Libretro_SetSpeed(lr, -1.0f);
+    SDLTest_AssertCheck(lr->core.speed < 0.0f, "Rewinding before the game unloads");
+    SDL_Libretro_Update(lr);
+    lr->core.singleSampleCount = 5;
+
+    // Swapping games mid-rewind used to leave the new game stuck rewinding an empty buffer.
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(lr->core.speed == 1.0f, "Unloading drops rewind back to normal speed");
+    SDLTest_AssertCheck(lr->core.lastTickNS == 0, "Unloading restarts the run-loop clock");
+    SDLTest_AssertCheck(lr->core.speedAccumulator == 0.0, "Unloading clears the run-loop accumulator");
+    SDLTest_AssertCheck(lr->core.singleSampleCount == 0, "Unloading drops batched single samples");
+
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "Another game loads");
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(lr->core.frameRun == true, "The new game runs a frame");
+
+    // Pause and fast-forward are the user's choice, so they carry over.
+    SDL_Libretro_SetSpeed(lr, 2.0f);
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(lr->core.speed == 2.0f, "Fast-forward survives unloading");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_GameInfoExt(void *arg) {
 #if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_PATH or TEST_CONTENT_PATH not defined");
@@ -4851,6 +4888,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),
     LIBRETRO_TEST_CASE(test_FrameTime,         "Frame-time callback receives measured deltas"),
     LIBRETRO_TEST_CASE(test_Shutdown,         "A shutdown request stops the core until its game unloads"),
+    LIBRETRO_TEST_CASE(test_UnloadGameRunState, "Unloading a game resets rewind speed and run-loop state"),
     LIBRETRO_TEST_CASE(test_GameInfoExt,       "Extended game info via GET_GAME_INFO_EXT"),
     LIBRETRO_TEST_CASE(test_LoadGameNoContent, "Load game with no content file"),
     LIBRETRO_TEST_CASE(test_StartCoreWithoutContent, "Start a library core without content"),
