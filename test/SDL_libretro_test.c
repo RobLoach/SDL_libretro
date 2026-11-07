@@ -4006,6 +4006,16 @@ static int SDLCALL test_Events(void *arg) {
     SDLTest_AssertCheck(received.user.data2 == SDL_Libretro_GetGameName(lr),
         "GAME_LOADED data2 is the game name");
 
+    // A frame of a new size pushes GEOMETRY_CHANGED once; the same size again
+    // pushes nothing.
+    static Uint16 frame[256 * 224];
+    SDL_Libretro_VideoRefresh(frame, 256, 224, 256 * sizeof(Uint16));
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 1,
+        "GEOMETRY_CHANGED is pushed for a new frame size");
+    SDL_Libretro_VideoRefresh(frame, 256, 224, 256 * sizeof(Uint16));
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 0,
+        "An unchanged frame size pushes nothing");
+
     // Commands the library handles get curated events after the handling.
     struct retro_game_geometry geometry = { 640, 480, 640, 480, 2.0f };
     SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry) == true,
@@ -4016,6 +4026,17 @@ static int SDLCALL test_Events(void *arg) {
         "A repeated SET_GEOMETRY is handled");
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 0,
         "An unchanged geometry pushes nothing");
+
+    // A new base size with the same aspect is a change too, and the frame of
+    // that size that follows isn't reported again.
+    geometry.base_width = 128;
+    geometry.base_height = 112;
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_GEOMETRY, &geometry);
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 1,
+        "GEOMETRY_CHANGED is pushed for a new base size");
+    SDL_Libretro_VideoRefresh(frame, 128, 112, 128 * sizeof(Uint16));
+    SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL) == 0,
+        "A frame of the announced size pushes nothing");
     SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SHUTDOWN, NULL) == true,
         "SHUTDOWN is handled");
     SDLTest_AssertCheck(test_DrainEvents(SDL_EVENT_LIBRETRO_SHUTDOWN, NULL) == 1,

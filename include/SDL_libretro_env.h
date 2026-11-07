@@ -641,8 +641,10 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             const struct retro_system_av_info* av = (const struct retro_system_av_info*)data;
             lr->core.fps = av->timing.fps;
             lr->core.aspectRatio = av->geometry.aspect_ratio;
+            lr->core.reportedWidth = av->geometry.base_width;
+            lr->core.reportedHeight = av->geometry.base_height;
 
-            // A base-resolution change is picked up by VideoRefresh on the next frame; aspect is applied at render time. Only the audio stream (frequency fixed at open) needs an explicit reopen, deferred to RunFrame.
+            // A base-resolution change is picked up by VideoRefresh on the next frame, already announced by the event below; aspect is applied at render time. Only the audio stream (frequency fixed at open) needs an explicit reopen, deferred to RunFrame.
             if (av->timing.sample_rate != lr->core.sampleRate) {
                 lr->core.sampleRate = av->timing.sample_rate;
                 if (lr->core.audioStream) {
@@ -658,8 +660,18 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
             const struct retro_game_geometry* geom = (const struct retro_game_geometry*)data;
             // Geometry updates during runtime are applied in SDL_Libretro_VideoRefresh().
             // Cores may call this every frame, so only report actual changes.
+            bool changed = false;
             if (geom->aspect_ratio != lr->core.aspectRatio) {
                 lr->core.aspectRatio = geom->aspect_ratio;
+                changed = true;
+            }
+            if (geom->base_width && geom->base_height &&
+                (geom->base_width != lr->core.reportedWidth || geom->base_height != lr->core.reportedHeight)) {
+                lr->core.reportedWidth = geom->base_width;
+                lr->core.reportedHeight = geom->base_height;
+                changed = true;
+            }
+            if (changed) {
                 SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
             }
             return true;

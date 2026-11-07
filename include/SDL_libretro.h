@@ -718,6 +718,7 @@ typedef struct SDL_LibretroCoreData {
     Uint64 sramSavedNS; /**< When SRAM was last loaded, saved, or checked for the auto-save interval (SDL_GetTicksNS). */
     Uint32 sramSavedCRC; /**< CRC-32 of SRAM as of sramSavedNS, so unchanged SRAM isn't rewritten. */
     unsigned width, height;
+    unsigned reportedWidth, reportedHeight; /**< The video size last announced with SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, so one change isn't reported twice. */
     double fps;
     double sampleRate;
     float aspectRatio;
