@@ -349,13 +349,25 @@ static void scribble_stack(void) {
  * their options once content is known, then record what value it reads. */
 static void register_late_option(void) {
     if (!environ_cb) return;
+    // Each call replaces the whole option set, so the early options come too.
+    static const struct retro_core_option_v2_category late_cats[] = {
+        { "test_category", "Test Category", "Category for test options" },
+        { NULL, NULL, NULL },
+    };
     static const struct retro_core_option_v2_definition late_defs[] = {
+        { "test_option_a", "Option A", "Option A Category",
+          "First test option", NULL, "test_category",
+          { {"on", NULL}, {"off", NULL}, {NULL, NULL} }, "on" },
+        { "test_option_b", "Option B", "Option B Category",
+          "Second test option", NULL, "test_category",
+          { {"yes", NULL}, {"no", NULL}, {NULL, NULL} }, "yes" },
         { "test_option_late", "Late Option", NULL, "Registered in retro_load_game", NULL, NULL,
           { {"late_a", NULL}, {"late_b", NULL}, {NULL, NULL} }, "late_a" },
         { NULL, NULL, NULL, NULL, NULL, NULL, {{NULL, NULL}}, NULL },
     };
     static const struct retro_core_options_v2 late_opts = {
-        NULL, (struct retro_core_option_v2_definition *)late_defs };
+        (struct retro_core_option_v2_category *)late_cats,
+        (struct retro_core_option_v2_definition *)late_defs };
     environ_cb(RETRO_ENVIRONMENT_SET_CORE_OPTIONS_V2, (void *)&late_opts);
 
     struct retro_variable var = { "test_option_late", NULL };
