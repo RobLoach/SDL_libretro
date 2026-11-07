@@ -275,7 +275,8 @@ struct SDL_LibretroMenu {
     SDL_LibretroMenuOptionState* optionStates;
     unsigned optionStateCount;
     bool optionsStale; /**< The Core Options submenu no longer matches the core's options. */
-    bool settingsDirty; /**< A menu-owned setting changed and awaits SDL_Libretro_MenuSaveState(). */
+    bool settingsDirty; /**< A setting changed in the menu and awaits SDL_Libretro_MenuSaveState(). */
+    bool configUnsaved; /**< Settings changed since the config file was last written; saved when the menu closes. */
     unsigned builtOptionCount; /**< Option count when the submenu was last built. */
     unsigned builtCoreGeneration; /**< SDL_Libretro::coreGeneration when the core submenus were last built; the widgets borrow core-owned strings that an unload frees. */
 
@@ -925,6 +926,7 @@ static void SDL_Libretro_MenuVolumeChanged(nk_console* widget, void* user_data) 
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetVolume(menu->lr, (float)menu->volumePercent / 100.0f);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -934,6 +936,7 @@ static void SDL_Libretro_MenuFitModeChanged(nk_console* widget, void* user_data)
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetFitMode(menu->lr, (SDL_LibretroFitMode)menu->fitModeIndex);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -943,6 +946,7 @@ static void SDL_Libretro_MenuFilterChanged(nk_console* widget, void* user_data) 
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetScaleMode(menu->lr, menu->filterIndex == 1 ? SDL_SCALEMODE_LINEAR : SDL_SCALEMODE_NEAREST);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -970,6 +974,7 @@ static void SDL_Libretro_MenuRewindChanged(SDL_LibretroMenu* menu, void* userdat
     (void)userdata;
     // Keep the capacity and interval the app configured.
     SDL_Libretro_SetRewindEnabled(menu->lr, menu->rewindChecked == nk_true, menu->lr->rewindCapacity, menu->lr->rewindCaptureInterval);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -985,6 +990,7 @@ static void SDL_Libretro_MenuSRAMAutoSaveChanged(nk_console* widget, void* user_
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetSRAMAutoSaveInterval(menu->lr, SDL_Libretro_MenuSRAMAutoSaveSeconds[menu->sramAutoSaveIndex]);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -994,6 +1000,7 @@ static void SDL_Libretro_MenuMousePortChanged(nk_console* widget, void* user_dat
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetMousePort(menu->lr, (unsigned)menu->mousePortIndex);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -1003,6 +1010,7 @@ static void SDL_Libretro_MenuLanguageChanged(nk_console* widget, void* user_data
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetLanguage(menu->lr, menu->languageIndex - 1);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -1012,6 +1020,7 @@ static void SDL_Libretro_MenuRewindBufferChanged(nk_console* widget, void* user_
     (void)widget;
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetRewindMemoryLimit(menu->lr, (size_t)menu->rewindBufferMB << 20);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -1139,6 +1148,7 @@ static void SDL_Libretro_MenuKeyBindChanged(nk_console* widget, void* user_data)
         return;
     }
     SDL_Libretro_SetKeyboardMapping(menu->lr, bind->button, scancode);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -1187,6 +1197,7 @@ static void SDL_Libretro_MenuPadBindChanged(nk_console* widget, void* user_data)
         return;
     }
     SDL_Libretro_SetGamepadMapping(menu->lr, bind->port, bind->button, button);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -1197,6 +1208,7 @@ static void SDL_Libretro_MenuAnalogToDigitalChanged(nk_console* widget, void* us
     (void)widget;
     SDL_LibretroMenuPadPort* padPort = (SDL_LibretroMenuPadPort*)user_data;
     SDL_Libretro_SetAnalogToDigital(padPort->menu->lr, padPort->port, (SDL_LibretroAnalogToDigital)padPort->analogIndex);
+    padPort->menu->settingsDirty = true;
 }
 
 /**
@@ -1287,7 +1299,7 @@ static void SDL_Libretro_MenuLoadState(SDL_LibretroMenu* menu) {
 /**
  * @internal
  * Write every menu-owned config value; the file itself is saved when the
- * context closes.
+ * menu closes and when the context closes.
  *
  * One choke point, flushed on settingsDirty, so the change handlers stay
  * free of persistence code.
@@ -1295,6 +1307,7 @@ static void SDL_Libretro_MenuLoadState(SDL_LibretroMenu* menu) {
 static void SDL_Libretro_MenuSaveState(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
     menu->settingsDirty = false;
+    menu->configUnsaved = true;
     if (lr->ini == NULL) {
         return;
     }
@@ -1347,9 +1360,11 @@ static bool SDL_Libretro_MenuOptionIsBoolean(const SDL_LibretroOption* option) {
 /**
  * @internal
  * Marks the Core Options submenu for a rebuild when the change flipped any
- * option visibility, consuming the dirty flag our own write raised.
+ * option visibility, consuming the dirty flag our own write raised, and
+ * flags the config for saving.
  */
 static void SDL_Libretro_MenuOptionWritten(SDL_LibretroMenu* menu) {
+    menu->settingsDirty = true;
     SDL_Libretro_AreOptionsDirty(menu->lr);
     if (SDL_Libretro_UpdateOptionVisibility(menu->lr)) {
         SDL_Libretro_AreOptionsDirty(menu->lr);
@@ -1737,6 +1752,7 @@ static void SDL_Libretro_MenuSettingChanged(nk_console* widget, void* user_data)
     }
 #endif
     SDL_Libretro_SetUsername(menu->lr, menu->usernameBuffer);
+    menu->settingsDirty = true;
 }
 
 /**
@@ -2705,8 +2721,10 @@ void* SDL_Libretro_GetMenuUserData(const SDL_LibretroMenu* menu) {
  * Opens or closes the menu.
  *
  * When the state changes, pushes SDL_EVENT_LIBRETRO_MENU_OPENED or
- * SDL_EVENT_LIBRETRO_MENU_CLOSED with the menu in data2, and closing stops
- * text input on the window. Setting the current state again does nothing.
+ * SDL_EVENT_LIBRETRO_MENU_CLOSED with the menu in data2. Closing stops text
+ * input on the window, and saves the config with SDL_Libretro_SaveConfig()
+ * when a setting changed. Setting the current state
+ * again does nothing.
  * Note that SDL_Libretro_UpdateMenu() reopens the menu while no game is
  * running.
  *
@@ -2741,6 +2759,13 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
     }
     if (!open && menu->lr != NULL && menu->lr->window != NULL) {
         SDL_StopTextInput(menu->lr->window);
+    }
+    // Write changed settings now rather than on exit, which a crash or a
+    // killed mobile or web app never reaches.
+    if (!open && (menu->settingsDirty || menu->configUnsaved)) {
+        SDL_Libretro_MenuSaveState(menu);
+        SDL_Libretro_SaveConfig(menu->lr);
+        menu->configUnsaved = false;
     }
     SDL_Libretro_PushEvent(menu->lr, open ? SDL_EVENT_LIBRETRO_MENU_OPENED : SDL_EVENT_LIBRETRO_MENU_CLOSED, menu);
 }
@@ -3054,7 +3079,8 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuSyncPadBinds(menu);
     }
 
-    // Flush changed menu settings into the config.
+    // Flush changed menu settings into the config, so a save from elsewhere
+    // (e.g. a game unloading) has them.
     if (menu->settingsDirty) {
         SDL_Libretro_MenuSaveState(menu);
     }

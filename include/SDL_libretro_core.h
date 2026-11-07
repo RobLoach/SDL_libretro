@@ -1418,6 +1418,8 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
 
     // Keep the game's battery save while the core still has it.
     SDL_Libretro_AutoSaveSRAM(lr);
+    // Persist the settings and core options while the game's still running.
+    SDL_Libretro_SaveConfig(lr);
 
     // Unload the game before closing audio and video.
     lr->core.symbols.retro_unload_game();

@@ -162,6 +162,7 @@ int SDL_Libretro_GetLanguage(const SDL_Libretro* lr);
 
 bool SDL_Libretro_InitConfig(SDL_Libretro* lr, const char* org, const char* app);
 bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file);
+bool SDL_Libretro_SaveConfig(SDL_Libretro* lr);
 
 // Core
 

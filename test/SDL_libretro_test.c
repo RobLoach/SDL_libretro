@@ -1457,6 +1457,49 @@ static int SDLCALL test_ConfigUnparseable(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* SDL_Libretro_SaveConfig() writes the config before the context is
+   destroyed, and a game unloading saves it too. */
+static int SDLCALL test_SaveConfig(void *arg) {
+    (void)arg;
+    const char* cfg = "save_config_test.cfg";
+    SDL_RemovePath(cfg);
+
+    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(NULL) == false, "SaveConfig(NULL) fails");
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(lr) == false, "SaveConfig fails without a config file");
+    SDL_Libretro_Destroy(lr);
+
+    lr = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr, cfg);
+    SDL_Libretro_SetVolume(lr, 0.25f);
+    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(lr) == true, "SaveConfig writes the file");
+    SDLTest_AssertCheck(SDL_Libretro_SaveConfig(lr) == true, "SaveConfig can be called again");
+
+    // Read it back while the first context is still alive.
+    SDL_Libretro* lr2 = SDL_Libretro_Create();
+    SDLTest_AssertCheck(SDL_Libretro_InitConfigFile(lr2, cfg) == true, "Saved config loads");
+    SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lr2) - 0.25f) < 0.001f, "Volume saved before Destroy");
+    SDL_Libretro_Destroy(lr2);
+
+#if defined(TEST_CORE_PATH) && defined(TEST_CONTENT_PATH)
+    // Unloading a game saves the core's current options, and leaves them for the core unload.
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds");
+    SDL_Libretro_SetOptionValue(lr, "test_option_a", "off");
+    SDL_Libretro_UnloadGame(lr);
+    lr2 = SDL_Libretro_Create();
+    SDL_Libretro_InitConfigFile(lr2, cfg);
+    const char* saved = lr2->ini ? INI_GetString(lr2->ini, "test_core", "test_option_a", NULL) : NULL;
+    SDLTest_AssertCheck(saved && SDL_strcmp(saved, "off") == 0, "UnloadGame saves the core options");
+    SDL_Libretro_Destroy(lr2);
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetOptionValue(lr, "test_option_a"), "off") == 0, "Saving keeps the option value");
+#endif
+    SDL_Libretro_Destroy(lr);
+
+    SDL_RemovePath(cfg);
+    return TEST_COMPLETED;
+}
+
 static int SDLCALL test_OptionsDirtyIndependent(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -4649,7 +4692,16 @@ static int SDLCALL test_Menu(void *arg) {
     SDL_Libretro_SetRenderer(lrSave, renderer);
     SDL_LibretroMenu* menuSave = SDL_Libretro_CreateMenu(lrSave);
     if (menuSave != NULL) {
+        // Closing the menu after a change writes the config straight away.
+        SDL_Libretro_SetMenuOpen(menuSave, true);
         SDL_Libretro_SetMenuStyle(menuSave, SDL_LIBRETRO_MENU_STYLE_DRACULA);
+        SDL_Libretro_SetMenuOpen(menuSave, false);
+        SDLTest_AssertCheck(menuSave->settingsDirty == false && menuSave->configUnsaved == false, "Closing the menu flushes changed settings");
+        SDL_Libretro* lrPeek = SDL_Libretro_Create();
+        SDL_Libretro_InitConfigFile(lrPeek, "menu_test.cfg");
+        SDLTest_AssertCheck(lrPeek->ini != NULL && INI_GetInt(lrPeek->ini, NULL, "menutheme", -1) == (Sint64)SDL_LIBRETRO_MENU_STYLE_DRACULA,
+            "Closing the menu saves the config");
+        SDL_Libretro_Destroy(lrPeek);
 
         // UI scale persists like the theme.
         menuSave->uiScaleIndex = 3;
@@ -4846,6 +4898,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_RewindConfig,     "Rewind settings round-trip through the config"),
     LIBRETRO_TEST_CASE(test_LateOptionConfig, "Late-registered options get their saved values"),
     LIBRETRO_TEST_CASE(test_ConfigUnparseable, "An unparseable config is never overwritten"),
+    LIBRETRO_TEST_CASE(test_SaveConfig,       "SaveConfig writes the config before Destroy"),
     LIBRETRO_TEST_CASE(test_LoadCore,         "Load test core and verify metadata"),
     LIBRETRO_TEST_CASE(test_Subsystem,        "Subsystem info incl. per-rom memory descriptors"),
     LIBRETRO_TEST_CASE(test_LoadGame,         "Load game, run frames, save/load state"),

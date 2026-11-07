@@ -24,7 +24,7 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
 /**
  * Initializes the config system based on the given file.
  *
- * Will load the configuration from the file, and save it when destroying the instance.
+ * Will load the configuration from the file, and save it when a game unloads, when destroying the instance, or with SDL_Libretro_SaveConfig().
  * A missing file is not an error: it starts out empty and is created on save.
  * A file that exists but can't be read or parsed is left untouched, and no
  * config is set up, so it isn't overwritten with defaults.
@@ -35,6 +35,7 @@ static void SDL_Libretro_SanitizeSectionName(char* dst, size_t dstSize, const ch
  * @returns true when the config was set up, false when lr or file is NULL, the existing file can't be loaded, or on allocation failure.
  *
  * @see SDL_Libretro_InitConfig()
+ * @see SDL_Libretro_SaveConfig()
  */
 bool SDL_Libretro_InitConfigFile(SDL_Libretro* lr, const char* file) {
     if (!lr || !file) return false;
@@ -243,9 +244,21 @@ static bool SDL_Libretro_SaveCoreConfig(SDL_Libretro* lr) {
 }
 
 /**
- * Save the configuration to the file system.
+ * Writes the config to the file set up with SDL_Libretro_InitConfigFile().
+ *
+ * Writes the frontend settings (volume, directories, input bindings, and so
+ * on) along with the loaded core's current options. The config is also
+ * saved when a game unloads and when the context is destroyed; call this to
+ * persist settings sooner, e.g. when the app goes to the background, since a
+ * crash or a killed mobile or web app never reaches those. Safe to call
+ * repeatedly.
+ *
+ * @param lr the libretro context.
+ * @returns true when the file was written, false when lr is NULL, no config file was initialized, or writing fails.
+ *
+ * @see SDL_Libretro_InitConfigFile()
  */
-static bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
+bool SDL_Libretro_SaveConfig(SDL_Libretro* lr) {
     if (!lr || !lr->ini || !lr->iniFile) return false;
 
     // Save the core options if needed.
