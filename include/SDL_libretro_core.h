@@ -871,6 +871,8 @@ static bool SDL_Libretro_FinishGameLoad(SDL_Libretro* lr) {
     lr->core.symbols.retro_get_system_av_info(&avInfo);
     lr->core.width = avInfo.geometry.base_width;
     lr->core.height = avInfo.geometry.base_height;
+    lr->core.reportedWidth = lr->core.width;
+    lr->core.reportedHeight = lr->core.height;
     lr->core.fps = avInfo.timing.fps;
     lr->core.sampleRate = avInfo.timing.sample_rate;
     lr->core.aspectRatio = avInfo.geometry.aspect_ratio;

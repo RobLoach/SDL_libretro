@@ -99,6 +99,13 @@ static void SDL_Libretro_VideoRefresh(const void* data, unsigned width, unsigned
     if (width != lr->core.width || height != lr->core.height) {
         lr->core.width = width;
         lr->core.height = height;
+
+        // Skip the event when SET_GEOMETRY already announced this size.
+        if (width != lr->core.reportedWidth || height != lr->core.reportedHeight) {
+            lr->core.reportedWidth = width;
+            lr->core.reportedHeight = height;
+            SDL_Libretro_PushEvent(lr, SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED, NULL);
+        }
         if (!SDL_Libretro_InitVideo(lr)) return;
     }
 
