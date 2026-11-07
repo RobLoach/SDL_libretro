@@ -1553,6 +1553,9 @@ static void SDL_Libretro_Tick(SDL_Libretro* lr, retro_usec_t frameTimeUsec) {
     lr->core.symbols.retro_run();
     lr->core.frameRun = true;
 
+    // Push this frame's leftover retro_audio_sample() frames now, rather than holding them until the next frame.
+    SDL_Libretro_FlushSingleSamples(lr);
+
     // Capture rewind state after each forward tick.
     SDL_Libretro_RewindCapture(lr);
 
@@ -1638,6 +1641,8 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
             lr->core.speedAccumulator -= stepPeriod;
             if (!SDL_Libretro_RewindStepState(lr)) break;
             lr->core.symbols.retro_run();
+            // Flush while rewindActive, so each step's single samples are reversed on their own.
+            SDL_Libretro_FlushSingleSamples(lr);
         }
         lr->rewindActive = false;
         // Rewind steps bypass the frame-time callback, so restart its clock for when forward play resumes.

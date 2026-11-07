@@ -3764,6 +3764,59 @@ static int SDLCALL test_AudioQueueOverflow(void *arg) {
 #endif
 }
 
+/* A retro_run stand-in that emits a frame of audio only through retro_audio_sample. */
+static void test_SingleSampleRun(void) {
+    for (int i = 0; i < 100; i++) {
+        SDL_Libretro_AudioSample((int16_t)i, (int16_t)-i);
+    }
+}
+
+static int SDLCALL test_AudioSingleSampleFlush(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_AUDIO_DRIVER, "dummy");
+    SDL_Init(SDL_INIT_AUDIO);
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+    SDLTest_AssertCheck(SDL_Libretro_LoadGame(lr, TEST_CONTENT_PATH) == true, "LoadGame succeeds with test content");
+    SDLTest_AssertCheck(lr->core.audioStream != NULL, "Audio stream open after load");
+    SDL_PauseAudioStreamDevice(lr->core.audioStream);
+    SDL_ClearAudioStream(lr->core.audioStream);
+
+    // A frame of fewer than a buffer's worth of single samples reaches the stream at the end of the tick.
+    SDL_LibretroCoreSymbols symbols = lr->core.symbols;
+    lr->core.symbols.retro_run = test_SingleSampleRun;
+    int before = SDL_GetAudioStreamQueued(lr->core.audioStream);
+    SDL_Libretro_Tick(lr, 0);
+    int queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
+    SDLTest_AssertCheck(lr->core.singleSampleCount == 0, "Single samples flushed after the tick (%zu pending)", lr->core.singleSampleCount);
+    SDLTest_AssertCheck(queued - before == 100 * (int)sizeof(int16_t) * 2, "Single samples queued after the tick (%d bytes)", queued - before);
+
+    // A rewind step flushes its own single samples too.
+    lr->core.symbols.retro_serialize_size = rewind_stub_size;
+    lr->core.symbols.retro_serialize = rewind_stub_serialize;
+    lr->core.symbols.retro_unserialize = rewind_stub_unserialize;
+    SDLTest_AssertCheck(SDL_Libretro_SetRewindEnabled(lr, true, 16, 1) == true, "Enable rewind with stub state");
+    for (int k = 0; k < 3; k++) {
+        SDL_memset(g_rewindState, (unsigned char)k, sizeof(g_rewindState));
+        SDL_Libretro_RewindCapture(lr);
+    }
+    before = SDL_GetAudioStreamQueued(lr->core.audioStream);
+    SDLTest_AssertCheck(SDL_Libretro_RewindStep(lr) == true, "Rewind step succeeds");
+    queued = SDL_GetAudioStreamQueued(lr->core.audioStream);
+    SDLTest_AssertCheck(lr->core.singleSampleCount == 0, "Single samples flushed after the rewind step (%zu pending)", lr->core.singleSampleCount);
+    SDLTest_AssertCheck(queued - before == 100 * (int)sizeof(int16_t) * 2, "Rewind single samples queued after the step (%d bytes)", queued - before);
+
+    SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
+    lr->core.symbols = symbols;
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_PixelFormats(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -5101,6 +5154,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_AudioInitPausedRewind, "Audio init survives paused and rewind speeds"),
     LIBRETRO_TEST_CASE(test_AudioZeroSampleRate, "Audio falls back to default sample rate when core reports 0"),
     LIBRETRO_TEST_CASE(test_AudioQueueOverflow, "Audio queue hard cap trims overflow"),
+    LIBRETRO_TEST_CASE(test_AudioSingleSampleFlush, "Single audio samples flush at the end of each frame"),
     LIBRETRO_TEST_CASE(test_PixelFormats,     "Pixel format switch (RGB565, XRGB8888, 0RGB1555)"),
     LIBRETRO_TEST_CASE(test_Cheats,           "Cheat set/reset with and without core"),
     LIBRETRO_TEST_CASE(test_OSD,              "OSD message push, query, duplicate, and clear"),
