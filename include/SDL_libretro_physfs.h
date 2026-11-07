@@ -36,9 +36,65 @@
 
 /**
  * @internal
+ * The VFS the PhysFS overrides fall through to for anything outside PhysFS:
+ * the one installed before SDL_Libretro_PhysFS_Init(). NULL uses the SDL VFS.
+ */
+static const struct retro_vfs_interface* SDL_Libretro_PhysFS_prevVFS = NULL;
+
+/**
+ * @internal
+ * Pick the previous VFS's `member`, or the SDL VFS `builtin` when there is none.
+ */
+#define SDL_LIBRETRO_PHYSFS_PREV(member, builtin) \
+    ((SDL_Libretro_PhysFS_prevVFS && SDL_Libretro_PhysFS_prevVFS->member) ? SDL_Libretro_PhysFS_prevVFS->member : (builtin))
+
+/**
+ * @internal
+ * File and directory handles opened out of PhysFS. These are SDL VFS handles,
+ * so they're always served by the SDL VFS, while any other handle belongs to
+ * the previous VFS.
+ */
+static void** SDL_Libretro_PhysFS_handles = NULL;
+static size_t SDL_Libretro_PhysFS_handleCount = 0;
+static size_t SDL_Libretro_PhysFS_handleCapacity = 0;
+
+/**
+ * @internal
+ * Remember a handle opened out of PhysFS.
+ */
+static bool SDL_Libretro_PhysFS_TrackHandle(void* handle) {
+    if (SDL_Libretro_PhysFS_handleCount >= SDL_Libretro_PhysFS_handleCapacity) {
+        size_t newCapacity = SDL_Libretro_PhysFS_handleCapacity > 0 ? SDL_Libretro_PhysFS_handleCapacity * 2 : 8;
+        void** grown = (void**)SDL_realloc(SDL_Libretro_PhysFS_handles, newCapacity * sizeof(void*));
+        if (!grown) return false;
+        SDL_Libretro_PhysFS_handles = grown;
+        SDL_Libretro_PhysFS_handleCapacity = newCapacity;
+    }
+    SDL_Libretro_PhysFS_handles[SDL_Libretro_PhysFS_handleCount++] = handle;
+    return true;
+}
+
+/**
+ * @internal
+ * Whether the handle was opened out of PhysFS; `untrack` also forgets it.
+ */
+static bool SDL_Libretro_PhysFS_IsHandle(const void* handle, bool untrack) {
+    for (size_t i = 0; i < SDL_Libretro_PhysFS_handleCount; i++) {
+        if (SDL_Libretro_PhysFS_handles[i] == handle) {
+            if (untrack) {
+                SDL_Libretro_PhysFS_handles[i] = SDL_Libretro_PhysFS_handles[--SDL_Libretro_PhysFS_handleCount];
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * @internal
  * PhysFS VFS Open override: Loads a file that exist in the PhysFS search path.
  *
- * When note found, will fall through to the SDL VFS.
+ * When not found, will fall through to the previous VFS.
  *
  * @see SDL_Libretro_VFS_Open()
  */
@@ -48,15 +104,90 @@ static struct retro_vfs_file_handle* SDL_Libretro_PhysFS_VFS_Open(const char* pa
         PHYSFS_stat(path, &st) && st.filetype == PHYSFS_FILETYPE_REGULAR) {
         SDL_IOStream* io = SDL_PhysFS_IOFromFile(path);
         if (io) {
-            return SDL_Libretro_VFS_WrapIO(io, path, mode);
+            struct retro_vfs_file_handle* h = SDL_Libretro_VFS_WrapIO(io, path, mode);
+            if (h && !SDL_Libretro_PhysFS_TrackHandle(h)) {
+                SDL_Libretro_VFS_Close(h);
+                return NULL;
+            }
+            return h;
         }
     }
-    return SDL_Libretro_VFS_Open(path, mode, hints);
+    return SDL_LIBRETRO_PHYSFS_PREV(open, SDL_Libretro_VFS_Open)(path, mode, hints);
 }
 
 /**
  * @internal
- * PhysFS VFS Stat64 override to fall through to the SDL VFS.
+ * PhysFS VFS handle overrides: PhysFS handles go to the SDL VFS, others to the
+ * previous VFS.
+ */
+static const char* SDL_Libretro_PhysFS_VFS_GetPath(struct retro_vfs_file_handle* stream) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_GetPath(stream);
+    return SDL_LIBRETRO_PHYSFS_PREV(get_path, SDL_Libretro_VFS_GetPath)(stream);
+}
+
+static int SDL_Libretro_PhysFS_VFS_Close(struct retro_vfs_file_handle* stream) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, true)) return SDL_Libretro_VFS_Close(stream);
+    return SDL_LIBRETRO_PHYSFS_PREV(close, SDL_Libretro_VFS_Close)(stream);
+}
+
+static int64_t SDL_Libretro_PhysFS_VFS_Size(struct retro_vfs_file_handle* stream) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_Size(stream);
+    return SDL_LIBRETRO_PHYSFS_PREV(size, SDL_Libretro_VFS_Size)(stream);
+}
+
+static int64_t SDL_Libretro_PhysFS_VFS_Tell(struct retro_vfs_file_handle* stream) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_Tell(stream);
+    return SDL_LIBRETRO_PHYSFS_PREV(tell, SDL_Libretro_VFS_Tell)(stream);
+}
+
+static int64_t SDL_Libretro_PhysFS_VFS_Seek(struct retro_vfs_file_handle* stream, int64_t offset, int seek_position) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_Seek(stream, offset, seek_position);
+    return SDL_LIBRETRO_PHYSFS_PREV(seek, SDL_Libretro_VFS_Seek)(stream, offset, seek_position);
+}
+
+static int64_t SDL_Libretro_PhysFS_VFS_Read(struct retro_vfs_file_handle* stream, void* s, uint64_t len) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_Read(stream, s, len);
+    return SDL_LIBRETRO_PHYSFS_PREV(read, SDL_Libretro_VFS_Read)(stream, s, len);
+}
+
+static int64_t SDL_Libretro_PhysFS_VFS_Write(struct retro_vfs_file_handle* stream, const void* s, uint64_t len) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_Write(stream, s, len);
+    return SDL_LIBRETRO_PHYSFS_PREV(write, SDL_Libretro_VFS_Write)(stream, s, len);
+}
+
+static int SDL_Libretro_PhysFS_VFS_Flush(struct retro_vfs_file_handle* stream) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_Flush(stream);
+    return SDL_LIBRETRO_PHYSFS_PREV(flush, SDL_Libretro_VFS_Flush)(stream);
+}
+
+static int64_t SDL_Libretro_PhysFS_VFS_Truncate(struct retro_vfs_file_handle* stream, int64_t length) {
+    if (SDL_Libretro_PhysFS_IsHandle(stream, false)) return SDL_Libretro_VFS_Truncate(stream, length);
+    return SDL_LIBRETRO_PHYSFS_PREV(truncate, SDL_Libretro_VFS_Truncate)(stream, length);
+}
+
+static bool SDL_Libretro_PhysFS_VFS_Readdir(struct retro_vfs_dir_handle* dirstream) {
+    if (SDL_Libretro_PhysFS_IsHandle(dirstream, false)) return SDL_Libretro_VFS_Readdir(dirstream);
+    return SDL_LIBRETRO_PHYSFS_PREV(readdir, SDL_Libretro_VFS_Readdir)(dirstream);
+}
+
+static const char* SDL_Libretro_PhysFS_VFS_DirentGetName(struct retro_vfs_dir_handle* dirstream) {
+    if (SDL_Libretro_PhysFS_IsHandle(dirstream, false)) return SDL_Libretro_VFS_DirentGetName(dirstream);
+    return SDL_LIBRETRO_PHYSFS_PREV(dirent_get_name, SDL_Libretro_VFS_DirentGetName)(dirstream);
+}
+
+static bool SDL_Libretro_PhysFS_VFS_DirentIsDir(struct retro_vfs_dir_handle* dirstream) {
+    if (SDL_Libretro_PhysFS_IsHandle(dirstream, false)) return SDL_Libretro_VFS_DirentIsDir(dirstream);
+    return SDL_LIBRETRO_PHYSFS_PREV(dirent_is_dir, SDL_Libretro_VFS_DirentIsDir)(dirstream);
+}
+
+static int SDL_Libretro_PhysFS_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
+    if (SDL_Libretro_PhysFS_IsHandle(dirstream, true)) return SDL_Libretro_VFS_Closedir(dirstream);
+    return SDL_LIBRETRO_PHYSFS_PREV(closedir, SDL_Libretro_VFS_Closedir)(dirstream);
+}
+
+/**
+ * @internal
+ * PhysFS VFS Stat64 override to fall through to the previous VFS.
  *
  * @see SDL_Libretro_VFS_Stat64()
  */
@@ -72,15 +203,19 @@ static int SDL_Libretro_PhysFS_VFS_Stat64(const char* path, int64_t* size) {
         }
         return flags;
     }
-    return SDL_Libretro_VFS_Stat64(path, size);
+    return SDL_LIBRETRO_PHYSFS_PREV(stat_64, SDL_Libretro_VFS_Stat64)(path, size);
 }
 
 /**
  * @internal
- * PhysFS VFS Stat override, falling through to the SDL VFS.
+ * PhysFS VFS Stat override, falling through to the previous VFS.
  * @see SDL_Libretro_PhysFS_VFS_Stat64
  */
 static int SDL_Libretro_PhysFS_VFS_Stat(const char* path, int32_t* size) {
+    PHYSFS_Stat st;
+    if (!path || !PHYSFS_stat(path, &st)) {
+        return SDL_LIBRETRO_PHYSFS_PREV(stat, SDL_Libretro_VFS_Stat)(path, size);
+    }
     int64_t outSize = 0;
     int out = SDL_Libretro_PhysFS_VFS_Stat64(path, &outSize);
     if (size != NULL) {
@@ -91,14 +226,14 @@ static int SDL_Libretro_PhysFS_VFS_Stat(const char* path, int32_t* size) {
 
 /**
  * @internal
- * PhysFS VFS Opendir override, falling through to the SDL VFS.
+ * PhysFS VFS Opendir override, falling through to the previous VFS.
  *
  * @see SDL_Libretro_VFS_Opendir
  */
 static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* dir, bool include_hidden) {
     PHYSFS_Stat st;
     if (!dir || !PHYSFS_stat(dir, &st) || st.filetype != PHYSFS_FILETYPE_DIRECTORY) {
-        return SDL_Libretro_VFS_Opendir(dir, include_hidden);
+        return SDL_LIBRETRO_PHYSFS_PREV(opendir, SDL_Libretro_VFS_Opendir)(dir, include_hidden);
     }
 
     char** entries = PHYSFS_enumerateFiles(dir);
@@ -143,6 +278,10 @@ static struct retro_vfs_dir_handle* SDL_Libretro_PhysFS_VFS_Opendir(const char* 
     h->isDir = isDir;
     h->count = stored;
     h->index = (size_t)-1; // readdir advances before returning
+    if (!SDL_Libretro_PhysFS_TrackHandle(h)) {
+        SDL_Libretro_VFS_Closedir(h);
+        return NULL;
+    }
     return h;
 }
 
@@ -164,7 +303,12 @@ static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
  * This will be called automatically in SDL_Libretro_PhysFS_LoadGame()
  * if PhysFS was not initialized. Cores can then read content directly
  * from the mounted archive through the VFS, with anything outside PhysFS
- * falling through to the SDL VFS. Safe to call repeatedly.
+ * falling through to the VFS that was installed before this call (the SDL
+ * VFS, or one set with SDL_Libretro_SetVFS()). Safe to call repeatedly.
+ *
+ * Calling SDL_Libretro_SetVFS() afterwards replaces the PhysFS overrides;
+ * calling this again (as SDL_Libretro_PhysFS_LoadGame() does) layers PhysFS
+ * back on top of that newer VFS.
  *
  * Requires the implementation to be compiled with
  * SDL_LIBRETRO_ENABLE_PHYSFS; otherwise it always fails.
@@ -174,6 +318,7 @@ static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
  *          initialize; call SDL_GetError() for more information.
  *
  * @see SDL_Libretro_PhysFS_Quit()
+ * @see SDL_Libretro_SetVFS()
  */
 bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
     if (!lr) return false;
@@ -185,18 +330,40 @@ bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
         lr->physfsReady = true;
     }
 
-    struct retro_vfs_interface vfs = {0};
+    // Remember the VFS to fall through to, unless the overrides are already in.
+    if (lr->vfs_interface.open != SDL_Libretro_PhysFS_VFS_Open) {
+        lr->physfsPrevVFS = lr->vfs_interface;
+    }
+    SDL_Libretro_PhysFS_prevVFS = &lr->physfsPrevVFS;
+
+    struct retro_vfs_interface vfs = lr->physfsPrevVFS;
+    vfs.get_path = SDL_Libretro_PhysFS_VFS_GetPath;
     vfs.open = SDL_Libretro_PhysFS_VFS_Open;
+    vfs.close = SDL_Libretro_PhysFS_VFS_Close;
+    vfs.size = SDL_Libretro_PhysFS_VFS_Size;
+    vfs.tell = SDL_Libretro_PhysFS_VFS_Tell;
+    vfs.seek = SDL_Libretro_PhysFS_VFS_Seek;
+    vfs.read = SDL_Libretro_PhysFS_VFS_Read;
+    vfs.write = SDL_Libretro_PhysFS_VFS_Write;
+    vfs.flush = SDL_Libretro_PhysFS_VFS_Flush;
+    vfs.truncate = SDL_Libretro_PhysFS_VFS_Truncate;
     vfs.stat = SDL_Libretro_PhysFS_VFS_Stat;
     vfs.stat_64 = SDL_Libretro_PhysFS_VFS_Stat64;
     vfs.opendir = SDL_Libretro_PhysFS_VFS_Opendir;
+    vfs.readdir = SDL_Libretro_PhysFS_VFS_Readdir;
+    vfs.dirent_get_name = SDL_Libretro_PhysFS_VFS_DirentGetName;
+    vfs.dirent_is_dir = SDL_Libretro_PhysFS_VFS_DirentIsDir;
+    vfs.closedir = SDL_Libretro_PhysFS_VFS_Closedir;
     SDL_Libretro_SetVFS(lr, &vfs);
     return true;
 }
 
 /**
- * Tear down PhysFS, unmounting any active archive and restoring the plain SDL
- * VFS on the given context.
+ * Tear down PhysFS, unmounting any active archive and restoring the VFS that
+ * was installed before SDL_Libretro_PhysFS_Init() on the given context.
+ *
+ * A VFS set with SDL_Libretro_SetVFS() after SDL_Libretro_PhysFS_Init() is
+ * left in place.
  *
  * Unload the game first, since a game loaded from an archive still reads
  * from the mount. Safe to call when PhysFS was never initialized.
@@ -208,10 +375,19 @@ bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
 void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
     if (!lr) return;
     SDL_Libretro_PhysFS_ClearMount(lr);
-    SDL_Libretro_SetVFS(lr, NULL);
+    if (lr->vfs_interface.open == SDL_Libretro_PhysFS_VFS_Open) {
+        SDL_Libretro_SetVFS(lr, &lr->physfsPrevVFS);
+    }
+    if (SDL_Libretro_PhysFS_prevVFS == &lr->physfsPrevVFS) {
+        SDL_Libretro_PhysFS_prevVFS = NULL;
+    }
     if (lr->physfsReady) {
         SDL_PhysFS_Quit();
         lr->physfsReady = false;
+        SDL_free(SDL_Libretro_PhysFS_handles);
+        SDL_Libretro_PhysFS_handles = NULL;
+        SDL_Libretro_PhysFS_handleCount = 0;
+        SDL_Libretro_PhysFS_handleCapacity = 0;
     }
 }
 

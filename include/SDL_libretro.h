@@ -940,6 +940,7 @@ struct SDL_Libretro {
 #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
     bool physfsReady; /**< PhysFS is initialized and the VFS overrides are installed. */
     char physfsMountSource[SDL_LIBRETRO_MAX_PATH]; /**< The archive currently mounted at the mount point. */
+    struct retro_vfs_interface physfsPrevVFS; /**< The VFS the PhysFS overrides fall through to, restored by SDL_Libretro_PhysFS_Quit(). */
 #endif
 };
 
