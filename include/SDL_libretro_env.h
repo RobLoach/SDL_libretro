@@ -367,7 +367,10 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_GET_OVERSCAN: {
-            return false;
+            if (!data) return false;
+            // Crop overscan, like RetroArch's default.
+            *(bool*)data = false;
+            return true;
         }
 
         case RETRO_ENVIRONMENT_GET_CAN_DUPE: {
@@ -394,6 +397,12 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         case RETRO_ENVIRONMENT_SET_PERFORMANCE_LEVEL: {
             if (!data) return false;
             lr->core.performanceLevel = *(const unsigned*)data;
+            return true;
+        }
+
+        case RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK: {
+            const struct retro_get_proc_address_interface* iface = (const struct retro_get_proc_address_interface*)data;
+            lr->core.procAddress.get_proc_address = iface ? iface->get_proc_address : NULL;
             return true;
         }
 

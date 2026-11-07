@@ -2329,6 +2329,21 @@ unsigned SDL_Libretro_GetPerformanceLevel(const SDL_Libretro* lr) {
 }
 
 /**
+ * Get a core's extension function registered via SET_PROC_ADDRESS_CALLBACK.
+ *
+ * @param lr the libretro context.
+ * @param sym the name of the function to look up.
+ * @returns the function, to be cast to its real type, or NULL if the core
+ *          doesn't expose it or registered no callback.
+ *
+ * @see RETRO_ENVIRONMENT_SET_PROC_ADDRESS_CALLBACK
+ */
+retro_proc_address_t SDL_Libretro_GetProcAddress(const SDL_Libretro* lr, const char* sym) {
+    if (!lr || !sym || !lr->core.procAddress.get_proc_address) return NULL;
+    return lr->core.procAddress.get_proc_address(sym);
+}
+
+/**
  * Get the serialization quirks the core reported via SET_SERIALIZATION_QUIRKS.
  *
  * Only the RETRO_SERIALIZATION_QUIRK_* flags SDL_libretro knows are kept.
