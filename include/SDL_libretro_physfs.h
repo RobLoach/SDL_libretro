@@ -436,12 +436,14 @@ static bool SDL_Libretro_PhysFS_ExtractArchive(SDL_Libretro* lr, const char* arc
 #ifdef SDL_LIBRETRO_ENABLE_MENU
 /**
  * @internal
- * For an archive, the virtual path of the content a load without a core would
- * pick from it, without loading it. Used by the menu's core picker.
+ * For an archive, the virtual path of the content a load would pick from it,
+ * without loading it. Used by the menu's core picker.
  *
+ * @param validExts the core's valid extensions, or "" for the pick a load
+ *                  without a core would make.
  * @return true when `path` is an archive and content was found in it.
  */
-static bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, char* dst, size_t dstSize) {
+static bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, const char* validExts, char* dst, size_t dstSize) {
     if (!lr || !path || SDL_strcasecmp(SDL_Libretro_GetExtension(path), "zip") != 0 || !SDL_Libretro_PhysFS_Init(lr)) {
         return false;
     }
@@ -449,7 +451,7 @@ static bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, 
     // Already mounted for the running game: inspect it in place rather than
     // mounting a second copy of the same archive.
     if (SDL_strcmp(path, lr->physfsMountSource) == 0) {
-        return SDL_Libretro_PhysFS_PickContent(lr, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, path, "", dst, dstSize);
+        return SDL_Libretro_PhysFS_PickContent(lr, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, path, validExts, dst, dstSize);
     }
 
     // A private mount point keeps any running game's mount intact.
@@ -457,7 +459,7 @@ static bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, 
     if (!SDL_PhysFS_Mount(path, peekMount)) {
         return false;
     }
-    bool found = SDL_Libretro_PhysFS_PickContent(lr, peekMount, path, "", dst, dstSize);
+    bool found = SDL_Libretro_PhysFS_PickContent(lr, peekMount, path, validExts, dst, dstSize);
     SDL_PhysFS_Unmount(path);
     return found;
 }

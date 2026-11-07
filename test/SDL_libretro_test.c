@@ -4943,6 +4943,18 @@ static int SDLCALL test_MenuCorePicker(void *arg) {
         SDLTest_AssertCheck(menu->corePickerPending == false, "Single match skips the picker");
         SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Single match loads the game directly");
 
+        // Content no core can load leaves the running game alone.
+        const char* unsupportedPath = "menu_unsupported.pdf";
+        SDL_SaveFile(unsupportedPath, "%PDF", 4);
+        SDL_Libretro_MenuLoadGame(menu, unsupportedPath);
+        SDLTest_AssertCheck(SDL_Libretro_IsCoreReady(lr) == true, "Unsupported content keeps the core loaded");
+        SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Unsupported content keeps the game running");
+        SDLTest_AssertCheck(menu->loadGamePath[0] == '\0', "Unsupported content clears the pending load");
+        const char* unsupportedMessage = SDL_Libretro_GetMessage(lr);
+        SDLTest_AssertCheck(unsupportedMessage != NULL && SDL_strstr(unsupportedMessage, "menu_unsupported.pdf") != NULL,
+            "Unsupported content reports which file no core can load");
+        SDL_RemovePath(unsupportedPath);
+
         SDL_Libretro_DestroyMenu(menu);
     }
 
