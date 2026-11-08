@@ -207,11 +207,27 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
     SDL_Libretro* lr = SDL_Libretro_Create();
     app->lr = lr;
 
-    SDL_Libretro_SetCoreDirectory(lr, "cores");
-    SDL_Libretro_SetSystemDirectory(lr, "system");
-    SDL_Libretro_SetSaveDirectory(lr, "saves");
+    // Use paths that don't depend on the working directory, so launching
+    // from a desktop launcher or file manager works. Cores sit next to the
+    // executable (the web build preloads them into /cores); saves, system
+    // files and the config live in the pref path. The config file can
+    // still override any of these directories.
+#ifdef SDL_PLATFORM_EMSCRIPTEN
+    const char* coreDirectory = "/cores";
+#else
+    char coreDirectory[SDL_LIBRETRO_MAX_PATH];
+    const char* basePath = SDL_GetBasePath();
+    SDL_snprintf(coreDirectory, sizeof(coreDirectory), "%scores", basePath ? basePath : "");
+#endif
+    if (!SDL_Libretro_SetCoreDirectory(lr, coreDirectory)) {
+        SDL_Log("No core directory: %s", SDL_GetError());
+    }
+    SDL_Libretro_SetSystemDirectory(lr, NULL);
+    SDL_Libretro_SetSaveDirectory(lr, NULL);
     SDL_Libretro_SetSRAMAutoSave(lr, true);
-    SDL_Libretro_InitConfigFile(lr, "SDL_libretro.cfg");
+    if (!SDL_Libretro_InitConfig(lr, NULL, NULL)) {
+        SDL_Log("Failed to set up the config: %s", SDL_GetError());
+    }
 
     // Load the core
     if (corePath && !SDL_Libretro_LoadCore(lr, corePath)) {

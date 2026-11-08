@@ -181,6 +181,8 @@ With `SDL_LIBRETRO_DOWNLOAD_CORES` enabled (default for native builds), a few li
 - [fceumm](https://github.com/libretro/libretro-fceumm) (Nintendo Entertainment System)
 - [genesis_plus_gx](https://github.com/libretro/Genesis-Plus-GX) (Sega Genesis / Master System / Game Gear)
 
+The example app looks for cores in the `cores` directory next to its executable, so it finds them however it's launched. Saves, system files (BIOS) and `SDL_libretro.cfg` go in the app's pref path (`SDL_GetPrefPath()`, e.g. `~/.local/share/SDL_libretro/SDL_libretro/` on Linux); `SDL_libretro.cfg` can point any of these directories elsewhere.
+
 ### Emscripten
 
 With the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) activated, configure through `emcmake`:
