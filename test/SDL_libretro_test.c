@@ -187,6 +187,21 @@ static void test_WriteCoreInfo(const char* dir, const char* base, const char* co
     SDL_SaveFile(path, text, SDL_strlen(text));
 }
 
+/* Counts how often a token appears in a semicolon-separated filter. */
+static int test_CountFilterToken(const char* filter, const char* token) {
+    int count = 0;
+    size_t tokenLen = SDL_strlen(token);
+    for (const char* p = filter; p != NULL && *p != '\0';) {
+        const char* end = SDL_strchr(p, ';');
+        size_t len = end != NULL ? (size_t)(end - p) : SDL_strlen(p);
+        if (len == tokenLen && SDL_strncmp(p, token, len) == 0) {
+            count++;
+        }
+        p = end != NULL ? end + 1 : p + len;
+    }
+    return count;
+}
+
 /* Removes a fake core directory and the files the tests put in it. */
 static void test_RemoveCoreDir(const char* dir) {
     int count = 0;
@@ -4873,6 +4888,43 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(aboutHasCoreName, "About lists an available core by name");
         SDLTest_AssertCheck(!aboutHasMissing, "About skips a core whose library is missing");
         test_RemoveCoreDir(aboutCoreDir);
+
+#ifndef __EMSCRIPTEN__
+        // The Load Game filter holds every core's extensions, however many
+        // there are, listing an extension shared by several cores just once.
+        const char* filterCoreDir = "/tmp/sdl_libretro_filter_cores";
+        char previousCoreDir[SDL_LIBRETRO_MAX_PATH];
+        SDL_strlcpy(previousCoreDir, lr->coreDirectory, sizeof(previousCoreDir));
+        test_RemoveCoreDir(filterCoreDir);
+        SDL_CreateDirectory(filterCoreDir);
+        for (int i = 0; i < 40; i++) {
+            char base[32];
+            char name[32];
+            char extensions[64];
+            SDL_snprintf(base, sizeof(base), "core%02d", i);
+            SDL_snprintf(name, sizeof(name), "Core %02d", i);
+            SDL_snprintf(extensions, sizeof(extensions), "a%02d|b%02d|c%02d|%s", i, i, i, (i % 2) ? "DUP" : "dup");
+            test_WriteCoreInfo(filterCoreDir, base, name, extensions, NULL);
+        }
+        test_WriteCoreInfo(filterCoreDir, "zzz", "Zzz Last Core", "lastext", NULL);
+        SDL_Libretro_SetCoreDirectory(lr, filterCoreDir);
+        SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+        const char* loadFilter = nk_console_file_get_filter(menu->loadGameButton);
+        SDLTest_AssertCheck(loadFilter != NULL && SDL_strlen(loadFilter) > 1024,
+            "The Load Game filter outgrows the old 1024 byte buffer, got %u bytes", loadFilter != NULL ? (unsigned)SDL_strlen(loadFilter) : 0);
+        SDLTest_AssertCheck(test_CountFilterToken(loadFilter, ".lastext") == 1, "The Load Game filter keeps the last core's extension");
+        SDLTest_AssertCheck(test_CountFilterToken(loadFilter, ".LASTEXT") == 1, "The Load Game filter keeps its upper case variant");
+        SDLTest_AssertCheck(test_CountFilterToken(loadFilter, ".a39") == 1, "The Load Game filter keeps every core's extensions");
+        SDLTest_AssertCheck(test_CountFilterToken(loadFilter, ".dup") == 1 && test_CountFilterToken(loadFilter, ".DUP") == 1,
+            "An extension shared by several cores is listed once");
+#if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
+        SDLTest_AssertCheck(test_CountFilterToken(loadFilter, ".zip") == 1 && test_CountFilterToken(loadFilter, ".ZIP") == 1,
+            "The Load Game filter keeps .zip with many cores");
+#endif
+        test_RemoveCoreDir(filterCoreDir);
+        SDL_Libretro_SetCoreDirectory(lr, previousCoreDir);
+        SDL_Libretro_MenuUpdateLoadGameFilter(menu);
+#endif
 
         // Reloading the same core while the menu stays open frees the option
         // strings Core Options borrows, so it must rebuild before it draws.

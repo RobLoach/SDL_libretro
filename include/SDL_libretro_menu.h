@@ -1717,8 +1717,8 @@ static void SDL_Libretro_MenuAppendExtensions(char* filter, size_t filterSize, c
 
             if (!found) {
                 size_t length = SDL_strlen(filter);
-                // Reserve room for ";lower;UPPER" and the terminator.
-                if (length + (tokenLen + 2) * 2 + 2 < filterSize) {
+                // Room for ";lower;UPPER" and the terminator.
+                if (length + (tokenLen + 1) * 2 + 3 <= filterSize) {
                     if (length > 0) {
                         filter[length++] = ';';
                     }
@@ -1745,19 +1745,40 @@ static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
     }
     SDL_Libretro* lr = menu->lr;
 
-    char filter[1024] = "";
-    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
-        SDL_Libretro_MenuAppendExtensions(filter, sizeof(filter), lr->coreLibrary[i].supported_extensions);
-    }
-    if (SDL_Libretro_IsCoreReady(lr)) {
-        SDL_Libretro_MenuAppendExtensions(filter, sizeof(filter), lr->core.validExtensions);
-    }
+    const char* coreExtensions = SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : NULL;
+    const char* zipExtension = NULL;
 #if defined(SDL_LIBRETRO_ENABLE_PHYSFS) && !defined(SDL_LIBRETRO_DISABLE_PHYSFS)
-    SDL_Libretro_MenuAppendExtensions(filter, sizeof(filter), "zip");
+    zipExtension = "zip";
 #endif
 
-    // With nothing to filter against, show every file.
+    // Each "ext" in a list becomes at most ";.ext;.EXT", three times its
+    // share of the list (with its '|'), so size the filter to fit them all.
+    size_t filterSize = 1;
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        if (lr->coreLibrary[i].supported_extensions != NULL) {
+            filterSize += (SDL_strlen(lr->coreLibrary[i].supported_extensions) + 1) * 3;
+        }
+    }
+    if (coreExtensions != NULL) {
+        filterSize += (SDL_strlen(coreExtensions) + 1) * 3;
+    }
+    if (zipExtension != NULL) {
+        filterSize += (SDL_strlen(zipExtension) + 1) * 3;
+    }
+    char* filter = (char*)SDL_calloc(filterSize, 1);
+    if (filter == NULL) {
+        return;
+    }
+    for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
+        SDL_Libretro_MenuAppendExtensions(filter, filterSize, lr->coreLibrary[i].supported_extensions);
+    }
+    SDL_Libretro_MenuAppendExtensions(filter, filterSize, coreExtensions);
+    SDL_Libretro_MenuAppendExtensions(filter, filterSize, zipExtension);
+
+    // With nothing to filter against, show every file. The widget keeps its
+    // own copy, so the filter can go right away.
     nk_console_file_set_filter(menu->loadGameButton, filter[0] != '\0' ? filter : NULL);
+    SDL_free(filter);
 #else
     (void)menu;
 #endif
