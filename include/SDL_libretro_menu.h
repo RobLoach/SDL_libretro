@@ -272,6 +272,10 @@ struct SDL_LibretroMenu {
     bool corePickerPending; /** A picker build + navigation is queued for the next update. */
     char pendingGamePath[SDL_LIBRETRO_MAX_PATH]; /** Content waiting on a core choice. */
 
+#ifdef __EMSCRIPTEN__
+    char webGamePath[SDL_LIBRETRO_MAX_PATH]; /** Content the menu last loaded, kept in the virtual file system while it runs. */
+#endif
+
     // Core Options rebuild tracking
     SDL_LibretroMenuOptionState* optionStates;
     unsigned optionStateCount;
@@ -341,6 +345,57 @@ static void SDL_Libretro_MenuBackClicked(nk_console* widget, void* user_data) {
     SDL_Libretro_MenuResumeClicked((SDL_LibretroMenu*)user_data, NULL);
 }
 
+#ifdef __EMSCRIPTEN__
+/**
+ * @internal
+ * Free the browser files written into the in-memory file system that no
+ * longer back any content: the Load Game picks (/picked/<n>/) and SDL's
+ * drag & drop copies (/tmp/filedrop/<n>/). The directories holding
+ * loadedPath and pendingPath are kept, since a core may still read from, or
+ * reopen, its content (e.g. the tracks of a .cue) while it runs.
+ *
+ * SDL writes each dropped file to its own directory and queues its drop event,
+ * so drops newer than the newest one in use are left for their events.
+ */
+EM_JS(void, SDL_Libretro_MenuWebPruneFiles, (const char* loadedPath, const char* pendingPath), {
+    var FS = Module.FS;
+    var keep = [UTF8ToString(loadedPath), UTF8ToString(pendingPath)];
+    ['/picked', '/tmp/filedrop'].forEach(function(root) {
+        var prefix = root + '/';
+        var kept = [];
+        var newest = -1;
+        keep.forEach(function(path) {
+            if (path.indexOf(prefix) !== 0) return;
+            var rest = path.substring(prefix.length);
+            var slash = rest.indexOf('/');
+            if (slash > 0) {
+                kept.push(rest.substring(0, slash));
+                newest = Math.max(newest, Number(rest.substring(0, slash)));
+            }
+        });
+        var entries;
+        try {
+            entries = FS.readdir(root);
+        } catch (err) {
+            return;
+        }
+        entries.forEach(function(name) {
+            if (name === '.' || name === '..' || kept.indexOf(name) >= 0) return;
+            if (root === '/tmp/filedrop' && newest >= 0 && Number(name) > newest) return;
+            var dir = prefix + name;
+            try {
+                FS.readdir(dir).forEach(function(file) {
+                    if (file !== '.' && file !== '..') FS.unlink(dir + '/' + file);
+                });
+                FS.rmdir(dir);
+            } catch (err) {
+                console.warn('SDL_libretro: failed to remove ' + dir + ':', err);
+            }
+        });
+    });
+});
+#endif /* __EMSCRIPTEN__ */
+
 /**
  * @internal
  * Load the given game, closing the menu on success.
@@ -350,6 +405,16 @@ static bool SDL_Libretro_MenuLoadGameNow(SDL_LibretroMenu* menu, const char* pat
     bool loaded = SDL_Libretro_PhysFS_LoadGame(menu->lr, path);
 #else
     bool loaded = SDL_Libretro_LoadGame(menu->lr, path);
+#endif
+#ifdef __EMSCRIPTEN__
+    // The previous game is unloaded now, so free the files it was read from.
+    if (loaded) {
+        SDL_strlcpy(menu->webGamePath, path, sizeof(menu->webGamePath));
+    }
+    else if (!SDL_Libretro_IsGameReady(menu->lr)) {
+        menu->webGamePath[0] = '\0';
+    }
+    SDL_Libretro_MenuWebPruneFiles(menu->webGamePath, menu->pendingGamePath);
 #endif
     if (loaded) {
         // The load path already pushed SDL_EVENT_LIBRETRO_GAME_LOADED.
@@ -512,42 +577,108 @@ static void SDL_Libretro_MenuGameFileChanged(nk_console* widget, void* user_data
 #endif
 
 #ifdef __EMSCRIPTEN__
+static char* SDL_Libretro_MenuBuildLoadGameFilter(SDL_LibretroMenu* menu);
+
 /**
  * @internal
- * Opens a browser file picker; the chosen file is written into the virtual
- * file system and handed back through SDL_Libretro_MenuLoadGameFromJS().
+ * Opens a browser file picker; the chosen files are written into a fresh
+ * /picked/<n>/ directory in the virtual file system, and one of them is
+ * handed back through SDL_Libretro_MenuLoadGameFromJS().
+ *
+ * Several files can be picked for content that spans them (.cue + .bin,
+ * .m3u + discs, .gdi + tracks). The one loaded is the first playlist or
+ * descriptor the cores take, else the first file they take, else the first.
+ *
+ * @param filter the ";"-separated extensions the cores take (".gb;.GB"),
+ *               used for the picker's accept attribute; empty for any file.
  *
  * Requires ccall and FS in -sEXPORTED_RUNTIME_METHODS.
  */
-EM_JS(void, SDL_Libretro_MenuOpenWebFilePicker, (SDL_LibretroMenu * menu), {
+EM_JS(void, SDL_Libretro_MenuOpenWebFilePicker, (SDL_LibretroMenu * menu, const char* filter), {
+    var exts = [];
+    UTF8ToString(filter).split(';').forEach(function(ext) {
+        ext = ext.toLowerCase();
+        if (ext.length > 0 && exts.indexOf(ext) < 0) exts.push(ext);
+    });
+    var extOf = function(name) {
+        var dot = name.lastIndexOf('.');
+        return dot < 0 ? "" : name.substring(dot).toLowerCase();
+    };
+    var supported = function(name) {
+        return exts.length === 0 || exts.indexOf(extOf(name)) >= 0;
+    };
+
     var input = document.createElement('input');
     input.type = 'file';
-    input.onchange = function(e) {
-        var file = e.target.files[0];
-        if (!file) return;
-        var reader = new FileReader();
-        reader.onload = function() {
-            var path = '/' + file.name;
+    input.multiple = true;
+    if (exts.length > 0) {
+        input.accept = exts.join(',');
+    }
+    input.onchange = function() {
+        var files = Array.prototype.slice.call(input.files || []);
+        if (files.length === 0) return;
+
+        var FS = Module.FS;
+        Module.SDL_libretroPickCount = (Module.SDL_libretroPickCount || 0) + 1;
+        var dir = '/picked/' + Module.SDL_libretroPickCount;
+        var removeDir = function() {
             try {
-                Module.FS.writeFile(path, new Uint8Array(reader.result));
+                FS.readdir(dir).forEach(function(file) {
+                    if (file !== '.' && file !== '..') FS.unlink(dir + '/' + file);
+                });
+                FS.rmdir(dir);
             } catch (err) {
-                console.error('SDL_libretro: failed to write picked file to FS:', err);
+            }
+        };
+
+        // Write one file at a time, so only one is held in JS memory at once.
+        var index = 0;
+        var writeNext = function() {
+            if (index >= files.length) {
+                var chosen = null;
+                ['.m3u', '.cue', '.gdi', '.ccd', '.toc', '.mds'].forEach(function(ext) {
+                    if (chosen === null && supported(ext)) {
+                        chosen = files.find(function(file) { return extOf(file.name) === ext; }) || null;
+                    }
+                });
+                if (chosen === null) chosen = files.find(function(file) { return supported(file.name); }) || files[0];
+                Module.ccall('SDL_Libretro_MenuLoadGameFromJS', null, ['number', 'string'], [menu, dir + '/' + chosen.name]);
                 return;
             }
-            Module.ccall('SDL_Libretro_MenuLoadGameFromJS', null, ['number', 'string'], [menu, path]);
+            var file = files[index++];
+            file.arrayBuffer().then(function(buffer) {
+                try {
+                    FS.writeFile(dir + '/' + file.name, new Uint8Array(buffer));
+                } catch (err) {
+                    console.error('SDL_libretro: failed to write picked file to FS:', err);
+                    removeDir();
+                    return;
+                }
+                writeNext();
+            }, function(err) {
+                console.error('SDL_libretro: failed to read picked file:', err);
+                removeDir();
+            });
         };
-        reader.onerror = function() {
-            console.error('SDL_libretro: failed to read picked file:', reader.error);
-        };
-        reader.readAsArrayBuffer(file);
+        try {
+            try {
+                FS.mkdir('/picked');
+            } catch (err) {
+            }
+            FS.mkdir(dir);
+        } catch (err) {
+            console.error('SDL_libretro: failed to create ' + dir + ':', err);
+            return;
+        }
+        writeNext();
     };
     input.click();
 });
 
 /**
  * @internal
- * Called from SDL_Libretro_MenuOpenWebFilePicker()'s JS once the picked file
- * lands in the virtual file system.
+ * Called from SDL_Libretro_MenuOpenWebFilePicker()'s JS once the picked files
+ * land in the virtual file system.
  */
 EMSCRIPTEN_KEEPALIVE void SDL_Libretro_MenuLoadGameFromJS(SDL_LibretroMenu* menu, const char* path) {
     if (menu == NULL || path == NULL) {
@@ -555,6 +686,10 @@ EMSCRIPTEN_KEEPALIVE void SDL_Libretro_MenuLoadGameFromJS(SDL_LibretroMenu* menu
     }
     SDL_strlcpy(menu->loadGamePath, path, sizeof(menu->loadGamePath));
     SDL_Libretro_MenuLoadPendingGame(menu);
+
+    // A load already freed the earlier picks. Otherwise this pick waits on
+    // the core picker, or no core takes it, so drop the picks left unused.
+    SDL_Libretro_MenuWebPruneFiles(menu->webGamePath, menu->pendingGamePath);
 }
 
 /**
@@ -562,7 +697,10 @@ EMSCRIPTEN_KEEPALIVE void SDL_Libretro_MenuLoadGameFromJS(SDL_LibretroMenu* menu
  */
 static void SDL_Libretro_MenuWebLoadGameClicked(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
-    SDL_Libretro_MenuOpenWebFilePicker(menu);
+    char* filter = SDL_Libretro_MenuBuildLoadGameFilter(menu);
+    // The picker reads the filter before returning, so it can go right away.
+    SDL_Libretro_MenuOpenWebFilePicker(menu, filter != NULL ? filter : "");
+    SDL_free(filter);
 }
 #endif /* __EMSCRIPTEN__ */
 
@@ -1671,7 +1809,6 @@ static void SDL_Libretro_MenuBuildOptions(SDL_LibretroMenu* menu) {
     SDL_Libretro_MenuAddBackButton(menu->optionsButton);
 }
 
-#ifndef __EMSCRIPTEN__
 /**
  * @internal
  * Append each extension from a pipe-separated list (e.g. "gb|gbc") to a
@@ -1732,18 +1869,16 @@ static void SDL_Libretro_MenuAppendExtensions(char* filter, size_t filterSize, c
         token = (*end == '|') ? end + 1 : end;
     }
 }
-#endif /* !__EMSCRIPTEN__ */
 
 /**
  * @internal
- * Restrict the Load Game file browser to content the scanned cores (and the
- * loaded core) can open.
+ * Build the file filter for the content the scanned cores (and the loaded
+ * core) can open, e.g. ".gb;.GB;.zip;.ZIP". Empty when there's nothing to
+ * filter against.
+ *
+ * @return a filter to SDL_free(), or NULL on allocation failure.
  */
-static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
-#ifndef __EMSCRIPTEN__
-    if (menu->loadGameButton == NULL) {
-        return;
-    }
+static char* SDL_Libretro_MenuBuildLoadGameFilter(SDL_LibretroMenu* menu) {
     SDL_Libretro* lr = menu->lr;
 
     const char* coreExtensions = SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : NULL;
@@ -1768,13 +1903,30 @@ static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
     }
     char* filter = (char*)SDL_calloc(filterSize, 1);
     if (filter == NULL) {
-        return;
+        return NULL;
     }
     for (unsigned i = 0; i < lr->coreLibraryCount; i++) {
         SDL_Libretro_MenuAppendExtensions(filter, filterSize, lr->coreLibrary[i].supported_extensions);
     }
     SDL_Libretro_MenuAppendExtensions(filter, filterSize, coreExtensions);
     SDL_Libretro_MenuAppendExtensions(filter, filterSize, zipExtension);
+    return filter;
+}
+
+/**
+ * @internal
+ * Restrict the Load Game file browser to content the scanned cores (and the
+ * loaded core) can open.
+ */
+static void SDL_Libretro_MenuUpdateLoadGameFilter(SDL_LibretroMenu* menu) {
+#ifndef __EMSCRIPTEN__
+    if (menu->loadGameButton == NULL) {
+        return;
+    }
+    char* filter = SDL_Libretro_MenuBuildLoadGameFilter(menu);
+    if (filter == NULL) {
+        return;
+    }
 
     // With nothing to filter against, show every file. The widget keeps its
     // own copy, so the filter can go right away.
