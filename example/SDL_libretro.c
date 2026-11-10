@@ -232,7 +232,8 @@ SDL_AppResult SDL_AppInit(void** appstate, int argc, char* argv[]) {
         SDL_Log("Failed to load game: %s", SDL_GetError());
     }
 
-    // The in-app menu; toggled with F1 or the gamepad Guide button.
+    // The in-app menu; toggled with F1 or the gamepad Guide button, which are
+    // rebindable along with the other hotkeys.
     SDL_Libretro_SetRenderer(lr, renderer);
     app->menu = SDL_Libretro_CreateMenu(lr);
     if (!app->menu) {
@@ -256,8 +257,9 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
     }
 
     // The menu goes first so it also sees SDL_libretro's notifications, like
-    // OPTIONS_CHANGED; it consumes input while it is open, and handles its
-    // toggle keys.
+    // OPTIONS_CHANGED; it consumes input while it is open, and runs the
+    // hotkeys (fast-forward, save states, screenshots, ...) rebindable in
+    // Settings > Hot Keys.
     if (SDL_Libretro_HandleMenuEvent(app->menu, event)) {
         return SDL_APP_CONTINUE;
     }
@@ -267,62 +269,8 @@ SDL_AppResult SDL_AppEvent(void* appstate, SDL_Event* event) {
         return SDL_APP_CONTINUE;
     }
 
-    // Hotkeys avoid the default keyboard bindings so they don't also press a
-    // RetroPad button.
-
-    // Fast Forward
-    if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_SPACE && !event->key.repeat) {
-        SDL_Libretro_SetSpeed(lr, 2.0f);
-    }
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_SPACE) {
-        SDL_Libretro_SetSpeed(lr, 1.0f);
-    }
-
-    // Slow Motion
-    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_TAB && !event->key.repeat) {
-        SDL_Libretro_SetSpeed(lr, 0.5f);
-    }
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_TAB) {
-        SDL_Libretro_SetSpeed(lr, 1.0f);
-    }
-
-    // Rewind
-    else if (event->type == SDL_EVENT_KEY_DOWN && event->key.key == SDLK_BACKSPACE && !event->key.repeat) {
-        SDL_Libretro_SetSpeed(lr, -1.0f);
-    }
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_BACKSPACE) {
-        SDL_Libretro_SetSpeed(lr, 1.0f);
-    }
-
-    // Volume
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_MINUS) {
-        SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) - 0.1f);
-    }
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_EQUALS) {
-        SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
-    }
-
-    // Screenshot, the same action as the menu's Screenshot entry.
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F12) {
-        SDL_Libretro_SaveScreenshot(lr, NULL);
-    }
-
-    // Save State
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F2) {
-        char savePath[4096];
-        SDL_Libretro_GetSavePath(lr, ".state", savePath, sizeof(savePath));
-        SDL_Libretro_SaveState(lr, savePath);
-    }
-
-    // Load State
-    else if (event->type == SDL_EVENT_KEY_UP && event->key.key == SDLK_F4) {
-        char savePath[4096];
-        SDL_Libretro_GetSavePath(lr, ".state", savePath, sizeof(savePath));
-        SDL_Libretro_LoadState(lr, savePath);
-    }
-
     // Drag and drop a file to unload the current core and load the dropped game.
-    else if (event->type == SDL_EVENT_DROP_FILE) {
+    if (event->type == SDL_EVENT_DROP_FILE) {
         SDL_Libretro_AppLoadDroppedGame(app, event->drop.data);
     }
 

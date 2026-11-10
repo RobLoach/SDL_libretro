@@ -104,6 +104,22 @@ SDL_Libretro_RenderMenu(menu);
 SDL_RenderPresent(renderer);
 ```
 
+`SDL_Libretro_HandleMenuEvent()` also runs the hotkeys, which can be rebound in Settings > Hot Keys, or with `SDL_Libretro_SetMenuHotkey()` and `SDL_Libretro_SetMenuHotkeyButton()`. Rebinding a key or button unbinds any other hotkey on it, and the bindings are saved to the config (`hotkey_savestate`, `hotkey_savestate_gamepad`, and so on).
+
+| Hotkey | Default |
+| --- | --- |
+| Menu | `F1`, gamepad Guide |
+| Fast Forward (hold) | `Space` |
+| Slow Motion (hold) | `Tab` |
+| Rewind (hold) | `Backspace` |
+| Save State / Load State | `F2` / `F4` |
+| Screenshot | `F12` |
+| Volume Up / Down | `=` / `-` |
+| Fullscreen | `F11` |
+| Mute, Reset, Quit | Unbound |
+
+Disable Hotkeys (or `SDL_Libretro_SetMenuHotkeysEnabled(menu, false)`) passes every key through to the core, for cores that use them; only the Menu hotkey stays live.
+
 ### Events
 
 SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event. Every SDL_libretro event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_LAST`, a fixed range in the SDL user events. The first `SDL_Libretro_Create()` reserves it through [`SDL_RegisterEvents()`](https://wiki.libsdl.org/SDL3/SDL_RegisterEvents), so events the application registers afterwards never collide with it; events registered before then should stay below `SDL_EVENT_LIBRETRO`, or a warning is logged.
@@ -214,7 +230,7 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 - `SDL_LIBRETRO_ENABLE_PHYSFS`: Enable .zip loading with PhysFS
 - `SDL_LIBRETRO_PHYSFS_MOUNT_POINT`: The PhysFS mount point archives are mounted at (default `"game"`)
 - `SDL_LIBRETRO_ENABLE_MENU`: Enable the nuklear_console menu
-- `SDL_LIBRETRO_MENU_TOGGLE_KEY`: The key that toggles the menu (default `SDLK_F1`)
+- `SDL_LIBRETRO_MENU_TOGGLE_KEY`: The default key of the Menu hotkey, which toggles the menu (default `SDLK_F1`)
 - `SDL_LIBRETRO_MENU_FONT_HEIGHT`: Base menu font height in pixels (default `13`)
 - `SDL_LIBRETRO_MENU_DEFAULT_STYLE`: The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA`)
 - `NK_CONSOLE_FILE_NO_SDL_NATIVE_DIALOG`: Load Game with the menu's own file browser instead of the OS file dialog. Gamepads, and systems where the OS dialog can't open, use the file browser either way

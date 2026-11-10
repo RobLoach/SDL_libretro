@@ -4729,6 +4729,169 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(menu->languageIndex == RETRO_LANGUAGE_JAPANESE + 1, "SyncSettings refreshes the Language choice");
         SDL_Libretro_SetLanguage(lr, -1);
 
+        // Hotkeys default to the keys the app used before they were rebindable.
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_MENU) == SDL_LIBRETRO_MENU_TOGGLE_KEY,
+            "The Menu hotkey defaults to SDL_LIBRETRO_MENU_TOGGLE_KEY");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeyButton(menu, SDL_LIBRETRO_MENU_HOTKEY_MENU) == SDL_GAMEPAD_BUTTON_GUIDE,
+            "The Menu hotkey defaults to the Guide button");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD) == SDLK_SPACE &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_SLOW_MOTION) == SDLK_TAB &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_REWIND) == SDLK_BACKSPACE,
+            "Fast Forward, Slow Motion and Rewind default to Space, Tab and Backspace");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE) == SDLK_F2 &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_LOAD_STATE) == SDLK_F4 &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT) == SDLK_F12 &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_FULLSCREEN) == SDLK_F11,
+            "Save State, Load State, Screenshot and Fullscreen default to F2, F4, F12 and F11");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_VOLUME_UP) == SDLK_EQUALS &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_VOLUME_DOWN) == SDLK_MINUS,
+            "Volume Up and Down default to = and -");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_MUTE) == SDLK_UNKNOWN &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_RESET) == SDLK_UNKNOWN &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_QUIT) == SDLK_UNKNOWN,
+            "Mute, Reset and Quit start unbound");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeyButton(menu, SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD) == SDL_GAMEPAD_BUTTON_INVALID,
+            "Only the Menu hotkey has a default gamepad button");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeysEnabled(menu) == true, "Hotkeys start enabled");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(NULL, SDL_LIBRETRO_MENU_HOTKEY_MENU) == SDLK_UNKNOWN &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_COUNT) == SDLK_UNKNOWN,
+            "GetMenuHotkey rejects a NULL menu and an out-of-range hotkey");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuHotkey(NULL, SDL_LIBRETRO_MENU_HOTKEY_MUTE, SDLK_M) == false &&
+            SDL_Libretro_SetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_COUNT, SDLK_M) == false &&
+            SDL_Libretro_SetMenuHotkeyButton(NULL, SDL_LIBRETRO_MENU_HOTKEY_MUTE, SDL_GAMEPAD_BUTTON_BACK) == false,
+            "SetMenuHotkey rejects a NULL menu and an out-of-range hotkey");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeysEnabled(NULL) == false, "GetMenuHotkeysEnabled(NULL) false");
+
+        // The capture widgets show and read keys as NK_CONSOLE_KEY_* runes.
+        SDLTest_AssertCheck(menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE].rune == NK_CONSOLE_KEY_F2 &&
+            menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_VOLUME_UP].rune == (nk_rune)'=' &&
+            menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD].rune == NK_CONSOLE_KEY_SPACE &&
+            menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_REWIND].rune == NK_CONSOLE_KEY_BACKSPACE,
+            "Hotkey capture widgets show the bound keys");
+        SDLTest_AssertCheck(SDL_Libretro_MenuKeycodeFromRune(NK_CONSOLE_KEY_F11) == SDLK_F11 &&
+            SDL_Libretro_MenuKeycodeFromRune((nk_rune)'M') == SDLK_M &&
+            SDL_Libretro_MenuKeycodeFromRune(NK_CONSOLE_KEY_UP) == SDLK_UP &&
+            SDL_Libretro_MenuKeycodeFromRune(NK_CONSOLE_KEY_ENTER) == SDLK_RETURN &&
+            SDL_Libretro_MenuKeycodeFromRune(NK_CONSOLE_KEY_NONE) == SDLK_UNKNOWN,
+            "Captured runes map to SDL keycodes");
+
+        // While the menu is closed, hotkeys run their action and are consumed.
+        SDL_Libretro_SetMenuOpen(menu, false);
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_SPACE;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "A hotkey press is consumed");
+        SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 2.0f, "Holding Fast Forward doubles the speed");
+        event.type = SDL_EVENT_KEY_UP;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true, "A hotkey release is consumed");
+        SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 1.0f, "Letting go of Fast Forward restores the speed");
+        SDL_Libretro_SetVolume(lr, 0.5f);
+        event.key.key = SDLK_EQUALS;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lr) - 0.6f) < 0.001f, "Volume Up raises the volume on release");
+        SDL_Libretro_SetVolume(lr, 1.0f);
+
+        // A held Fast Forward still ends when it's let go in the menu.
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_SPACE;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        SDL_Libretro_SetMenuOpen(menu, true);
+        event.type = SDL_EVENT_KEY_UP;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 1.0f, "Releasing Fast Forward in the menu restores the speed");
+        SDL_Libretro_SetMenuOpen(menu, false);
+
+        // Disable Hotkeys passes every key through but the Menu hotkey.
+        SDL_Libretro_SetMenuHotkeysEnabled(menu, false);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeysEnabled(menu) == false, "Hotkeys can be disabled");
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_SPACE;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Disabled hotkeys pass through");
+        SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 1.0f, "Disabled hotkeys don't run");
+        event.type = SDL_EVENT_KEY_UP;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        event.key.key = SDLK_F1;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true && SDL_Libretro_IsMenuOpen(menu) == true,
+            "The Menu hotkey stays live with hotkeys disabled");
+        SDL_Libretro_SetMenuHotkeysEnabled(menu, true);
+
+        // Rebinding a key unbinds any other hotkey on it, with a message.
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT, SDLK_F2) == true,
+            "SetMenuHotkey rebinds a hotkey");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT) == SDLK_F2 &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE) == SDLK_UNKNOWN,
+            "Rebinding a hotkey's key unbinds the hotkey that had it");
+        SDLTest_AssertCheck(menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE].rune == NK_CONSOLE_KEY_NONE,
+            "The unbound hotkey's capture widget clears");
+        menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_MUTE].rune = (nk_rune)'M';
+        SDL_Libretro_MenuHotkeyKeyChanged(NULL, &menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_MUTE]);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_MUTE) == SDLK_M, "A captured key binds the hotkey");
+        menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_RESET].rune = (nk_rune)'m';
+        SDL_Libretro_MenuHotkeyKeyChanged(NULL, &menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_RESET]);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_RESET) == SDLK_M &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_MUTE) == SDLK_UNKNOWN,
+            "A captured key unbinds the hotkey that had it");
+        bool unboundShown = false;
+        nk_console_top_data* topData = (nk_console_top_data*)menu->console->data;
+        for (size_t i = 0; i < cvector_size(topData->messages); i++) {
+            unboundShown |= SDL_strcmp(topData->messages[i].text, "Mute has been unbound") == 0;
+        }
+        SDLTest_AssertCheck(unboundShown, "The menu says which hotkey was unbound");
+
+        // A capture prompt that times out unbinds the hotkey.
+        menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_RESET].rune = NK_CONSOLE_KEY_NONE;
+        SDL_Libretro_MenuApplyHotkeyTimeouts(menu);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_RESET) == SDLK_UNKNOWN,
+            "A timed-out capture unbinds the hotkey");
+
+        // Gamepad buttons deconflict the same way, and run hotkeys too.
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuHotkeyButton(menu, SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD, SDL_GAMEPAD_BUTTON_GUIDE) == true,
+            "SetMenuHotkeyButton rebinds a hotkey");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeyButton(menu, SDL_LIBRETRO_MENU_HOTKEY_MENU) == SDL_GAMEPAD_BUTTON_INVALID,
+            "Rebinding a hotkey's button unbinds the hotkey that had it");
+        SDL_zero(event);
+        event.type = SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+        event.gbutton.button = SDL_GAMEPAD_BUTTON_GUIDE;
+        SDL_Libretro_SetMenuOpen(menu, false);
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true && SDL_Libretro_GetSpeed(lr) == 2.0f,
+            "A gamepad hotkey runs while held");
+        event.type = SDL_EVENT_GAMEPAD_BUTTON_UP;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true && SDL_Libretro_GetSpeed(lr) == 1.0f,
+            "Letting go of a gamepad hotkey ends it");
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == false, "The rebound Guide button no longer toggles the menu");
+        menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_MENU].captured = NK_GAMEPAD_BUTTON_GUIDE;
+        SDL_Libretro_MenuHotkeyButtonChanged(NULL, &menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_MENU]);
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeyButton(menu, SDL_LIBRETRO_MENU_HOTKEY_MENU) == SDL_GAMEPAD_BUTTON_GUIDE &&
+            SDL_Libretro_GetMenuHotkeyButton(menu, SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD) == SDL_GAMEPAD_BUTTON_INVALID,
+            "A captured button binds the hotkey, unbinding the one that had it");
+
+        // The Menu hotkey always keeps a key or a button.
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuHotkeyButton(menu, SDL_LIBRETRO_MENU_HOTKEY_MENU, SDL_GAMEPAD_BUTTON_INVALID) == true,
+            "The Menu hotkey can drop its button while it has a key");
+        SDLTest_AssertCheck(SDL_Libretro_SetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_MENU, SDLK_UNKNOWN) == false &&
+            SDL_Libretro_SetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_QUIT, SDL_LIBRETRO_MENU_TOGGLE_KEY) == false,
+            "The Menu hotkey can't lose its last binding");
+        SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_MENU) == SDL_LIBRETRO_MENU_TOGGLE_KEY &&
+            SDL_Libretro_GetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_QUIT) == SDLK_UNKNOWN,
+            "A refused rebind leaves the bindings alone");
+
+        // While a Hot Keys prompt captures, the Menu hotkey is the prompt's.
+        SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "Settings/Hot Keys") == true, "OpenMenuPath resolves Settings/Hot Keys");
+        nk_console* hotkeysPage = nk_console_active_parent(menu->console);
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(hotkeysPage), "The Hot Keys page ends with a Back button");
+        SDLTest_AssertCheck(cvector_size(hotkeysPage->children) == (size_t)SDL_LIBRETRO_MENU_HOTKEY_COUNT + 3,
+            "The Hot Keys page lists Disable Hotkeys, a capture per hotkey, Gamepad and Back");
+        SDL_Libretro_MenuSetActiveParent(menu, hotkeysPage->children[1]);
+        SDL_zero(event);
+        event.type = SDL_EVENT_KEY_UP;
+        event.key.key = SDLK_F1;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        SDLTest_AssertCheck(SDL_Libretro_IsMenuOpen(menu) == true, "The Menu hotkey doesn't close the menu while capturing");
+        SDL_Libretro_MenuSetActiveParent(menu, menu->console);
+        SDL_Libretro_SetMenuOpen(menu, false);
+        SDL_Libretro_MenuResetHotkeys(menu);
+        SDL_Libretro_MenuSyncHotkeyBinds(menu);
+
         // The Gamepad page holds one sub-page per player.
         SDLTest_AssertCheck(cvector_size(menu->gamepadButton->children) == (size_t)(SDL_LIBRETRO_MAX_USERS + 1),
             "The Gamepad page lists a sub-page per player before Back");
@@ -4986,6 +5149,13 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_MenuMuteChanged(menuSave, NULL);
         SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrSave) == 0.0f, "Mute drops the volume to zero");
 
+        // Rebound, unbound and disabled hotkeys persist like the theme.
+        SDL_Libretro_SetMenuHotkey(menuSave, SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE, SDLK_F5);
+        SDL_Libretro_SetMenuHotkey(menuSave, SDL_LIBRETRO_MENU_HOTKEY_RESET, SDLK_SEMICOLON);
+        SDL_Libretro_SetMenuHotkey(menuSave, SDL_LIBRETRO_MENU_HOTKEY_VOLUME_UP, SDLK_UNKNOWN);
+        SDL_Libretro_SetMenuHotkeyButton(menuSave, SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT, SDL_GAMEPAD_BUTTON_BACK);
+        SDL_Libretro_SetMenuHotkeysEnabled(menuSave, false);
+
         SDL_Libretro_DestroyMenu(menuSave);
     }
     SDL_strlcpy(lrSave->fileBrowserStartDirectory, "roms", sizeof(lrSave->fileBrowserStartDirectory));
@@ -5007,6 +5177,22 @@ static int SDLCALL test_Menu(void *arg) {
         "Menu theme persists through the config file");
     SDLTest_AssertCheck(menuLoad != NULL && menuLoad->muteChecked == nk_true, "Mute state persists through the config file");
     SDLTest_AssertCheck(SDL_Libretro_GetVolume(lrLoad) == 0.0f, "Volume stays muted after reload");
+    SDLTest_AssertCheck(lrLoad->ini != NULL && SDL_strcmp(INI_GetString(lrLoad->ini, NULL, "hotkey_savestate", ""), "F5") == 0,
+        "Hotkeys are saved by key name");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menuLoad, SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE) == SDLK_F5,
+        "A rebound hotkey persists through the config file");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menuLoad, SDL_LIBRETRO_MENU_HOTKEY_RESET) == SDLK_SEMICOLON,
+        "A hotkey on a comment character persists through the config file");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menuLoad, SDL_LIBRETRO_MENU_HOTKEY_VOLUME_UP) == SDLK_UNKNOWN,
+        "An unbound hotkey stays unbound after reload");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkey(menuLoad, SDL_LIBRETRO_MENU_HOTKEY_LOAD_STATE) == SDLK_F4 &&
+        SDL_Libretro_GetMenuHotkey(menuLoad, SDL_LIBRETRO_MENU_HOTKEY_VOLUME_DOWN) == SDLK_MINUS,
+        "Untouched hotkeys keep their defaults");
+    SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeyButton(menuLoad, SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT) == SDL_GAMEPAD_BUTTON_BACK &&
+        SDL_Libretro_GetMenuHotkeyButton(menuLoad, SDL_LIBRETRO_MENU_HOTKEY_MENU) == SDL_GAMEPAD_BUTTON_GUIDE,
+        "Hotkey gamepad buttons persist through the config file");
+    SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuHotkeysEnabled(menuLoad) == false,
+        "Disable Hotkeys persists through the config file");
     SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
         "Keyboard bindings persist through the config file");
     SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X,

@@ -489,6 +489,32 @@ typedef enum SDL_LibretroMenuStyle {
     SDL_LIBRETRO_MENU_STYLE_COUNT /**< The number of menu styles. */
 } SDL_LibretroMenuStyle;
 
+/**
+ * The frontend actions the menu binds to keys and gamepad buttons.
+ *
+ * SDL_Libretro_HandleMenuEvent() runs them, and the Settings > Hot Keys page
+ * rebinds them. Fast Forward, Slow Motion and Rewind last while held; the
+ * rest fire on release.
+ *
+ * @see SDL_Libretro_SetMenuHotkey()
+ */
+typedef enum SDL_LibretroMenuHotkey {
+    SDL_LIBRETRO_MENU_HOTKEY_MENU = 0, /**< Open or close the menu. F1 (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD, /**< Run at double speed while held. Space by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_SLOW_MOTION, /**< Run at half speed while held. Tab by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_REWIND, /**< Rewind while held, when rewind is enabled. Backspace by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE, /**< Save the state. F2 by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_LOAD_STATE, /**< Load the state. F4 by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT, /**< Save a screenshot. F12 by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_VOLUME_UP, /**< Raise the volume by 10%. = by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_VOLUME_DOWN, /**< Lower the volume by 10%. - by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_MUTE, /**< Mute or unmute the audio. Unbound by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_FULLSCREEN, /**< Toggle fullscreen. F11 by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_RESET, /**< Reset the game. Unbound by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_QUIT, /**< Push SDL_EVENT_QUIT. Unbound by default. */
+    SDL_LIBRETRO_MENU_HOTKEY_COUNT /**< The number of hotkeys. */
+} SDL_LibretroMenuHotkey;
+
 SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr);
 void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu);
 void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu);
@@ -503,6 +529,13 @@ bool SDL_Libretro_IsMenuOpen(const SDL_LibretroMenu* menu);
 bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path);
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style);
 SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu);
+
+bool SDL_Libretro_SetMenuHotkey(SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey, SDL_Keycode key);
+SDL_Keycode SDL_Libretro_GetMenuHotkey(const SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey);
+bool SDL_Libretro_SetMenuHotkeyButton(SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey, SDL_GamepadButton button);
+SDL_GamepadButton SDL_Libretro_GetMenuHotkeyButton(const SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey);
+void SDL_Libretro_SetMenuHotkeysEnabled(SDL_LibretroMenu* menu, bool enabled);
+bool SDL_Libretro_GetMenuHotkeysEnabled(const SDL_LibretroMenu* menu);
 
 /**
  * Loads a game through the menu, showing the "Select Core" picker when more
