@@ -4488,6 +4488,31 @@ static int SDLCALL test_Menu(void *arg) {
         SDL_Libretro_RenderMenu(menu);
         SDLTest_AssertCheck(menu->renderScale == defaultScale, "Returning to 2x restores the default render scale");
 
+        // The frame contract fails safe when the calls come out of order.
+        SDLTest_AssertCheck(menu->inputActive == true, "Input collects after RenderMenu");
+        SDL_Libretro_UpdateMenu(menu);
+        SDLTest_AssertCheck(menu->inputActive == false && menu->uiBuilt == true, "UpdateMenu ends input and builds the layout");
+        SDL_Libretro_UpdateMenu(menu);
+        SDLTest_AssertCheck(menu->inputActive == false && menu->uiBuilt == true, "A second UpdateMenu is a no-op for input and layout");
+        struct nk_vec2 mousePos = menu->ctx->input.mouse.pos;
+        SDL_Event motion;
+        SDL_zero(motion);
+        motion.type = SDL_EVENT_MOUSE_MOTION;
+        motion.motion.windowID = SDL_GetWindowID(lr->window);
+        motion.motion.x = mousePos.x + 5.0f;
+        motion.motion.y = mousePos.y + 5.0f;
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &motion) == true, "Input outside collection is still swallowed");
+        SDLTest_AssertCheck(menu->ctx->input.mouse.pos.x == mousePos.x && menu->ctx->input.mouse.pos.y == mousePos.y,
+            "Input outside collection isn't fed to Nuklear");
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->inputActive == true && menu->uiBuilt == false, "RenderMenu flushes and starts input");
+        SDL_Libretro_RenderMenu(menu);
+        SDLTest_AssertCheck(menu->inputActive == true, "RenderMenu without UpdateMenu keeps collecting");
+        SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &motion) == true, "Input during collection is swallowed");
+        SDLTest_AssertCheck(menu->ctx->input.mouse.pos.x != mousePos.x || menu->ctx->input.mouse.pos.y != mousePos.y,
+            "Input during collection is fed to Nuklear");
+        SDLTest_AssertCheck(test_MenuWindowTitleIs(menu, SDL_LIBRETRO_MENU_WINDOW_TITLE), "Menu still lays out after out-of-order calls");
+
         // Gameplay input is swallowed while the menu is open, but lifecycle
         // events always pass through.
         SDL_Event event;

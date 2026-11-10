@@ -232,6 +232,7 @@ struct SDL_LibretroMenu {
     bool keysHeldAtOpen[SDL_SCANCODE_COUNT]; /**< Keys held down when the menu opened, whose releases still go to the application and core. */
     unsigned int padButtonsHeldAtOpen[NK_GAMEPAD_MAX]; /**< nk_gamepad buttons held when the menu opened, hidden from the menu until released. */
     bool uiBuilt; /**< nk_begin ran this frame, so RenderMenu must flush and clear. */
+    bool inputActive; /**< Between nk_input_begin and nk_input_end: RenderMenu opened input collection and UpdateMenu has yet to close it. */
     nk_console* shownPage; /**< The page rendered last frame, to detect page changes. Compared only, never dereferenced. */
 
     // Widgets whose visibility depends on the running game.
@@ -2682,6 +2683,7 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
     SDL_Libretro_MenuBuildWidgets(menu);
 
     nk_input_begin(menu->ctx);
+    menu->inputActive = true;
 
     return menu;
 }
@@ -2710,8 +2712,9 @@ void SDL_Libretro_DestroyMenu(SDL_LibretroMenu* menu) {
     if (menu->settingsDirty) {
         SDL_Libretro_MenuSaveState(menu);
     }
-    if (menu->ctx != NULL) {
+    if (menu->ctx != NULL && menu->inputActive) {
         nk_input_end(menu->ctx);
+        menu->inputActive = false;
     }
     if (menu->console != NULL) {
         nk_console_free(menu->console);
@@ -2881,6 +2884,11 @@ void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
  *          release of a key that was already held when the menu opened passes
  *          through too, so the press it answers isn't left stuck down.
  *
+ * Nuklear only sees events that arrive between SDL_Libretro_RenderMenu() and
+ * the next SDL_Libretro_UpdateMenu(), as when events are polled at the top of
+ * the frame; events arriving at other times still get the return value above
+ * but are not fed to the UI.
+ *
  * @see SDL_Libretro_UpdateMenu()
  */
 bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event) {
@@ -2941,11 +2949,15 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
     }
 
     // Feed a copy so coordinate conversion doesn't mutate the caller's event.
-    SDL_SetRenderScale(menu->lr->renderer, menu->renderScale, menu->renderScale);
-    SDL_Event converted = *event;
-    SDL_ConvertEventToRenderCoordinates(menu->lr->renderer, &converted);
-    nk_sdl_handle_event(menu->ctx, &converted);
-    SDL_SetRenderScale(menu->lr->renderer, 1.0f, 1.0f);
+    // Nuklear only takes input between nk_input_begin and nk_input_end, so
+    // events arriving outside that window are dropped.
+    if (menu->inputActive) {
+        SDL_SetRenderScale(menu->lr->renderer, menu->renderScale, menu->renderScale);
+        SDL_Event converted = *event;
+        SDL_ConvertEventToRenderCoordinates(menu->lr->renderer, &converted);
+        nk_sdl_handle_event(menu->ctx, &converted);
+        SDL_SetRenderScale(menu->lr->renderer, 1.0f, 1.0f);
+    }
 
     // Lifecycle events stay visible to the application and the frontend even
     // while the menu swallows gameplay input.
@@ -3078,6 +3090,11 @@ static void SDL_Libretro_MenuRenderWindow(SDL_LibretroMenu* menu, struct nk_rect
  * core, shows or hides the game-only entries, and writes changed menu
  * settings to the config. Does nothing else while the menu is closed.
  *
+ * The frame order HandleMenuEvent, UpdateMenu, RenderMenu is the recommended
+ * contract, but the menu fails safe when it is broken: calling UpdateMenu
+ * again before RenderMenu leaves the input and the layout it already built
+ * untouched.
+ *
  * @param menu the menu to update. NULL is ignored.
  *
  * @see SDL_Libretro_RenderMenu()
@@ -3089,7 +3106,11 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
     }
     SDL_Libretro* lr = menu->lr;
 
-    nk_input_end(menu->ctx);
+    // Close the input collected since RenderMenu; a repeated call is a no-op here.
+    if (menu->inputActive) {
+        nk_input_end(menu->ctx);
+        menu->inputActive = false;
+    }
     nk_gamepad_update(&menu->gamepads);
 
     // Hide gamepad buttons held since the menu opened until they're let go,
@@ -3177,6 +3198,11 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         ((nk_console_top_data*)menu->console->data)->scroll_to_widget = page->activeWidget;
     }
 
+    // A repeated update before RenderMenu keeps the layout already built, as
+    // Nuklear can't begin the same window twice in one frame.
+    if (menu->uiBuilt) {
+        return;
+    }
     menu->uiBuilt = true;
     SDL_Libretro_MenuRenderWindow(menu, nk_rect(0.0f, 0.0f, logicalW, logicalH));
 }
@@ -3186,7 +3212,10 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
  *
  * Call once per frame, after SDL_Libretro_UpdateMenu() and before
  * SDL_RenderPresent(). Draws nothing while the menu is closed, but must still
- * be called every frame so input is collected for the next one.
+ * be called every frame so input is collected for the next one. Input for
+ * the menu is collected from the end of RenderMenu until the next
+ * SDL_Libretro_UpdateMenu(); calling RenderMenu without an UpdateMenu in
+ * between keeps collecting rather than restarting.
  *
  * @param menu the menu to draw. NULL is ignored.
  *
@@ -3205,7 +3234,11 @@ void SDL_Libretro_RenderMenu(SDL_LibretroMenu* menu) {
         nk_console_sdl_update_text_input(menu->console, menu->lr->window);
         menu->uiBuilt = false;
     }
-    nk_input_begin(menu->ctx);
+    // Open input collection for the next frame, unless it's already open.
+    if (!menu->inputActive) {
+        nk_input_begin(menu->ctx);
+        menu->inputActive = true;
+    }
 }
 
 /**
