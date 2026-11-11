@@ -99,8 +99,10 @@
 
 #ifndef SDL_LIBRETRO_MENU_TOGGLE_KEY
 /**
- * The keyboard key that toggles the menu.
+ * The default key of the Menu hotkey, which toggles the menu. It can be
+ * rebound in Settings > Hot Keys, or with SDL_Libretro_SetMenuHotkey().
  *
+ * @see SDL_LIBRETRO_MENU_HOTKEY_MENU
  * @see SDL_Libretro_HandleMenuEvent()
  */
 #define SDL_LIBRETRO_MENU_TOGGLE_KEY SDLK_F1
@@ -215,6 +217,20 @@ typedef struct SDL_LibretroMenuPadPort {
 
 /**
  * @internal
+ * One hotkey's bindings, and the state of its Settings > Hot Keys capture
+ * widgets.
+ */
+typedef struct SDL_LibretroMenuHotkeyBind {
+    SDL_LibretroMenu* menu;
+    SDL_LibretroMenuHotkey hotkey;
+    SDL_Keycode key; /**< The bound key, or SDLK_UNKNOWN when unbound. */
+    enum nk_gamepad_button gamepad; /**< The bound gamepad button, or NK_GAMEPAD_BUTTON_INVALID when unbound. */
+    nk_rune rune; /**< The key capture widget's value, as an NK_CONSOLE_KEY_* value. */
+    enum nk_gamepad_button captured; /**< The button capture widget's value. */
+} SDL_LibretroMenuHotkeyBind;
+
+/**
+ * @internal
  * The state behind the opaque SDL_LibretroMenu handle. Applications must use
  * the SDL_Libretro_*Menu* functions rather than these fields.
  */
@@ -291,6 +307,13 @@ struct SDL_LibretroMenu {
     // rebuilt when the menu opens so the gamepad names stay current.
     nk_console* gamepadButton;
     SDL_LibretroMenuPadPort padPorts[SDL_LIBRETRO_MAX_USERS];
+
+    // Hotkeys (Settings > Hot Keys).
+    SDL_LibretroMenuHotkeyBind hotkeys[SDL_LIBRETRO_MENU_HOTKEY_COUNT];
+    nk_bool hotkeysDisabled; /**< Disable Hotkeys: every key but the Menu hotkey's goes to the core. */
+    nk_console* hotkeysKeyboardButton; /**< The Hot Keys > Keyboard submenu, disabled with the hotkeys. */
+    nk_console* hotkeysGamepadButton; /**< The Hot Keys > Gamepad submenu, disabled with the hotkeys. */
+    SDL_LibretroMenuHotkey heldHotkey; /**< The Fast Forward, Slow Motion or Rewind hotkey being held, or SDL_LIBRETRO_MENU_HOTKEY_COUNT. */
 
     // Disks, rebuilt when the menu opens.
     nk_console* disksButton;
@@ -1208,6 +1231,10 @@ static void SDL_Libretro_MenuKeyBindChanged(nk_console* widget, void* user_data)
  * when nk_gamepad has no equivalent (e.g. the trigger paddle defaults).
  */
 static enum nk_gamepad_button SDL_Libretro_MenuNkButtonFromSDL(SDL_GamepadButton button) {
+    // The nk_gamepad buttons without an SDL equivalent would match INVALID.
+    if (button == SDL_GAMEPAD_BUTTON_INVALID) {
+        return NK_GAMEPAD_BUTTON_INVALID;
+    }
     for (int i = NK_GAMEPAD_BUTTON_FIRST; i <= NK_GAMEPAD_BUTTON_R3; i++) {
         if (nk_gamepad_sdl3_map_button(i) == button) {
             return (enum nk_gamepad_button)i;
@@ -1308,6 +1335,447 @@ static void SDL_Libretro_MenuBuildGamepads(SDL_LibretroMenu* menu) {
 
 /**
  * @internal
+ * Each hotkey's Hot Keys page label, config key suffix (hotkey_<id>) and
+ * default bindings, in SDL_LibretroMenuHotkey order. The default keys are
+ * the ones the SDL_libretro app used before they could be rebound.
+ */
+static const struct {
+    const char* name;
+    const char* id;
+    SDL_Keycode key;
+    enum nk_gamepad_button gamepad;
+} SDL_Libretro_MenuHotkeyInfo[] = {
+    {"Menu", "menu", SDL_LIBRETRO_MENU_TOGGLE_KEY, NK_GAMEPAD_BUTTON_GUIDE},
+    {"Fast Forward", "fastforward", SDLK_SPACE, NK_GAMEPAD_BUTTON_INVALID},
+    {"Slow Motion", "slowmotion", SDLK_TAB, NK_GAMEPAD_BUTTON_INVALID},
+    {"Rewind", "rewind", SDLK_BACKSPACE, NK_GAMEPAD_BUTTON_INVALID},
+    {"Save State", "savestate", SDLK_F2, NK_GAMEPAD_BUTTON_INVALID},
+    {"Load State", "loadstate", SDLK_F4, NK_GAMEPAD_BUTTON_INVALID},
+    {"Screenshot", "screenshot", SDLK_F12, NK_GAMEPAD_BUTTON_INVALID},
+    {"Volume Up", "volumeup", SDLK_EQUALS, NK_GAMEPAD_BUTTON_INVALID},
+    {"Volume Down", "volumedown", SDLK_MINUS, NK_GAMEPAD_BUTTON_INVALID},
+    {"Mute", "mute", SDLK_UNKNOWN, NK_GAMEPAD_BUTTON_INVALID},
+    {"Fullscreen", "fullscreen", SDLK_F11, NK_GAMEPAD_BUTTON_INVALID},
+    {"Reset", "reset", SDLK_UNKNOWN, NK_GAMEPAD_BUTTON_INVALID},
+    {"Quit", "quit", SDLK_UNKNOWN, NK_GAMEPAD_BUTTON_INVALID},
+};
+SDL_COMPILE_TIME_ASSERT(SDL_Libretro_MenuHotkeyInfo, SDL_arraysize(SDL_Libretro_MenuHotkeyInfo) == SDL_LIBRETRO_MENU_HOTKEY_COUNT);
+
+/**
+ * @internal
+ * A key as hotkeys compare it: letters lower case, so Shift doesn't matter.
+ */
+static SDL_Keycode SDL_Libretro_MenuNormalizeKey(SDL_Keycode key) {
+    return (key >= 'A' && key <= 'Z') ? key + ('a' - 'A') : key;
+}
+
+/**
+ * @internal
+ * The NK_CONSOLE_KEY_* rune showing a hotkey's key in its capture widget.
+ * Character keycodes are their character; NK_CONSOLE_KEY_NONE when the key
+ * has no rune, which can still be bound, just not displayed.
+ */
+static nk_rune SDL_Libretro_MenuRuneFromKeycode(SDL_Keycode key) {
+    if (key == SDLK_UNKNOWN) {
+        return NK_CONSOLE_KEY_NONE;
+    }
+    if ((key & SDLK_SCANCODE_MASK) == 0) {
+        return (nk_rune)key;
+    }
+    SDL_Scancode scancode = (SDL_Scancode)(key & ~SDLK_SCANCODE_MASK);
+    for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
+        if (SDL_Libretro_MenuKeyRunes[i].scancode == scancode) {
+            return SDL_Libretro_MenuKeyRunes[i].rune;
+        }
+    }
+    return NK_CONSOLE_KEY_NONE;
+}
+
+/**
+ * @internal
+ * The SDL keycode for a captured NK_CONSOLE_KEY_* rune, or SDLK_UNKNOWN when
+ * it has no equivalent.
+ */
+static SDL_Keycode SDL_Libretro_MenuKeycodeFromRune(nk_rune rune) {
+    if (rune == NK_CONSOLE_KEY_NONE) {
+        return SDLK_UNKNOWN;
+    }
+    if (rune < NK_CONSOLE_KEY_SPECIAL) {
+        return SDL_Libretro_MenuNormalizeKey((SDL_Keycode)rune);
+    }
+    for (size_t i = 0; i < SDL_arraysize(SDL_Libretro_MenuKeyRunes); i++) {
+        if (SDL_Libretro_MenuKeyRunes[i].rune == rune) {
+            return SDL_SCANCODE_TO_KEYCODE(SDL_Libretro_MenuKeyRunes[i].scancode);
+        }
+    }
+    return SDLK_UNKNOWN;
+}
+
+/**
+ * @internal
+ * Restore every hotkey's default bindings.
+ */
+static void SDL_Libretro_MenuResetHotkeys(SDL_LibretroMenu* menu) {
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        SDL_LibretroMenuHotkeyBind* bind = &menu->hotkeys[i];
+        bind->menu = menu;
+        bind->hotkey = (SDL_LibretroMenuHotkey)i;
+        bind->key = SDL_Libretro_MenuHotkeyInfo[i].key;
+        bind->gamepad = SDL_Libretro_MenuHotkeyInfo[i].gamepad;
+    }
+}
+
+/**
+ * @internal
+ * Refresh the Hot Keys page's captured values from the bindings.
+ */
+static void SDL_Libretro_MenuSyncHotkeyBinds(SDL_LibretroMenu* menu) {
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        menu->hotkeys[i].rune = SDL_Libretro_MenuRuneFromKeycode(menu->hotkeys[i].key);
+        menu->hotkeys[i].captured = menu->hotkeys[i].gamepad;
+    }
+}
+
+/**
+ * @internal
+ * Bind a key (isKey) or gamepad button to a hotkey, or unbind it with
+ * SDLK_UNKNOWN or NK_GAMEPAD_BUTTON_INVALID. Any other hotkey on the same key
+ * or button is unbound, like raylib-libretro's LibretroMenuHotkeyChanged(),
+ * with a message in the menu when notify is set. A change that would leave
+ * the Menu hotkey with neither a key nor a button is refused, so the menu
+ * stays reachable.
+ *
+ * @returns true when the binding changed.
+ */
+static bool SDL_Libretro_MenuAssignHotkey(SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey, bool isKey, SDL_Keycode key, enum nk_gamepad_button gamepad, bool notify) {
+    SDL_LibretroMenuHotkeyBind* binds = menu->hotkeys;
+
+    // Where the Menu hotkey ends up, to refuse stranding the menu.
+    SDL_LibretroMenuHotkeyBind* menuBind = &binds[SDL_LIBRETRO_MENU_HOTKEY_MENU];
+    bool menuHasKey = menuBind->key != SDLK_UNKNOWN;
+    bool menuHasButton = menuBind->gamepad != NK_GAMEPAD_BUTTON_INVALID;
+    if (hotkey == SDL_LIBRETRO_MENU_HOTKEY_MENU) {
+        menuHasKey = isKey ? key != SDLK_UNKNOWN : menuHasKey;
+        menuHasButton = isKey ? menuHasButton : gamepad != NK_GAMEPAD_BUTTON_INVALID;
+    }
+    else if (isKey && key != SDLK_UNKNOWN && menuBind->key == key) {
+        menuHasKey = false;
+    }
+    else if (!isKey && gamepad != NK_GAMEPAD_BUTTON_INVALID && menuBind->gamepad == gamepad) {
+        menuHasButton = false;
+    }
+    if (!menuHasKey && !menuHasButton) {
+        if (notify) {
+            nk_console_show_message(menu->console, "The menu needs a key or button");
+        }
+        SDL_Libretro_MenuSyncHotkeyBinds(menu);
+        return SDL_SetError("The Menu hotkey needs a key or button");
+    }
+
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        bool conflict = i != (int)hotkey &&
+                        (isKey ? (key != SDLK_UNKNOWN && binds[i].key == key)
+                               : (gamepad != NK_GAMEPAD_BUTTON_INVALID && binds[i].gamepad == gamepad));
+        if (!conflict) {
+            continue;
+        }
+        if (isKey) {
+            binds[i].key = SDLK_UNKNOWN;
+        }
+        else {
+            binds[i].gamepad = NK_GAMEPAD_BUTTON_INVALID;
+        }
+        if (notify) {
+            char message[64];
+            SDL_snprintf(message, sizeof(message), "%s has been unbound", SDL_Libretro_MenuHotkeyInfo[i].name);
+            nk_console_show_message(menu->console, message);
+        }
+    }
+
+    if (isKey) {
+        binds[hotkey].key = key;
+    }
+    else {
+        binds[hotkey].gamepad = gamepad;
+    }
+    SDL_Libretro_MenuSyncHotkeyBinds(menu);
+    menu->settingsDirty = true;
+    return true;
+}
+
+/**
+ * @internal
+ * Apply a hotkey's captured key. An empty capture (a timed-out prompt)
+ * unbinds it; a key without an SDL equivalent reverts.
+ */
+static void SDL_Libretro_MenuHotkeyKeyChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuHotkeyBind* bind = (SDL_LibretroMenuHotkeyBind*)user_data;
+    SDL_Keycode key = SDL_Libretro_MenuKeycodeFromRune(bind->rune);
+    if (key == SDLK_UNKNOWN && bind->rune != NK_CONSOLE_KEY_NONE) {
+        SDL_Libretro_MenuSyncHotkeyBinds(bind->menu);
+        return;
+    }
+    SDL_Libretro_MenuAssignHotkey(bind->menu, bind->hotkey, true, key, NK_GAMEPAD_BUTTON_INVALID, true);
+}
+
+/**
+ * @internal
+ * Apply a hotkey's captured gamepad button. An empty capture (a timed-out
+ * prompt) unbinds it; a button without an SDL equivalent reverts.
+ */
+static void SDL_Libretro_MenuHotkeyButtonChanged(nk_console* widget, void* user_data) {
+    (void)widget;
+    SDL_LibretroMenuHotkeyBind* bind = (SDL_LibretroMenuHotkeyBind*)user_data;
+    if (bind->captured != NK_GAMEPAD_BUTTON_INVALID && nk_gamepad_sdl3_map_button((int)bind->captured) == SDL_GAMEPAD_BUTTON_INVALID) {
+        SDL_Libretro_MenuSyncHotkeyBinds(bind->menu);
+        return;
+    }
+    SDL_Libretro_MenuAssignHotkey(bind->menu, bind->hotkey, false, SDLK_UNKNOWN, bind->captured, true);
+}
+
+/**
+ * @internal
+ * A capture prompt that times out clears its value without a CHANGED event,
+ * so apply any capture widget that no longer matches its binding.
+ */
+static void SDL_Libretro_MenuApplyHotkeyTimeouts(SDL_LibretroMenu* menu) {
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        SDL_LibretroMenuHotkeyBind* bind = &menu->hotkeys[i];
+        if (bind->rune != SDL_Libretro_MenuRuneFromKeycode(bind->key)) {
+            SDL_Libretro_MenuHotkeyKeyChanged(NULL, bind);
+        }
+        else if (bind->captured != bind->gamepad) {
+            SDL_Libretro_MenuHotkeyButtonChanged(NULL, bind);
+        }
+    }
+}
+
+/**
+ * @internal
+ * Disable the Hot Keys page's Keyboard and Gamepad submenus while the
+ * hotkeys are disabled.
+ */
+static void SDL_Libretro_MenuSyncHotkeysDisabled(SDL_LibretroMenu* menu) {
+    nk_console_set_disabled(menu->hotkeysKeyboardButton, menu->hotkeysDisabled);
+    nk_console_set_disabled(menu->hotkeysGamepadButton, menu->hotkeysDisabled);
+}
+
+/**
+ * @internal
+ */
+static void SDL_Libretro_MenuHotkeysDisabledChanged(SDL_LibretroMenu* menu, void* userdata) {
+    (void)userdata;
+    menu->settingsDirty = true;
+    SDL_Libretro_MenuSyncHotkeysDisabled(menu);
+}
+
+/**
+ * @internal
+ * The hotkey whose key or gamepad button the event presses or releases, or
+ * SDL_LIBRETRO_MENU_HOTKEY_COUNT when it's none of them.
+ */
+static SDL_LibretroMenuHotkey SDL_Libretro_MenuFindHotkey(const SDL_LibretroMenu* menu, const SDL_Event* event, bool* pressed) {
+    if (event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) {
+        SDL_Keycode key = SDL_Libretro_MenuNormalizeKey(event->key.key);
+        *pressed = event->type == SDL_EVENT_KEY_DOWN;
+        for (int i = 0; key != SDLK_UNKNOWN && i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+            if (menu->hotkeys[i].key == key) {
+                return (SDL_LibretroMenuHotkey)i;
+            }
+        }
+    }
+    else if (event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN || event->type == SDL_EVENT_GAMEPAD_BUTTON_UP) {
+        *pressed = event->type == SDL_EVENT_GAMEPAD_BUTTON_DOWN;
+        for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+            enum nk_gamepad_button button = menu->hotkeys[i].gamepad;
+            if (button != NK_GAMEPAD_BUTTON_INVALID && nk_gamepad_sdl3_map_button((int)button) == (SDL_GamepadButton)event->gbutton.button) {
+                return (SDL_LibretroMenuHotkey)i;
+            }
+        }
+    }
+    return SDL_LIBRETRO_MENU_HOTKEY_COUNT;
+}
+
+/**
+ * @internal
+ * Run a hotkey on its press or release. Fast Forward, Slow Motion and Rewind
+ * set the speed while held; the rest act on release.
+ */
+static void SDL_Libretro_MenuRunHotkey(SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey, bool pressed) {
+    SDL_Libretro* lr = menu->lr;
+    float heldSpeed = 0.0f;
+    switch (hotkey) {
+        case SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD: heldSpeed = 2.0f; break;
+        case SDL_LIBRETRO_MENU_HOTKEY_SLOW_MOTION: heldSpeed = 0.5f; break;
+        case SDL_LIBRETRO_MENU_HOTKEY_REWIND: heldSpeed = -1.0f; break;
+        default: break;
+    }
+    if (heldSpeed != 0.0f) {
+        if (pressed) {
+            SDL_Libretro_SetSpeed(lr, heldSpeed);
+            menu->heldHotkey = hotkey;
+        }
+        else if (menu->heldHotkey == hotkey) {
+            SDL_Libretro_SetSpeed(lr, 1.0f);
+            menu->heldHotkey = SDL_LIBRETRO_MENU_HOTKEY_COUNT;
+        }
+        return;
+    }
+    if (pressed) {
+        return;
+    }
+
+    char savePath[SDL_LIBRETRO_MAX_PATH];
+    switch (hotkey) {
+        case SDL_LIBRETRO_MENU_HOTKEY_MENU:
+            SDL_Libretro_ToggleMenu(menu);
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_SAVE_STATE:
+            if (SDL_Libretro_GetSavePath(lr, ".state", savePath, sizeof(savePath)) > 0) {
+                SDL_Libretro_SaveState(lr, savePath);
+            }
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_LOAD_STATE:
+            if (SDL_Libretro_GetSavePath(lr, ".state", savePath, sizeof(savePath)) > 0) {
+                SDL_Libretro_LoadState(lr, savePath);
+            }
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT:
+            SDL_Libretro_SaveScreenshot(lr, NULL);
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_VOLUME_UP:
+            SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_VOLUME_DOWN:
+            SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) - 0.1f);
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_MUTE:
+            menu->muteChecked = (nk_bool)!menu->muteChecked;
+            SDL_Libretro_MenuMuteChanged(menu, NULL);
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_FULLSCREEN:
+            menu->fullscreenChecked = (nk_bool)((SDL_GetWindowFlags(lr->window) & SDL_WINDOW_FULLSCREEN) == 0);
+            SDL_Libretro_MenuFullscreenChanged(menu, NULL);
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_RESET:
+            SDL_Libretro_Reset(lr);
+            break;
+        case SDL_LIBRETRO_MENU_HOTKEY_QUIT: {
+            SDL_Event quit;
+            SDL_zero(quit);
+            quit.type = SDL_EVENT_QUIT;
+            quit.quit.timestamp = SDL_GetTicksNS();
+            SDL_PushEvent(&quit);
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+/**
+ * @internal
+ * Build the "Hot Keys" submenu: Disable Hotkeys, then a "Keyboard" page with
+ * a key capture widget per hotkey and a "Gamepad" page with a button capture
+ * widget per hotkey. Both pages are disabled while the hotkeys are.
+ */
+static void SDL_Libretro_MenuBuildHotkeys(SDL_LibretroMenu* menu, nk_console* parent) {
+    nk_console* page = SDL_Libretro_MenuAddSubmenu(parent, "Hot Keys", NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_set_tooltip(page, "Keys and gamepad buttons for frontend actions");
+    SDL_Libretro_MenuSyncHotkeyBinds(menu);
+
+    nk_console_set_tooltip(
+        SDL_Libretro_MenuAddCheckbox(menu, page, "Disable Hotkeys", &menu->hotkeysDisabled, NULL, &SDL_Libretro_MenuHotkeysDisabledChanged, NULL),
+        "Pass every key to the core; only the Menu hotkey stays live");
+
+    nk_console* keyboard = SDL_Libretro_MenuAddSubmenu(page, "Keyboard", NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_set_tooltip(keyboard, "Keyboard keys for frontend actions");
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        nk_console_set_tooltip(
+            SDL_Libretro_MenuOnChanged(nk_console_input_key(keyboard, SDL_Libretro_MenuHotkeyInfo[i].name, &menu->hotkeys[i].rune), &SDL_Libretro_MenuHotkeyKeyChanged, &menu->hotkeys[i]),
+            "Let the prompt time out to unbind it");
+    }
+    SDL_Libretro_MenuAddBackButton(keyboard);
+
+    nk_console* gamepad = SDL_Libretro_MenuAddSubmenu(page, "Gamepad", NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_set_tooltip(gamepad, "Gamepad buttons for frontend actions; they press the retro controller's buttons too");
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        nk_console_set_tooltip(
+            SDL_Libretro_MenuOnChanged(nk_console_input_gamepad(gamepad, SDL_Libretro_MenuHotkeyInfo[i].name, -1, NULL, &menu->hotkeys[i].captured), &SDL_Libretro_MenuHotkeyButtonChanged, &menu->hotkeys[i]),
+            "Let the prompt time out to unbind it");
+    }
+    SDL_Libretro_MenuAddBackButton(gamepad);
+    SDL_Libretro_MenuAddBackButton(page);
+
+    menu->hotkeysKeyboardButton = keyboard;
+    menu->hotkeysGamepadButton = gamepad;
+    SDL_Libretro_MenuSyncHotkeysDisabled(menu);
+}
+
+/**
+ * @internal
+ * Restore the hotkey bindings from the config: hotkey_<id> holds the key
+ * name and hotkey_<id>_gamepad the gamepad button name, empty when unbound.
+ * Unreadable names keep the default.
+ */
+static void SDL_Libretro_MenuLoadHotkeys(SDL_LibretroMenu* menu) {
+    SDL_ini* ini = menu->lr->ini;
+    SDL_Libretro_MenuResetHotkeys(menu);
+    if (ini == NULL) {
+        return;
+    }
+    menu->hotkeysDisabled = (nk_bool)INI_GetBoolean(ini, NULL, "hotkeys_disabled", false);
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        SDL_LibretroMenuHotkeyBind* bind = &menu->hotkeys[i];
+        char name[64];
+        SDL_snprintf(name, sizeof(name), "hotkey_%s", SDL_Libretro_MenuHotkeyInfo[i].id);
+        if (INI_HasKey(ini, NULL, name)) {
+            const char* value = INI_GetString(ini, NULL, name, "");
+            SDL_Keycode key = SDL_Libretro_MenuNormalizeKey(SDL_GetKeyFromName(value));
+            if (value[0] == '\0' || key != SDLK_UNKNOWN) {
+                bind->key = key;
+            }
+        }
+        SDL_snprintf(name, sizeof(name), "hotkey_%s_gamepad", SDL_Libretro_MenuHotkeyInfo[i].id);
+        if (INI_HasKey(ini, NULL, name)) {
+            const char* value = INI_GetString(ini, NULL, name, "");
+            enum nk_gamepad_button button = SDL_Libretro_MenuNkButtonFromSDL(SDL_GetGamepadButtonFromString(value));
+            if (value[0] == '\0' || button != NK_GAMEPAD_BUTTON_INVALID) {
+                bind->gamepad = button;
+            }
+        }
+    }
+    // A hand-edited config can't lock the user out of the menu.
+    SDL_LibretroMenuHotkeyBind* menuBind = &menu->hotkeys[SDL_LIBRETRO_MENU_HOTKEY_MENU];
+    if (menuBind->key == SDLK_UNKNOWN && menuBind->gamepad == NK_GAMEPAD_BUTTON_INVALID) {
+        menuBind->key = SDL_Libretro_MenuHotkeyInfo[SDL_LIBRETRO_MENU_HOTKEY_MENU].key;
+        menuBind->gamepad = SDL_Libretro_MenuHotkeyInfo[SDL_LIBRETRO_MENU_HOTKEY_MENU].gamepad;
+    }
+}
+
+/**
+ * @internal
+ * Write the hotkey bindings to the config.
+ *
+ * @see SDL_Libretro_MenuLoadHotkeys()
+ */
+static void SDL_Libretro_MenuSaveHotkeys(SDL_LibretroMenu* menu) {
+    SDL_ini* ini = menu->lr->ini;
+    INI_SetBoolean(ini, NULL, "hotkeys_disabled", menu->hotkeysDisabled == nk_true);
+    for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
+        const SDL_LibretroMenuHotkeyBind* bind = &menu->hotkeys[i];
+        char name[64];
+        SDL_snprintf(name, sizeof(name), "hotkey_%s", SDL_Libretro_MenuHotkeyInfo[i].id);
+        INI_SetString(ini, NULL, name, bind->key != SDLK_UNKNOWN ? SDL_GetKeyName(bind->key) : "");
+        SDL_snprintf(name, sizeof(name), "hotkey_%s_gamepad", SDL_Libretro_MenuHotkeyInfo[i].id);
+        const char* button = bind->gamepad != NK_GAMEPAD_BUTTON_INVALID ? SDL_GetGamepadStringForButton(nk_gamepad_sdl3_map_button((int)bind->gamepad)) : NULL;
+        INI_SetString(ini, NULL, name, button != NULL ? button : "");
+    }
+}
+
+/**
+ * @internal
  * Read the menu's own persisted state from the config, applying it to the
  * window, renderer and volume before the widgets snapshot them.
  *
@@ -1320,6 +1788,7 @@ static void SDL_Libretro_MenuLoadState(SDL_LibretroMenu* menu) {
     // Default the UI scale to 2x; a saved choice (including an explicit Auto)
     // overrides it below.
     menu->uiScaleIndex = 2;
+    SDL_Libretro_MenuLoadHotkeys(menu);
     if (lr->ini != NULL) {
         Sint64 savedStyle = INI_GetInt(lr->ini, NULL, "menutheme", (Sint64)style);
         if (savedStyle >= 0 && savedStyle < (Sint64)SDL_LIBRETRO_MENU_STYLE_COUNT) {
@@ -1367,6 +1836,7 @@ static void SDL_Libretro_MenuSaveState(SDL_LibretroMenu* menu) {
     INI_SetBoolean(lr->ini, NULL, "menuvsync", menu->vsyncChecked == nk_true);
     INI_SetBoolean(lr->ini, NULL, "menumuted", menu->muteChecked == nk_true);
     INI_SetFloat(lr->ini, NULL, "menumutevolume", menu->preMuteVolume);
+    SDL_Libretro_MenuSaveHotkeys(menu);
 }
 
 /**
@@ -2309,6 +2779,135 @@ SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu) {
 }
 
 /**
+ * Binds a key to a menu hotkey.
+ *
+ * Any other hotkey on the same key is unbound. Letters match with or without
+ * Shift. The binding is saved to the config with the other menu settings,
+ * and can also be changed in Settings > Hot Keys > Keyboard.
+ *
+ * @param menu the menu to update.
+ * @param hotkey the hotkey to bind; must be below SDL_LIBRETRO_MENU_HOTKEY_COUNT.
+ * @param key the key to bind, or SDLK_UNKNOWN to unbind it.
+ * @returns true on success, false when menu is NULL, hotkey is out of range,
+ *          or the Menu hotkey would be left with neither a key nor a gamepad
+ *          button; call SDL_GetError() for more information.
+ *
+ * @see SDL_Libretro_GetMenuHotkey()
+ * @see SDL_Libretro_SetMenuHotkeyButton()
+ */
+bool SDL_Libretro_SetMenuHotkey(SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey, SDL_Keycode key) {
+    if (menu == NULL) {
+        return SDL_InvalidParamError("menu");
+    }
+    if ((int)hotkey < 0 || hotkey >= SDL_LIBRETRO_MENU_HOTKEY_COUNT) {
+        return SDL_InvalidParamError("hotkey");
+    }
+    return SDL_Libretro_MenuAssignHotkey(menu, hotkey, true, SDL_Libretro_MenuNormalizeKey(key), NK_GAMEPAD_BUTTON_INVALID, false);
+}
+
+/**
+ * Gets the key bound to a menu hotkey.
+ *
+ * @param menu the menu to query.
+ * @param hotkey the hotkey to query.
+ * @returns the bound key, or SDLK_UNKNOWN when it's unbound, menu is NULL or
+ *          hotkey is out of range.
+ *
+ * @see SDL_Libretro_SetMenuHotkey()
+ */
+SDL_Keycode SDL_Libretro_GetMenuHotkey(const SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey) {
+    if (menu == NULL || (int)hotkey < 0 || hotkey >= SDL_LIBRETRO_MENU_HOTKEY_COUNT) {
+        return SDLK_UNKNOWN;
+    }
+    return menu->hotkeys[hotkey].key;
+}
+
+/**
+ * Binds a gamepad button, on any gamepad, to a menu hotkey.
+ *
+ * Any other hotkey on the same button is unbound. Gamepad hotkeys still
+ * press their button on the retro controller too. The binding is saved to
+ * the config with the other menu settings, and can also be changed in
+ * Settings > Hot Keys > Gamepad.
+ *
+ * @param menu the menu to update.
+ * @param hotkey the hotkey to bind; must be below SDL_LIBRETRO_MENU_HOTKEY_COUNT.
+ * @param button the button to bind, or SDL_GAMEPAD_BUTTON_INVALID to unbind it.
+ * @returns true on success, false when menu is NULL, hotkey is out of range,
+ *          the button can't be bound, or the Menu hotkey would be left with
+ *          neither a key nor a gamepad button; call SDL_GetError() for more
+ *          information.
+ *
+ * @see SDL_Libretro_GetMenuHotkeyButton()
+ * @see SDL_Libretro_SetMenuHotkey()
+ */
+bool SDL_Libretro_SetMenuHotkeyButton(SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey, SDL_GamepadButton button) {
+    if (menu == NULL) {
+        return SDL_InvalidParamError("menu");
+    }
+    if ((int)hotkey < 0 || hotkey >= SDL_LIBRETRO_MENU_HOTKEY_COUNT) {
+        return SDL_InvalidParamError("hotkey");
+    }
+    enum nk_gamepad_button nkButton = SDL_Libretro_MenuNkButtonFromSDL(button);
+    if (button != SDL_GAMEPAD_BUTTON_INVALID && nkButton == NK_GAMEPAD_BUTTON_INVALID) {
+        return SDL_SetError("Gamepad button %d can't be a hotkey", (int)button);
+    }
+    return SDL_Libretro_MenuAssignHotkey(menu, hotkey, false, SDLK_UNKNOWN, nkButton, false);
+}
+
+/**
+ * Gets the gamepad button bound to a menu hotkey.
+ *
+ * @param menu the menu to query.
+ * @param hotkey the hotkey to query.
+ * @returns the bound button, or SDL_GAMEPAD_BUTTON_INVALID when it's unbound,
+ *          menu is NULL or hotkey is out of range.
+ *
+ * @see SDL_Libretro_SetMenuHotkeyButton()
+ */
+SDL_GamepadButton SDL_Libretro_GetMenuHotkeyButton(const SDL_LibretroMenu* menu, SDL_LibretroMenuHotkey hotkey) {
+    if (menu == NULL || (int)hotkey < 0 || hotkey >= SDL_LIBRETRO_MENU_HOTKEY_COUNT || menu->hotkeys[hotkey].gamepad == NK_GAMEPAD_BUTTON_INVALID) {
+        return SDL_GAMEPAD_BUTTON_INVALID;
+    }
+    return nk_gamepad_sdl3_map_button((int)menu->hotkeys[hotkey].gamepad);
+}
+
+/**
+ * Turns the menu hotkeys on or off.
+ *
+ * While they're off, SDL_Libretro_HandleMenuEvent() passes every key and
+ * button through, for cores that use them (some use the F keys), except the
+ * Menu hotkey, which still toggles the menu. This is Settings > Hot Keys >
+ * Disable Hotkeys, and is saved to the config with the other menu settings.
+ * Hotkeys start enabled.
+ *
+ * @param menu the menu to update. NULL is ignored.
+ * @param enabled true to run the hotkeys, false to pass them through.
+ *
+ * @see SDL_Libretro_GetMenuHotkeysEnabled()
+ */
+void SDL_Libretro_SetMenuHotkeysEnabled(SDL_LibretroMenu* menu, bool enabled) {
+    if (menu != NULL) {
+        menu->hotkeysDisabled = (nk_bool)!enabled;
+        menu->settingsDirty = true;
+        SDL_Libretro_MenuSyncHotkeysDisabled(menu);
+    }
+}
+
+/**
+ * Checks whether the menu hotkeys are enabled.
+ *
+ * @param menu the menu to query.
+ * @returns true when the hotkeys run, false when they're disabled or menu is
+ *          NULL.
+ *
+ * @see SDL_Libretro_SetMenuHotkeysEnabled()
+ */
+bool SDL_Libretro_GetMenuHotkeysEnabled(const SDL_LibretroMenu* menu) {
+    return menu != NULL && !menu->hotkeysDisabled;
+}
+
+/**
  * @internal
  */
 static void SDL_Libretro_MenuStyleChanged(nk_console* widget, void* user_data) {
@@ -2531,6 +3130,9 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(menu->gamepadButton, "Per-player gamepad buttons for the retro controllers");
     SDL_Libretro_MenuBuildGamepads(menu);
 
+    // Hot Keys for the frontend actions.
+    SDL_Libretro_MenuBuildHotkeys(menu, settings);
+
     // Directories
     nk_console* directories = SDL_Libretro_MenuAddSubmenu(settings, "Directories", NK_SYMBOL_TRIANGLE_RIGHT);
 
@@ -2651,6 +3253,7 @@ SDL_LibretroMenu* SDL_Libretro_CreateMenu(SDL_Libretro* lr) {
         return NULL;
     }
     menu->lr = lr;
+    menu->heldHotkey = SDL_LIBRETRO_MENU_HOTKEY_COUNT;
 
     menu->ctx = nk_sdl_init(lr->window, lr->renderer, nk_sdl_allocator());
     if (menu->ctx == NULL) {
@@ -2846,8 +3449,8 @@ void SDL_Libretro_SetMenuOpen(SDL_LibretroMenu* menu, bool open) {
 /**
  * Opens the menu when it is closed, or closes it when it is open.
  *
- * This is what the toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad
- * Guide button do in SDL_Libretro_HandleMenuEvent().
+ * This is what the Menu hotkey (SDL_LIBRETRO_MENU_HOTKEY_MENU; F1 and the
+ * gamepad Guide button by default) does in SDL_Libretro_HandleMenuEvent().
  *
  * @param menu the menu to toggle. NULL is ignored.
  *
@@ -2863,9 +3466,13 @@ void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
  * Routes an event to the menu; call this for every event, before
  * SDL_Libretro_HandleEvent().
  *
- * The toggle key (SDL_LIBRETRO_MENU_TOGGLE_KEY) and the gamepad Guide button
- * flip the menu open or closed, and are always consumed. Gamepad connection
- * changes are tracked even while the menu is closed.
+ * The Menu hotkey (F1 and the gamepad Guide button by default) flips the
+ * menu open or closed, and is always consumed. While the menu is closed, the
+ * other hotkeys (see SDL_LibretroMenuHotkey) run their actions and are
+ * consumed too, unless they're disabled with
+ * SDL_Libretro_SetMenuHotkeysEnabled() or Settings > Hot Keys > Disable
+ * Hotkeys. Gamepad connection changes are tracked even while the menu is
+ * closed.
  *
  * SDL_EVENT_LIBRETRO_OPTIONS_CHANGED marks the Core Options page for a
  * rebuild, so options changed outside the menu show up; it always passes
@@ -2874,7 +3481,7 @@ void SDL_Libretro_ToggleMenu(SDL_LibretroMenu* menu) {
  * @param menu the menu to feed.
  * @param event the event to handle; it is not modified.
  * @returns true when the menu consumed the event: do not forward it to
- *          SDL_Libretro_HandleEvent(). This happens for the toggle inputs
+ *          SDL_Libretro_HandleEvent(). This happens for the hotkey inputs
  *          above, and for gameplay input swallowed while the menu is open.
  *          false when the event should be handled as usual: the menu is
  *          closed, menu or event is NULL, the event is an application event
@@ -2909,23 +3516,34 @@ bool SDL_Libretro_HandleMenuEvent(SDL_LibretroMenu* menu, const SDL_Event* event
         return false;
     }
 
-    // Toggle on the menu key or the gamepad Guide button.
-    // Both edges of the toggle key are consumed so the core never sees an
-    // unmatched press; only the release toggles.
-    if ((event->type == SDL_EVENT_KEY_DOWN || event->type == SDL_EVENT_KEY_UP) &&
-        event->key.key == SDL_LIBRETRO_MENU_TOGGLE_KEY) {
-        if (event->type == SDL_EVENT_KEY_UP) {
+    // Hotkeys. Both edges of a hotkey are consumed so the core never sees an
+    // unmatched press. The Menu hotkey toggles on release, even with hotkeys
+    // disabled, except while a Hot Keys prompt is capturing it.
+    bool pressed = false;
+    SDL_LibretroMenuHotkey hotkey = SDL_Libretro_MenuFindHotkey(menu, event, &pressed);
+    bool capturing = menu->open && nk_console_active_parent(menu->console)->type == NK_CONSOLE_INPUT;
+    bool repeat = (event->type == SDL_EVENT_KEY_DOWN && event->key.repeat);
+    if (hotkey == SDL_LIBRETRO_MENU_HOTKEY_MENU && !capturing) {
+        if (!pressed) {
             SDL_Libretro_ToggleMenu(menu);
         }
         return true;
     }
-    if (event->type == SDL_EVENT_GAMEPAD_BUTTON_UP && event->gbutton.button == SDL_GAMEPAD_BUTTON_GUIDE) {
-        SDL_Libretro_ToggleMenu(menu);
+
+    if (!menu->open) {
+        if (hotkey == SDL_LIBRETRO_MENU_HOTKEY_COUNT || menu->hotkeysDisabled) {
+            return false;
+        }
+        if (!repeat) {
+            SDL_Libretro_MenuRunHotkey(menu, hotkey, pressed);
+        }
         return true;
     }
 
-    if (!menu->open) {
-        return false;
+    // A held Fast Forward, Slow Motion or Rewind ends when it's let go, even
+    // once the menu has opened over it.
+    if (hotkey != SDL_LIBRETRO_MENU_HOTKEY_COUNT && !pressed && hotkey == menu->heldHotkey) {
+        SDL_Libretro_MenuRunHotkey(menu, hotkey, false);
     }
 
     // Application events, including the menu's own notifications, are never
@@ -3043,6 +3661,7 @@ bool SDL_Libretro_OpenMenuPath(SDL_LibretroMenu* menu, const char* path) {
     SDL_Libretro_MenuSyncSettingsBuffers(menu);
     SDL_Libretro_MenuSyncKeyBinds(menu);
     SDL_Libretro_MenuSyncPadBinds(menu);
+    SDL_Libretro_MenuSyncHotkeyBinds(menu);
     menu->wasOpen = true;
 
     return nk_console_navigate_to_path(menu->console, path) == nk_true;
@@ -3168,7 +3787,9 @@ void SDL_Libretro_UpdateMenu(SDL_LibretroMenu* menu) {
         SDL_Libretro_MenuSyncSettingsBuffers(menu);
         SDL_Libretro_MenuSyncKeyBinds(menu);
         SDL_Libretro_MenuSyncPadBinds(menu);
+        SDL_Libretro_MenuSyncHotkeyBinds(menu);
     }
+    SDL_Libretro_MenuApplyHotkeyTimeouts(menu);
 
     // Flush changed menu settings into the config, so a save from elsewhere
     // (e.g. a game unloading) has them.
