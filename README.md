@@ -219,26 +219,26 @@ See [`example/SDL_libretro_embed.html`](example/SDL_libretro_embed.html) for a c
 
 Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves. Each name below is prefixed with `SDL_LIBRETRO_`, e.g. `SDL_LIBRETRO_MAX_USERS`.
 
-| Name | Default | Description |
-| --- | --- | --- |
-| `MAX_USERS` | `4` | The number of controller ports |
-| `GET_TICKS_NS()` | `SDL_GetTicksNS()` | The nanosecond clock that paces `SDL_Libretro_Update()` and the frame-time callback, e.g. to substitute a fake clock in tests |
-| `AUDIO_DEFAULT_LATENCY_MS` | `100` | The default audio latency threshold |
-| `AUDIO_DEFAULT_SAMPLE_RATE` | `48000` | The rate used when a core reports no sample rate |
-| `AUDIO_DRC_MAX_DELTA` | `0.005` | How hard dynamic rate control may bend the audio pitch |
-| `MIC_DEFAULT_RATE` | `44100` | The default microphone sample rate |
-| `REWIND_DEFAULT_MAX_BYTES` | 256 MiB | The default rewind memory limit |
-| `ENABLE_REWIND_DELTA` | | Enable the XOR delta between rewind frames to reduce memory at the expense of performance |
-| `ENABLE_PHYSFS` | | Enable .zip loading with PhysFS |
-| `PHYSFS_MOUNT_POINT` | `"game"` | The PhysFS mount point archives are mounted at |
-| `ENABLE_MENU` | | Enable the nuklear_console menu |
-| `MENU_TOGGLE_KEY` | `SDLK_F1` | The default key of the Menu hotkey, which toggles the menu |
-| `MENU_FONT_HEIGHT` | `13` | Base menu font height in pixels |
-| `MENU_DEFAULT_STYLE` | `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA` | The initial menu theme |
-| `DISABLE_PHYSFS`, `DISABLE_MENU` | | Turn PhysFS or the menu back off, even when enabled |
-| `DISABLE_VFS` | | Don't provide the SDL-backed libretro VFS, e.g. when implementing your own (PhysFS requires it) |
-| `NO_INI_IMPLEMENTATION`, `PHYSFS_NO_SDL_PHYSFS_IMPLEMENTATION`, `MENU_NO_NK_IMPLEMENTATION` | | Skip compiling the bundled SDL_ini, SDL_PhysFS or Nuklear implementations when they're already compiled elsewhere |
-| `MENU_NUKLEAR_H`, `MENU_NUKLEAR_SDL3_RENDERER_H`, `MENU_NUKLEAR_GAMEPAD_H`, `MENU_NUKLEAR_CONSOLE_H` | | Include paths for the menu's Nuklear headers |
+| Name | Description |
+| --- | --- |
+| `MAX_USERS` | The number of controller ports (default `4`) |
+| `GET_TICKS_NS()` | The nanosecond clock that paces `SDL_Libretro_Update()` and the frame-time callback, e.g. to substitute a fake clock in tests (default `SDL_GetTicksNS()`) |
+| `AUDIO_DEFAULT_LATENCY_MS` | The default audio latency threshold (default `100`) |
+| `AUDIO_DEFAULT_SAMPLE_RATE` | The rate used when a core reports no sample rate (default `48000`) |
+| `AUDIO_DRC_MAX_DELTA` | How hard dynamic rate control may bend the audio pitch (default `0.005`) |
+| `MIC_DEFAULT_RATE` | The default microphone sample rate (default `44100`) |
+| `REWIND_DEFAULT_MAX_BYTES` | The default rewind memory limit (default 256 MiB) |
+| `ENABLE_REWIND_DELTA` | Enable the XOR delta between rewind frames to reduce memory at the expense of performance |
+| `ENABLE_PHYSFS` | Enable .zip loading with PhysFS |
+| `PHYSFS_MOUNT_POINT` | The PhysFS mount point archives are mounted at (default `"game"`) |
+| `ENABLE_MENU` | Enable the nuklear_console menu |
+| `MENU_TOGGLE_KEY` | The default key of the Menu hotkey, which toggles the menu (default `SDLK_F1`) |
+| `MENU_FONT_HEIGHT` | Base menu font height in pixels (default `13`) |
+| `MENU_DEFAULT_STYLE` | The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA`) |
+| `DISABLE_PHYSFS`, `DISABLE_MENU` | Turn PhysFS or the menu back off, even when enabled |
+| `DISABLE_VFS` | Don't provide the SDL-backed libretro VFS, e.g. when implementing your own (PhysFS requires it) |
+| `NO_INI_IMPLEMENTATION`, `PHYSFS_NO_SDL_PHYSFS_IMPLEMENTATION`, `MENU_NO_NK_IMPLEMENTATION` | Skip compiling the bundled SDL_ini, SDL_PhysFS or Nuklear implementations when they're already compiled elsewhere |
+| `MENU_NUKLEAR_H`, `MENU_NUKLEAR_SDL3_RENDERER_H`, `MENU_NUKLEAR_GAMEPAD_H`, `MENU_NUKLEAR_CONSOLE_H` | Include paths for the menu's Nuklear headers |
 
 Define `NK_CONSOLE_FILE_NO_SDL_NATIVE_DIALOG` to Load Game with the menu's own file browser instead of the OS file dialog. Gamepads, and systems where the OS dialog can't open, use the file browser either way.
 
