@@ -4804,6 +4804,8 @@ static int SDLCALL test_Menu(void *arg) {
         // Disable Hotkeys passes every key through but the Menu hotkey.
         SDL_Libretro_SetMenuHotkeysEnabled(menu, false);
         SDLTest_AssertCheck(SDL_Libretro_GetMenuHotkeysEnabled(menu) == false, "Hotkeys can be disabled");
+        SDLTest_AssertCheck(nk_console_is_disabled(menu->hotkeysKeyboardButton) && nk_console_is_disabled(menu->hotkeysGamepadButton),
+            "Disabling hotkeys disables the Keyboard and Gamepad pages");
         event.type = SDL_EVENT_KEY_DOWN;
         event.key.key = SDLK_SPACE;
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == false, "Disabled hotkeys pass through");
@@ -4814,6 +4816,8 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_HandleMenuEvent(menu, &event) == true && SDL_Libretro_IsMenuOpen(menu) == true,
             "The Menu hotkey stays live with hotkeys disabled");
         SDL_Libretro_SetMenuHotkeysEnabled(menu, true);
+        SDLTest_AssertCheck(!nk_console_is_disabled(menu->hotkeysKeyboardButton) && !nk_console_is_disabled(menu->hotkeysGamepadButton),
+            "Enabling hotkeys enables the Keyboard and Gamepad pages");
 
         // Rebinding a key unbinds any other hotkey on it, with a message.
         SDLTest_AssertCheck(SDL_Libretro_SetMenuHotkey(menu, SDL_LIBRETRO_MENU_HOTKEY_SCREENSHOT, SDLK_F2) == true,
@@ -4879,9 +4883,13 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_Libretro_OpenMenuPath(menu, "Settings/Hot Keys") == true, "OpenMenuPath resolves Settings/Hot Keys");
         nk_console* hotkeysPage = nk_console_active_parent(menu->console);
         SDLTest_AssertCheck(test_MenuIsSubmenuPage(hotkeysPage), "The Hot Keys page ends with a Back button");
-        SDLTest_AssertCheck(cvector_size(hotkeysPage->children) == (size_t)SDL_LIBRETRO_MENU_HOTKEY_COUNT + 3,
-            "The Hot Keys page lists Disable Hotkeys, a capture per hotkey, Gamepad and Back");
-        SDL_Libretro_MenuSetActiveParent(menu, hotkeysPage->children[1]);
+        SDLTest_AssertCheck(cvector_size(hotkeysPage->children) == 4 &&
+            hotkeysPage->children[1] == menu->hotkeysKeyboardButton && hotkeysPage->children[2] == menu->hotkeysGamepadButton,
+            "The Hot Keys page lists Disable Hotkeys, Keyboard, Gamepad and Back");
+        SDLTest_AssertCheck(test_MenuIsSubmenuPage(menu->hotkeysKeyboardButton) &&
+            cvector_size(menu->hotkeysKeyboardButton->children) == (size_t)SDL_LIBRETRO_MENU_HOTKEY_COUNT + 1,
+            "The Hot Keys Keyboard page lists a capture per hotkey before Back");
+        SDL_Libretro_MenuSetActiveParent(menu, menu->hotkeysKeyboardButton->children[0]);
         SDL_zero(event);
         event.type = SDL_EVENT_KEY_UP;
         event.key.key = SDLK_F1;
@@ -5193,6 +5201,8 @@ static int SDLCALL test_Menu(void *arg) {
         "Hotkey gamepad buttons persist through the config file");
     SDLTest_AssertCheck(menuLoad != NULL && SDL_Libretro_GetMenuHotkeysEnabled(menuLoad) == false,
         "Disable Hotkeys persists through the config file");
+    SDLTest_AssertCheck(menuLoad != NULL && nk_console_is_disabled(menuLoad->hotkeysKeyboardButton) && nk_console_is_disabled(menuLoad->hotkeysGamepadButton),
+        "Persisted Disable Hotkeys disables the Keyboard and Gamepad pages");
     SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_B] == SDL_SCANCODE_K,
         "Keyboard bindings persist through the config file");
     SDLTest_AssertCheck(lrLoad->keyboardPlayer1[RETRO_DEVICE_ID_JOYPAD_A] == SDL_SCANCODE_X,

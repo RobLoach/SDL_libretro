@@ -310,6 +310,8 @@ struct SDL_LibretroMenu {
     // Hotkeys (Settings > Hot Keys).
     SDL_LibretroMenuHotkeyBind hotkeys[SDL_LIBRETRO_MENU_HOTKEY_COUNT];
     nk_bool hotkeysDisabled; /**< Disable Hotkeys: every key but the Menu hotkey's goes to the core. */
+    nk_console* hotkeysKeyboardButton; /**< The Hot Keys > Keyboard submenu, disabled with the hotkeys. */
+    nk_console* hotkeysGamepadButton; /**< The Hot Keys > Gamepad submenu, disabled with the hotkeys. */
     SDL_LibretroMenuHotkey heldHotkey; /**< The Fast Forward, Slow Motion or Rewind hotkey being held, or SDL_LIBRETRO_MENU_HOTKEY_COUNT. */
 
     // Disks, rebuilt when the menu opens.
@@ -1550,10 +1552,21 @@ static void SDL_Libretro_MenuApplyHotkeyTimeouts(SDL_LibretroMenu* menu) {
 
 /**
  * @internal
+ * Disable the Hot Keys page's Keyboard and Gamepad submenus while the
+ * hotkeys are disabled.
+ */
+static void SDL_Libretro_MenuSyncHotkeysDisabled(SDL_LibretroMenu* menu) {
+    nk_console_set_disabled(menu->hotkeysKeyboardButton, menu->hotkeysDisabled);
+    nk_console_set_disabled(menu->hotkeysGamepadButton, menu->hotkeysDisabled);
+}
+
+/**
+ * @internal
  */
 static void SDL_Libretro_MenuHotkeysDisabledChanged(SDL_LibretroMenu* menu, void* userdata) {
     (void)userdata;
     menu->settingsDirty = true;
+    SDL_Libretro_MenuSyncHotkeysDisabled(menu);
 }
 
 /**
@@ -1662,8 +1675,9 @@ static void SDL_Libretro_MenuRunHotkey(SDL_LibretroMenu* menu, SDL_LibretroMenuH
 
 /**
  * @internal
- * Build the "Hot Keys" submenu: Disable Hotkeys, a key capture widget per
- * hotkey, and a "Gamepad" page with a button capture widget per hotkey.
+ * Build the "Hot Keys" submenu: Disable Hotkeys, then a "Keyboard" page with
+ * a key capture widget per hotkey and a "Gamepad" page with a button capture
+ * widget per hotkey. Both pages are disabled while the hotkeys are.
  */
 static void SDL_Libretro_MenuBuildHotkeys(SDL_LibretroMenu* menu, nk_console* parent) {
     nk_console* page = SDL_Libretro_MenuAddSubmenu(parent, "Hot Keys", NK_SYMBOL_TRIANGLE_RIGHT);
@@ -1674,11 +1688,14 @@ static void SDL_Libretro_MenuBuildHotkeys(SDL_LibretroMenu* menu, nk_console* pa
         SDL_Libretro_MenuAddCheckbox(menu, page, "Disable Hotkeys", &menu->hotkeysDisabled, NULL, &SDL_Libretro_MenuHotkeysDisabledChanged, NULL),
         "Pass every key to the core; only the Menu hotkey stays live");
 
+    nk_console* keyboard = SDL_Libretro_MenuAddSubmenu(page, "Keyboard", NK_SYMBOL_TRIANGLE_RIGHT);
+    nk_console_set_tooltip(keyboard, "Keyboard keys for frontend actions");
     for (int i = 0; i < SDL_LIBRETRO_MENU_HOTKEY_COUNT; i++) {
         nk_console_set_tooltip(
-            SDL_Libretro_MenuOnChanged(nk_console_input_key(page, SDL_Libretro_MenuHotkeyInfo[i].name, &menu->hotkeys[i].rune), &SDL_Libretro_MenuHotkeyKeyChanged, &menu->hotkeys[i]),
+            SDL_Libretro_MenuOnChanged(nk_console_input_key(keyboard, SDL_Libretro_MenuHotkeyInfo[i].name, &menu->hotkeys[i].rune), &SDL_Libretro_MenuHotkeyKeyChanged, &menu->hotkeys[i]),
             "Let the prompt time out to unbind it");
     }
+    SDL_Libretro_MenuAddBackButton(keyboard);
 
     nk_console* gamepad = SDL_Libretro_MenuAddSubmenu(page, "Gamepad", NK_SYMBOL_TRIANGLE_RIGHT);
     nk_console_set_tooltip(gamepad, "Gamepad buttons for frontend actions; they press the retro controller's buttons too");
@@ -1689,6 +1706,10 @@ static void SDL_Libretro_MenuBuildHotkeys(SDL_LibretroMenu* menu, nk_console* pa
     }
     SDL_Libretro_MenuAddBackButton(gamepad);
     SDL_Libretro_MenuAddBackButton(page);
+
+    menu->hotkeysKeyboardButton = keyboard;
+    menu->hotkeysGamepadButton = gamepad;
+    SDL_Libretro_MenuSyncHotkeysDisabled(menu);
 }
 
 /**
@@ -2761,7 +2782,7 @@ SDL_LibretroMenuStyle SDL_Libretro_GetMenuStyle(const SDL_LibretroMenu* menu) {
  *
  * Any other hotkey on the same key is unbound. Letters match with or without
  * Shift. The binding is saved to the config with the other menu settings,
- * and can also be changed in Settings > Hot Keys.
+ * and can also be changed in Settings > Hot Keys > Keyboard.
  *
  * @param menu the menu to update.
  * @param hotkey the hotkey to bind; must be below SDL_LIBRETRO_MENU_HOTKEY_COUNT.
@@ -2868,6 +2889,7 @@ void SDL_Libretro_SetMenuHotkeysEnabled(SDL_LibretroMenu* menu, bool enabled) {
     if (menu != NULL) {
         menu->hotkeysDisabled = (nk_bool)!enabled;
         menu->settingsDirty = true;
+        SDL_Libretro_MenuSyncHotkeysDisabled(menu);
     }
 }
 
