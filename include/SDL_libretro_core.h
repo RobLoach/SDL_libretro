@@ -1930,13 +1930,24 @@ static int SDLCALL SDL_Libretro_CompareCoreInfo(const void* a, const void* b) {
  * The path is stored even when it can't be scanned, so it can still be shown or saved.
  *
  * @param lr the libretro context.
- * @param path the core directory, or NULL/empty to clear it.
+ * @param path the core directory, an empty string to clear it, or NULL for the default: "cores" next to the executable (SDL_GetBasePath()), or "/cores" on Emscripten.
  * @returns true when the directory was scanned (or cleared), false when it doesn't exist, isn't a directory, or the scan failed; call SDL_GetError() for more information.
  */
 bool SDL_Libretro_SetCoreDirectory(SDL_Libretro* lr, const char* path) {
     if (!lr) return false;
-    const char* newPath = path ? path : "";
-    SDL_strlcpy(lr->coreDirectory, newPath, sizeof(lr->coreDirectory));
+
+    if (!path) {
+        // NULL selects the default: "cores" next to the executable.
+#ifdef SDL_PLATFORM_EMSCRIPTEN
+        SDL_strlcpy(lr->coreDirectory, "/cores", sizeof(lr->coreDirectory));
+#else
+        const char* basePath = SDL_GetBasePath();
+        SDL_snprintf(lr->coreDirectory, sizeof(lr->coreDirectory), "%scores", basePath ? basePath : "");
+#endif
+    }
+    else {
+        SDL_strlcpy(lr->coreDirectory, path, sizeof(lr->coreDirectory));
+    }
 
     // When the core directory changed, rebuild the core library.
     SDL_Libretro_FreeCoreLibrary(lr);

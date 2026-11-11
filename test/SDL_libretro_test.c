@@ -169,8 +169,12 @@ static int SDLCALL test_DirectorySetters(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_SetCoreAssetsDirectory(NULL, "/tmp") == false, "SetCoreAssetsDirectory(NULL) false");
     SDLTest_AssertCheck(SDL_Libretro_SetUsername(NULL, "x") == false, "SetUsername(NULL) false");
 
-    SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, NULL) == true, "SetCoreDirectory(NULL path) true");
-    SDLTest_AssertCheck(SDL_strcmp(lr->coreDirectory, "") == 0, "NULL path stores empty string");
+    SDLTest_AssertCheck(SDL_Libretro_SetCoreDirectory(lr, "") == true, "SetCoreDirectory(empty path) true");
+    SDLTest_AssertCheck(SDL_strcmp(lr->coreDirectory, "") == 0, "Empty path clears the core directory");
+    SDL_Libretro_SetCoreDirectory(lr, NULL);
+    size_t coreDirLen = SDL_strlen(lr->coreDirectory);
+    SDLTest_AssertCheck(coreDirLen >= 5 && SDL_strcmp(lr->coreDirectory + coreDirLen - 5, "cores") == 0,
+        "NULL path selects the default '<base>cores': '%s'", lr->coreDirectory);
     SDLTest_AssertCheck(SDL_Libretro_SetUsername(lr, NULL) == true, "SetUsername(NULL path) true");
     SDLTest_AssertCheck(SDL_strcmp(lr->username, "") == 0, "NULL username stores empty string");
 

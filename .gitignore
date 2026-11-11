@@ -3,6 +3,7 @@ build*
 compile_commands.json
 *.state
 *.srm
-/docs
+/docs/*
+!/docs/*.md
 node_modules
 package-lock.json
