@@ -36,42 +36,34 @@
 
 /**
  * @internal
- * The VFS the PhysFS overrides fall through to for anything outside PhysFS:
- * the one installed before SDL_Libretro_PhysFS_Init(). NULL uses the SDL VFS.
+ * The context whose PhysFS overrides are in use, reached through the active
+ * context since libretro VFS callbacks carry no userdata. NULL when PhysFS
+ * isn't initialized on it.
  */
-static const struct retro_vfs_interface* SDL_Libretro_PhysFS_prevVFS = NULL;
+static SDL_Libretro* SDL_Libretro_PhysFS_Context(void) {
+    SDL_Libretro* lr = SDL_Libretro_active;
+    return (lr && lr->physfsReady) ? lr : NULL;
+}
 
 /**
  * @internal
  * Pick the previous VFS's `member`, or the SDL VFS `builtin` when there is none.
  */
 #define SDL_LIBRETRO_PHYSFS_PREV(member, builtin) \
-    ((SDL_Libretro_PhysFS_prevVFS && SDL_Libretro_PhysFS_prevVFS->member) ? SDL_Libretro_PhysFS_prevVFS->member : (builtin))
+    ((SDL_Libretro_PhysFS_Context() && SDL_Libretro_PhysFS_Context()->physfsPrevVFS.member) ? SDL_Libretro_PhysFS_Context()->physfsPrevVFS.member : (builtin))
 
 /**
  * @internal
- * File and directory handles opened out of PhysFS. These are SDL VFS handles,
- * so they're always served by the SDL VFS, while any other handle belongs to
+ * Remember a handle opened out of PhysFS. These are SDL VFS handles, so
+ * they're always served by the SDL VFS, while any other handle belongs to
  * the previous VFS.
  */
-static void** SDL_Libretro_PhysFS_handles = NULL;
-static size_t SDL_Libretro_PhysFS_handleCount = 0;
-static size_t SDL_Libretro_PhysFS_handleCapacity = 0;
-
-/**
- * @internal
- * Remember a handle opened out of PhysFS.
- */
-static bool SDL_Libretro_PhysFS_TrackHandle(void* handle) {
-    if (SDL_Libretro_PhysFS_handleCount >= SDL_Libretro_PhysFS_handleCapacity) {
-        size_t newCapacity = SDL_Libretro_PhysFS_handleCapacity > 0 ? SDL_Libretro_PhysFS_handleCapacity * 2 : 8;
-        void** grown = (void**)SDL_realloc(SDL_Libretro_PhysFS_handles, newCapacity * sizeof(void*));
-        if (!grown) return false;
-        SDL_Libretro_PhysFS_handles = grown;
-        SDL_Libretro_PhysFS_handleCapacity = newCapacity;
-    }
-    SDL_Libretro_PhysFS_handles[SDL_Libretro_PhysFS_handleCount++] = handle;
-    return true;
+static bool SDL_Libretro_PhysFS_TrackHandle(const void* handle) {
+    SDL_Libretro* lr = SDL_Libretro_PhysFS_Context();
+    if (!lr) return false;
+    char key[32];
+    SDL_snprintf(key, sizeof(key), "%p", handle);
+    return SDL_SetBooleanProperty(lr->physfsHandles, key, true);
 }
 
 /**
@@ -79,15 +71,15 @@ static bool SDL_Libretro_PhysFS_TrackHandle(void* handle) {
  * Whether the handle was opened out of PhysFS; `untrack` also forgets it.
  */
 static bool SDL_Libretro_PhysFS_IsHandle(const void* handle, bool untrack) {
-    for (size_t i = 0; i < SDL_Libretro_PhysFS_handleCount; i++) {
-        if (SDL_Libretro_PhysFS_handles[i] == handle) {
-            if (untrack) {
-                SDL_Libretro_PhysFS_handles[i] = SDL_Libretro_PhysFS_handles[--SDL_Libretro_PhysFS_handleCount];
-            }
-            return true;
-        }
+    SDL_Libretro* lr = SDL_Libretro_PhysFS_Context();
+    if (!lr || !handle) return false;
+    char key[32];
+    SDL_snprintf(key, sizeof(key), "%p", handle);
+    if (!SDL_HasProperty(lr->physfsHandles, key)) return false;
+    if (untrack) {
+        SDL_ClearProperty(lr->physfsHandles, key);
     }
-    return false;
+    return true;
 }
 
 /**
@@ -329,12 +321,15 @@ bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr) {
         }
         lr->physfsReady = true;
     }
+    if (!lr->physfsHandles) {
+        lr->physfsHandles = SDL_CreateProperties();
+        if (!lr->physfsHandles) return false;
+    }
 
     // Remember the VFS to fall through to, unless the overrides are already in.
     if (lr->vfs_interface.open != SDL_Libretro_PhysFS_VFS_Open) {
         lr->physfsPrevVFS = lr->vfs_interface;
     }
-    SDL_Libretro_PhysFS_prevVFS = &lr->physfsPrevVFS;
 
     struct retro_vfs_interface vfs = lr->physfsPrevVFS;
     vfs.get_path = SDL_Libretro_PhysFS_VFS_GetPath;
@@ -378,16 +373,13 @@ void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
     if (lr->vfs_interface.open == SDL_Libretro_PhysFS_VFS_Open) {
         SDL_Libretro_SetVFS(lr, &lr->physfsPrevVFS);
     }
-    if (SDL_Libretro_PhysFS_prevVFS == &lr->physfsPrevVFS) {
-        SDL_Libretro_PhysFS_prevVFS = NULL;
-    }
     if (lr->physfsReady) {
         SDL_PhysFS_Quit();
         lr->physfsReady = false;
-        SDL_free(SDL_Libretro_PhysFS_handles);
-        SDL_Libretro_PhysFS_handles = NULL;
-        SDL_Libretro_PhysFS_handleCount = 0;
-        SDL_Libretro_PhysFS_handleCapacity = 0;
+    }
+    if (lr->physfsHandles) {
+        SDL_DestroyProperties(lr->physfsHandles);
+        lr->physfsHandles = 0;
     }
 }
 

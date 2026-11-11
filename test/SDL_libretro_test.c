@@ -2638,6 +2638,9 @@ static int SDLCALL test_PhysFSKeepsAppVFS(void *arg) {
     return TEST_COMPLETED;
 #else
     SDL_Libretro* lr = SDL_Libretro_Create();
+    // VFS callbacks reach the context through the active core; stand in for one.
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
     struct retro_vfs_interface app = {0};
     app.open = test_AppVFSOpen;
     app.size = test_AppVFSSize;
@@ -2673,6 +2676,7 @@ static int SDLCALL test_PhysFSKeepsAppVFS(void *arg) {
     SDL_Libretro_PhysFS_Quit(lr);
     SDLTest_AssertCheck(lr->vfs_interface.open == SDL_Libretro_VFS_Open, "Later VFS kept after PhysFS_Quit");
 
+    SDL_Libretro_active = prevActive;
     SDL_Libretro_Destroy(lr);
     return TEST_COMPLETED;
 #endif
