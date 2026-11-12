@@ -502,6 +502,11 @@ static int SDL_Libretro_VFS_Closedir(struct retro_vfs_dir_handle* dirstream) {
  *
  * Call this before loading a core, as cores request the VFS when loading.
  *
+ * With PhysFS, call this before SDL_Libretro_PhysFS_Init(), which layers
+ * PhysFS on top of this VFS and falls through to it for anything outside
+ * PhysFS. Calling it afterwards replaces the PhysFS overrides until
+ * SDL_Libretro_PhysFS_Init() is called again.
+ *
  * @param lr the libretro context.
  * @param vfs_interface a pointer to a `struct retro_vfs_interface`, or NULL for the default.
  *

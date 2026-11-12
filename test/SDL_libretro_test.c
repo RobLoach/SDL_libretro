@@ -2828,6 +2828,69 @@ static int SDLCALL test_PhysFSBlockExtractLibrary(void *arg) {
 #endif
 }
 
+/* An application VFS that counts its open() and size() calls. */
+static int test_appVFSOpenCalls = 0;
+static int test_appVFSSizeCalls = 0;
+static struct retro_vfs_file_handle* test_AppVFSOpen(const char* path, unsigned mode, unsigned hints) {
+    test_appVFSOpenCalls++;
+    return SDL_Libretro_VFS_Open(path, mode, hints);
+}
+static int64_t test_AppVFSSize(struct retro_vfs_file_handle* stream) {
+    test_appVFSSizeCalls++;
+    return SDL_Libretro_VFS_Size(stream);
+}
+
+static int SDLCALL test_PhysFSKeepsAppVFS(void *arg) {
+    (void)arg;
+#if !defined(TEST_CONTENT_PATH)
+    SDLTest_AssertCheck(false, "TEST_CONTENT_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    // VFS callbacks reach the context through the active core; stand in for one.
+    SDL_Libretro* prevActive = SDL_Libretro_active;
+    SDL_Libretro_active = lr;
+    struct retro_vfs_interface app = {0};
+    app.open = test_AppVFSOpen;
+    app.size = test_AppVFSSize;
+    SDL_Libretro_SetVFS(lr, &app);
+    test_appVFSOpenCalls = 0;
+    test_appVFSSizeCalls = 0;
+
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_Init(lr) == true, "PhysFS_Init succeeds");
+    SDLTest_AssertCheck(lr->vfs_interface.open != test_AppVFSOpen, "PhysFS overrides are installed");
+
+    // Paths outside PhysFS reach the application's VFS.
+    struct retro_vfs_file_handle* h = lr->vfs_interface.open(TEST_CONTENT_PATH, RETRO_VFS_FILE_ACCESS_READ, 0);
+    SDLTest_AssertCheck(h != NULL && test_appVFSOpenCalls == 1, "Non-PhysFS open reaches the app VFS");
+    SDLTest_AssertCheck(lr->vfs_interface.size(h) > 0 && test_appVFSSizeCalls == 1, "Non-PhysFS size reaches the app VFS");
+    lr->vfs_interface.close(h);
+
+    // Files in the mount are served by PhysFS, without the application's VFS.
+    SDLTest_AssertCheck(SDL_PhysFS_Mount(TEST_CONTENT_ZIP_PATH, SDL_LIBRETRO_PHYSFS_MOUNT_POINT) == true, "Zip mounted");
+    h = lr->vfs_interface.open(SDL_LIBRETRO_PHYSFS_MOUNT_POINT "/test_content.txt", RETRO_VFS_FILE_ACCESS_READ, 0);
+    SDLTest_AssertCheck(h != NULL && test_appVFSOpenCalls == 1, "PhysFS open is served from the mount");
+    SDLTest_AssertCheck(lr->vfs_interface.size(h) > 0 && test_appVFSSizeCalls == 1, "PhysFS handle size skips the app VFS");
+    SDLTest_AssertCheck(lr->vfs_interface.close(h) == 0, "PhysFS handle closes");
+    SDL_PhysFS_Unmount(TEST_CONTENT_ZIP_PATH);
+
+    // Quitting PhysFS restores the application's VFS.
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDLTest_AssertCheck(lr->vfs_interface.open == test_AppVFSOpen, "App open restored after PhysFS_Quit");
+    SDLTest_AssertCheck(lr->vfs_interface.size == test_AppVFSSize, "App size restored after PhysFS_Quit");
+
+    // A VFS set after PhysFS_Init replaces the overrides and survives Quit.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_Init(lr) == true, "PhysFS_Init succeeds again");
+    SDL_Libretro_SetVFS(lr, NULL);
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDLTest_AssertCheck(lr->vfs_interface.open == SDL_Libretro_VFS_Open, "Later VFS kept after PhysFS_Quit");
+
+    SDL_Libretro_active = prevActive;
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 #endif /* TEST_CONTENT_ZIP_PATH */
 
 /* SRAM auto-save loads the game's .srm on load and writes it on unload. */
@@ -5430,6 +5493,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PhysFSBlockExtract, "block_extract cores receive the raw archive"),
     LIBRETRO_TEST_CASE(test_PhysFSBlockExtractLibrary, "block_extract library cores receive the raw archive"),
     LIBRETRO_TEST_CASE(test_PhysFSNonZip,      "PhysFS loader passes non-zip content through"),
+    LIBRETRO_TEST_CASE(test_PhysFSKeepsAppVFS, "PhysFS falls through to and restores the app VFS"),
     LIBRETRO_TEST_CASE(test_PhysFSPickPriority, "Content pick prefers disc metadata and base-name matches"),
     LIBRETRO_TEST_CASE(test_PhysFSNestedDir,   "Content in a zip subdirectory is found"),
     LIBRETRO_TEST_CASE(test_PhysFSLoadSecondZip, "Loading a second zip keeps it mounted"),
