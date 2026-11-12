@@ -64,102 +64,13 @@ SDL_Libretro_Destroy(lr);
 - [SDL_libretro_basic Example](example/SDL_libretro_basic.c)
 - [SDL_libretro](example/SDL_libretro.c): The full-featured app, with the menu ([try it online](https://robloach.github.io/SDL_libretro/demo/))
 
-### Zip Loading
+### Documentation
 
-To enable Zip Loading, link PhysFS by enabling the `SDL_LIBRETRO_PHYSFS` CMake option, and then let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_PHYSFS`.
-
-```c
-#define SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_LIBRETRO_ENABLE_PHYSFS
-#include "SDL_libretro.h"
-
-// Enables loading games directly from .zip files.
-SDL_Libretro_LoadGame(lr, "game.zip");
-```
-
-### Menu
-
-To enable the in-app menu, enable the `SDL_LIBRETRO_MENU` CMake option (linking the `SDL_libretro_menu` target), and let SDL_libretro know it's available with `SDL_LIBRETRO_ENABLE_MENU`.
-
-```c
-#define SDL_LIBRETRO_IMPLEMENTATION
-#define SDL_LIBRETRO_ENABLE_MENU
-#include "SDL_libretro.h"
-
-SDL_Libretro_SetRenderer(lr, renderer);
-SDL_LibretroMenu* menu = SDL_Libretro_CreateMenu(lr);
-
-// For each event...
-if (!SDL_Libretro_HandleMenuEvent(menu, &event)) {
-    SDL_Libretro_HandleEvent(lr, &event);
-}
-
-// Each frame...
-if (!SDL_Libretro_IsMenuOpen(menu)) {
-    SDL_Libretro_Update(lr);
-}
-SDL_Libretro_Render(lr, renderer, NULL);
-SDL_Libretro_UpdateMenu(menu);
-SDL_Libretro_RenderMenu(menu);
-SDL_RenderPresent(renderer);
-```
-
-`SDL_Libretro_HandleMenuEvent()` also runs the hotkeys, which can be rebound in Settings > Hot Keys, or with `SDL_Libretro_SetMenuHotkey()` and `SDL_Libretro_SetMenuHotkeyButton()`. Rebinding a key or button unbinds any other hotkey on it, and the bindings are saved to the config (`hotkey_savestate`, `hotkey_savestate_gamepad`, and so on).
-
-| Hotkey | Default |
-| --- | --- |
-| Menu | `F1`, gamepad Guide |
-| Fast Forward (hold) | `Space` |
-| Slow Motion (hold) | `Tab` |
-| Rewind (hold) | `Backspace` |
-| Save State / Load State | `F2` / `F4` |
-| Screenshot | `F12` |
-| Volume Up / Down | `=` / `-` |
-| Fullscreen | `F11` |
-| Mute, Reset, Quit | Unbound |
-
-Disable Hotkeys (or `SDL_Libretro_SetMenuHotkeysEnabled(menu, false)`) passes every key through to the core, for cores that use them; only the Menu hotkey stays live.
-
-### Events
-
-SDL_libretro reports what happens through the SDL event queue, as `SDL_UserEvent`s based at `SDL_EVENT_LIBRETRO`. `event->user.data1` is always the `SDL_Libretro*` that sent the event. Every SDL_libretro event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_LAST`, a fixed range in the SDL user events. The first `SDL_Libretro_Create()` reserves it through [`SDL_RegisterEvents()`](https://wiki.libsdl.org/SDL3/SDL_RegisterEvents), so events the application registers afterwards never collide with it; events registered before then should stay below `SDL_EVENT_LIBRETRO`, or a warning is logged.
-
-- Environment commands the core calls that SDL_libretro doesn't handle itself arrive as `SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_*)`, for example `SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE)`. Experimental and private commands get event types of their own, so they don't collide with plain commands that share their number, and `SDL_LIBRETRO_ENVIRONMENT_COMMAND(event->type)` turns the type back into the command. Every environment event falls between `SDL_EVENT_LIBRETRO` and `SDL_EVENT_LIBRETRO_ENVIRONMENT_LAST`. The data pointer the core passed rides along in `event->user.data2`.
-- `SDL_EVENT_LIBRETRO_CORE_LOADED` / `SDL_EVENT_LIBRETRO_GAME_LOADED`: A core or game finished loading, whether directly or through the menu. `data2` is the core or game name.
-- `SDL_EVENT_LIBRETRO_CORE_UNLOADED` / `SDL_EVENT_LIBRETRO_GAME_UNLOADED`: The core or game was unloaded; unloading a core reports the game first.
-- `SDL_EVENT_LIBRETRO_SHUTDOWN`: The core requested shutdown, mirroring `SDL_Libretro_ShouldQuit()`.
-- `SDL_EVENT_LIBRETRO_GEOMETRY_CHANGED`: The video size, aspect ratio, or timing changed mid-game; query `SDL_Libretro_GetSize()` and friends for the new values.
-- `SDL_EVENT_LIBRETRO_OPTIONS_CHANGED`: The core options, their values, or their visibility changed; bursts coalesce into one queued event.
-- `SDL_EVENT_LIBRETRO_MESSAGE`: The core queued an on-screen message; `data2` is the text, valid while the message is queued; the event is withdrawn if the message expires first.
-- `SDL_EVENT_LIBRETRO_MENU_OPENED` / `SDL_EVENT_LIBRETRO_MENU_CLOSED`: The menu became visible (the game pauses) or was dismissed (the game resumes). `data2` is the `SDL_LibretroMenu*`.
-
-```c
-while (SDL_PollEvent(&event)) {
-    switch (event.type) {
-        case SDL_EVENT_LIBRETRO_GAME_LOADED:
-            SDL_Log("Loaded: %s", (const char*)event.user.data2);
-            break;
-        case SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_LOCATION_INTERFACE):
-            SDL_Log("Core asked for location services");
-            break;
-    }
-}
-```
-
-An environment command's `data2` pointer is only valid while the core waits inside the environment call, which has already returned by the time the event is polled. To *implement* an environment command, handle the event from an [`SDL_AddEventWatch()`](https://wiki.libsdl.org/SDL3/SDL_AddEventWatch) callback instead — watches run synchronously while the core waits. Set `event->user.code` to a non-zero value there to tell the core the command succeeded; a claimed command is consumed by the watch and doesn't also reach the event queue, while earlier unclaimed copies of the same command stay queued. An [`SDL_SetEventFilter()`](https://wiki.libsdl.org/SDL3/SDL_SetEventFilter) filter can claim a command the same way, and may return `false` to drop the event.
-
-```c
-static bool SDLCALL MyEventWatch(void* userdata, SDL_Event* event) {
-    if (event->type == SDL_EVENT_LIBRETRO_ENVIRONMENT(RETRO_ENVIRONMENT_GET_CAMERA_INTERFACE)) {
-        struct retro_camera_callback* camera = event->user.data2;
-        // ... fill in the camera interface ...
-        event->user.code = 1; // Tell the core the command succeeded.
-    }
-    return true;
-}
-
-SDL_AddEventWatch(MyEventWatch, NULL);
-```
+- [Building](docs/building.md): Build options, test cores and Emscripten
+- [Configuration](docs/configuration.md): Compile-time macros, Zip loading and the menu
+- [Events](docs/events.md): Events SDL_libretro reports, and implementing environment commands
+- [Example App](docs/example.md): Where the example app finds cores, saves and its config
+- [Web Embed](docs/web-embed.md): Embedding the Emscripten build in a webpage
 
 ## Build
 
@@ -171,73 +82,7 @@ cmake ..
 cmake --build .
 ```
 
-To build a release instead, download its `SDL_libretro-<version>.tar.gz`, which includes the git submodules. GitHub's generated "Source code" archives leave them out.
-
-An SDL3 already installed on the system is used when found (point `CMAKE_PREFIX_PATH` at it if it's somewhere CMake doesn't look). Otherwise, SDL3 is fetched and built via CMake FetchContent.
-
-With `SDL_LIBRETRO_DOWNLOAD_CORES` enabled (default for native builds), a few libretro cores are downloaded into the build directory for testing:
-
-- [snes9x](https://github.com/libretro/snes9x) (Super Nintendo)
-- [fceumm](https://github.com/libretro/libretro-fceumm) (Nintendo Entertainment System)
-- [genesis_plus_gx](https://github.com/libretro/Genesis-Plus-GX) (Sega Genesis / Master System / Game Gear)
-
-### Emscripten
-
-With the [Emscripten SDK](https://emscripten.org/docs/getting_started/downloads.html) activated, configure through `emcmake`:
-
-```sh
-emcmake cmake -B build-web
-cmake --build build-web
-```
-
-## Web Embed
-
-The Emscripten build embeds into any webpage with [`SDL_libretro_embed.js`](example/SDL_libretro_embed.js). Serve the build output (`SDL_libretro.js`, `SDL_libretro.wasm` and `SDL_libretro.data`) together with `SDL_libretro_embed.js`, include the script, and point it at an element on the page:
-
-```html
-<div id="player" style="width: 640px; height: 480px"></div>
-<script src="SDL_libretro_embed.js"></script>
-<script>
-    SDL_libretro.embed('#player');
-</script>
-```
-
-`SDL_libretro.embed(target, options)` accepts a CSS selector or an element, creates the canvas inside it, and starts the emulator. Options:
-
-- `script`: URL of the Emscripten-generated script (default `SDL_libretro.js`)
-- `arguments`: Argument list for SDL_libretro, e.g. `['/cores/core.wasm', '/game.rom']`
-- `pixelated`: Keep upscaled pixels crisp instead of smoothed (default `true`)
-- `canvasId`: The `id` of the created canvas (default `canvas`)
-- `onReady`: Called with the embed handle once the runtime is initialized
-- `onError`: Called with an `Error` when the script fails to load
-
-The emulator takes keyboard input while its canvas has focus, which clicking it gives, so the rest of the page keeps its keyboard.
-
-See [`example/SDL_libretro_embed.html`](example/SDL_libretro_embed.html) for a complete page. The Emscripten build copies both files next to its output, so the build directory is directly servable. One embed can run per page.
-
-## Configuration
-
-Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behaves.
-
-- `SDL_LIBRETRO_MAX_USERS`: The number of controller ports (default `4`)
-- `SDL_LIBRETRO_GET_TICKS_NS()`: The nanosecond clock that paces `SDL_Libretro_Update()` and the frame-time callback (default `SDL_GetTicksNS()`), e.g. to substitute a fake clock in tests
-- `SDL_LIBRETRO_AUDIO_DEFAULT_LATENCY_MS`: The default audio latency threshold (default `100`)
-- `SDL_LIBRETRO_AUDIO_DEFAULT_SAMPLE_RATE`: The rate used when a core reports no sample rate (default `48000`)
-- `SDL_LIBRETRO_AUDIO_DRC_MAX_DELTA`: How hard dynamic rate control may bend the audio pitch (default `0.005`)
-- `SDL_LIBRETRO_MIC_DEFAULT_RATE`: The default microphone sample rate (default `44100`)
-- `SDL_LIBRETRO_REWIND_DEFAULT_MAX_BYTES`: The default rewind memory limit (default 256 MiB)
-- `SDL_LIBRETRO_ENABLE_REWIND_DELTA`: Enable the XOR delta between rewind frames to reduce memory at the expense of performance
-- `SDL_LIBRETRO_ENABLE_PHYSFS`: Enable .zip loading with PhysFS
-- `SDL_LIBRETRO_PHYSFS_MOUNT_POINT`: The PhysFS mount point archives are mounted at (default `"game"`)
-- `SDL_LIBRETRO_ENABLE_MENU`: Enable the nuklear_console menu
-- `SDL_LIBRETRO_MENU_TOGGLE_KEY`: The default key of the Menu hotkey, which toggles the menu (default `SDLK_F1`)
-- `SDL_LIBRETRO_MENU_FONT_HEIGHT`: Base menu font height in pixels (default `13`)
-- `SDL_LIBRETRO_MENU_DEFAULT_STYLE`: The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA`)
-- `NK_CONSOLE_FILE_NO_SDL_NATIVE_DIALOG`: Load Game with the menu's own file browser instead of the OS file dialog. Gamepads, and systems where the OS dialog can't open, use the file browser either way
-- `SDL_LIBRETRO_DISABLE_PHYSFS` / `SDL_LIBRETRO_DISABLE_MENU`: Turn PhysFS or the menu back off, even when enabled
-- `SDL_LIBRETRO_DISABLE_VFS`: Don't provide the SDL-backed libretro VFS, e.g. when implementing your own (PhysFS requires it)
-- `SDL_LIBRETRO_NO_INI_IMPLEMENTATION`, `SDL_LIBRETRO_PHYSFS_NO_SDL_PHYSFS_IMPLEMENTATION`, `SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION`: Skip compiling the bundled SDL_ini, SDL_PhysFS or Nuklear implementations when they're already compiled elsewhere
-- `SDL_LIBRETRO_MENU_NUKLEAR_H`, `SDL_LIBRETRO_MENU_NUKLEAR_SDL3_RENDERER_H`, `SDL_LIBRETRO_MENU_NUKLEAR_GAMEPAD_H`, `SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H`: Include paths for the menu's Nuklear headers
+See [Building](docs/building.md) for more, including Emscripten.
 
 ## Limitations
 
