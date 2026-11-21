@@ -2541,8 +2541,8 @@ static int SDLCALL test_PhysFSNonZip(void *arg) {
 }
 
 static int SDLCALL test_PhysFSLoadGameIO(void *arg) {
-#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH) || !defined(TEST_FULLPATH_ZIP_PATH)
-    SDLTest_AssertCheck(false, "TEST_CORE_PATH, TEST_CONTENT_PATH, or TEST_FULLPATH_ZIP_PATH not defined");
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH) || !defined(TEST_FULLPATH_ZIP_PATH) || !defined(TEST_CONTENT_ZIP_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH, TEST_CONTENT_PATH, TEST_FULLPATH_ZIP_PATH, or TEST_CONTENT_ZIP_PATH not defined");
     return TEST_COMPLETED;
 #else
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
@@ -2890,6 +2890,7 @@ static int SDLCALL test_PhysFSBlockExtractLibrary(void *arg) {
     SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "The archive was not mounted");
     SDL_Libretro_UnloadCore(lr);
 
+#ifdef TEST_CONTENT_ZIP_PATH
     // So does a zip stream, read out of the mounted buffer before unmounting.
     SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, SDL_IOFromFile(TEST_CONTENT_ZIP_PATH, "rb"), TEST_CONTENT_ZIP_PATH, true) == true,
         "PhysFS_LoadGame_IO with a block_extract library core succeeds");
@@ -2906,6 +2907,7 @@ static int SDLCALL test_PhysFSBlockExtractLibrary(void *arg) {
     SDLTest_AssertCheck(sram && sramSize >= 2 && sram[0] == 'P' && sram[1] == 'K', "Loaded core received the raw zip stream (PK magic)");
     SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "The zip stream was not mounted");
     SDL_Libretro_UnloadCore(lr);
+#endif
 
     // Without block_extract, the archive is still mounted and its content picked.
     test_WriteCoreInfo(dir, "arcade", "Arcade", "zip", NULL);

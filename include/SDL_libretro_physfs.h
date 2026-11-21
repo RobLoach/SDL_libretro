@@ -491,8 +491,9 @@ static bool SDL_Libretro_PhysFS_LoadArchive(SDL_Libretro* lr, const char* gamePa
     // Initialize PhysFS on demand, and mount the .zip file. Fall back to the
     // plain loader on failure, or when a loaded core parses archives itself.
     bool mounted = false;
-    if (SDL_Libretro_PhysFS_Init(lr) && !(SDL_Libretro_IsCoreReady(lr) &&
-        (lr->core.blockExtract || SDL_Libretro_ExtensionInList("zip", lr->core.validExtensions)))) {
+    bool coreTakesZip = SDL_Libretro_IsCoreReady(lr) &&
+        (lr->core.blockExtract || SDL_Libretro_ExtensionInList("zip", lr->core.validExtensions));
+    if (SDL_Libretro_PhysFS_Init(lr) && !coreTakesZip) {
         if (data) {
             // PhysFS frees the buffer with SDL_free() when it's unmounted.
             mounted = PHYSFS_mountMemory(data, (PHYSFS_uint64)size, SDL_free, gamePath, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, 1) != 0;
@@ -650,7 +651,7 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
  * way. Anything else loads exactly like SDL_Libretro_LoadGame_IO().
  *
  * Requires the implementation to be compiled with SDL_LIBRETRO_ENABLE_PHYSFS;
- * otherwise it is the same as SDL_Libretro_LoadGame_IO().
+ * otherwise it always fails, closing `src` when `closeio` is true.
  *
  * @param lr the libretro context.
  * @param src the stream to read the content or archive from.
@@ -707,7 +708,10 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
 }
 
 bool SDL_Libretro_PhysFS_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio) {
-    return SDL_Libretro_LoadGame_IO(lr, src, path, closeio);
+    (void)lr;
+    (void)path;
+    if (src && closeio) SDL_CloseIO(src);
+    return SDL_SetError("SDL_Libretro_PhysFS not enabled");
 }
 
 static void SDL_Libretro_PhysFS_ClearMount(SDL_Libretro* lr) {
