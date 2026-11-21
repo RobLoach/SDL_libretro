@@ -461,6 +461,7 @@ bool SDL_Libretro_GetMessageByIndex(SDL_Libretro* lr, int index, const char** ms
 bool SDL_Libretro_PhysFS_Init(SDL_Libretro* lr);
 void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr);
 bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath);
+bool SDL_Libretro_PhysFS_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio);
 
 // Menu
 

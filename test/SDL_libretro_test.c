@@ -2540,6 +2540,84 @@ static int SDLCALL test_PhysFSNonZip(void *arg) {
 #endif
 }
 
+static int SDLCALL test_PhysFSLoadGameIO(void *arg) {
+#if !defined(TEST_CORE_PATH) || !defined(TEST_CONTENT_PATH) || !defined(TEST_FULLPATH_ZIP_PATH) || !defined(TEST_CONTENT_ZIP_PATH)
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH, TEST_CONTENT_PATH, TEST_FULLPATH_ZIP_PATH, or TEST_CONTENT_ZIP_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
+    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Window* window = SDL_CreateWindow("test", 320, 240, SDL_WINDOW_HIDDEN);
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, NULL);
+
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_SetRenderer(lr, renderer);
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    // Invalid arguments fail cleanly, closing the stream when asked.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, NULL, "x.zip", true) == false, "NULL stream rejected");
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, SDL_IOFromFile(TEST_CONTENT_ZIP_PATH, "rb"), NULL, true) == false,
+        "NULL path rejected");
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(NULL, SDL_IOFromFile(TEST_CONTENT_ZIP_PATH, "rb"), "x.zip", true) == false,
+        "NULL context rejected");
+
+    // A zip stream is mounted and the content inside handed to the core.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, SDL_IOFromFile(TEST_CONTENT_ZIP_PATH, "rb"), TEST_CONTENT_ZIP_PATH, true) == true,
+        "PhysFS_LoadGame_IO succeeds with a zip stream");
+    SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == true, "Game ready after zip stream load");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "txt") == 0,
+        "Content extension is the file inside the zip, got '%s'", SDL_Libretro_GetContentExtension(lr));
+    SDLTest_AssertCheck(SDL_strcmp(lr->physfsMountSource, TEST_CONTENT_ZIP_PATH) == 0,
+        "Mount source is the stream's path, got '%s'", lr->physfsMountSource);
+
+    size_t expectedSize = 0;
+    unsigned char* expected = (unsigned char*)SDL_LoadFile(TEST_CONTENT_PATH, &expectedSize);
+    size_t sramSize = 0;
+    const unsigned char* sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(expected != NULL && sram != NULL && sramSize >= expectedSize, "SAVE_RAM and expected content available");
+    if (expected && sram && sramSize >= expectedSize) {
+        SDLTest_AssertCheck(SDL_memcmp(sram, expected, expectedSize) == 0, "Extracted bytes reached the core");
+    }
+    SDL_free(expected);
+
+    // The mount outlives the stream and its memory: a need_fullpath zip read
+    // from a memory stream that's freed afterwards is still served by the VFS.
+    size_t zipSize = 0;
+    void* zip = SDL_LoadFile(TEST_FULLPATH_ZIP_PATH, &zipSize);
+    SDLTest_AssertCheck(zip != NULL, "Fullpath zip read into memory");
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, SDL_IOFromConstMem(zip, zipSize), "memory/fullpath.zip", true) == true,
+        "PhysFS_LoadGame_IO succeeds with a need_fullpath zip in memory");
+    SDL_free(zip);
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "vfs") == 0,
+        "Content extension is the file inside the zip, got '%s'", SDL_Libretro_GetContentExtension(lr));
+    SDLTest_AssertCheck(SDL_PhysFS_Exists(lr->core.contentPath) == true,
+        "Content still readable from the mount after the stream is gone");
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "Unloading the game unmounts the archive");
+
+    // Non-archive streams pass straight through to SDL_Libretro_LoadGame_IO().
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, SDL_IOFromFile(TEST_CONTENT_PATH, "rb"), TEST_CONTENT_PATH, true) == true,
+        "PhysFS_LoadGame_IO passes non-zip content through");
+    SDLTest_AssertCheck(SDL_strcmp(SDL_Libretro_GetContentExtension(lr), "txt") == 0,
+        "Content extension is 'txt', got '%s'", SDL_Libretro_GetContentExtension(lr));
+    SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "Nothing mounted for non-zip content");
+
+    // closeio=false leaves the stream open for the caller.
+    SDL_IOStream* io = SDL_IOFromFile(TEST_CONTENT_ZIP_PATH, "rb");
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, io, TEST_CONTENT_ZIP_PATH, false) == true,
+        "PhysFS_LoadGame_IO succeeds without closing the stream");
+    SDLTest_AssertCheck(SDL_SeekIO(io, 0, SDL_IO_SEEK_SET) == 0, "Stream still usable after closeio=false");
+    SDL_CloseIO(io);
+
+    SDL_Libretro_PhysFS_Quit(lr);
+    SDL_Libretro_Destroy(lr);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_PhysFSPickPriority(void *arg) {
 #if !defined(TEST_CORE_PATH) || !defined(TEST_PRIORITY_ZIP_PATH) || !defined(TEST_DISC_ZIP_PATH)
     SDLTest_AssertCheck(false, "TEST_CORE_PATH, TEST_PRIORITY_ZIP_PATH, or TEST_DISC_ZIP_PATH not defined");
@@ -2811,6 +2889,25 @@ static int SDLCALL test_PhysFSBlockExtractLibrary(void *arg) {
     SDLTest_AssertCheck(sram && sramSize >= 2 && sram[0] == 'P' && sram[1] == 'K', "Core received the raw zip (PK magic)");
     SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "The archive was not mounted");
     SDL_Libretro_UnloadCore(lr);
+
+#ifdef TEST_CONTENT_ZIP_PATH
+    // So does a zip stream, read out of the mounted buffer before unmounting.
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, SDL_IOFromFile(TEST_CONTENT_ZIP_PATH, "rb"), TEST_CONTENT_ZIP_PATH, true) == true,
+        "PhysFS_LoadGame_IO with a block_extract library core succeeds");
+    SDLTest_AssertCheck(SDL_strcmp(lr->core.corePath, arcade) == 0, "The block_extract core was loaded, got '%s'", lr->core.corePath);
+    sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram && sramSize >= 2 && sram[0] == 'P' && sram[1] == 'K', "Core received the raw zip stream (PK magic)");
+    SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "The zip stream was not left mounted");
+
+    // A loaded block_extract core gets the raw stream without a mount.
+    lr->core.blockExtract = true;
+    SDLTest_AssertCheck(SDL_Libretro_PhysFS_LoadGame_IO(lr, SDL_IOFromFile(TEST_CONTENT_ZIP_PATH, "rb"), TEST_CONTENT_ZIP_PATH, true) == true,
+        "PhysFS_LoadGame_IO with a loaded block_extract core succeeds");
+    sram = (const unsigned char*)SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, &sramSize);
+    SDLTest_AssertCheck(sram && sramSize >= 2 && sram[0] == 'P' && sram[1] == 'K', "Loaded core received the raw zip stream (PK magic)");
+    SDLTest_AssertCheck(lr->physfsMountSource[0] == '\0', "The zip stream was not mounted");
+    SDL_Libretro_UnloadCore(lr);
+#endif
 
     // Without block_extract, the archive is still mounted and its content picked.
     test_WriteCoreInfo(dir, "arcade", "Arcade", "zip", NULL);
@@ -5430,6 +5527,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_PhysFSBlockExtract, "block_extract cores receive the raw archive"),
     LIBRETRO_TEST_CASE(test_PhysFSBlockExtractLibrary, "block_extract library cores receive the raw archive"),
     LIBRETRO_TEST_CASE(test_PhysFSNonZip,      "PhysFS loader passes non-zip content through"),
+    LIBRETRO_TEST_CASE(test_PhysFSLoadGameIO,  "Load game out of a zip stream via PhysFS"),
     LIBRETRO_TEST_CASE(test_PhysFSPickPriority, "Content pick prefers disc metadata and base-name matches"),
     LIBRETRO_TEST_CASE(test_PhysFSNestedDir,   "Content in a zip subdirectory is found"),
     LIBRETRO_TEST_CASE(test_PhysFSLoadSecondZip, "Loading a second zip keeps it mounted"),

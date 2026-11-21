@@ -1188,6 +1188,9 @@ static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, co
  * content keeps the identity of `path`. The file is removed when the game
  * unloads.
  *
+ * Archives aren't routed through PhysFS here, so a .zip is handed to the core
+ * as-is. Use SDL_Libretro_PhysFS_LoadGame_IO() to load content from inside one.
+ *
  * @param lr the libretro context.
  * @param src the stream to read the content from.
  * @param path the path the content is known by. Could be a virtual path
@@ -1196,6 +1199,7 @@ static bool SDL_Libretro_SpillToTempFile(SDL_Libretro* lr, SDL_IOStream* src, co
  * @returns true when the game is running; call SDL_GetError() for more information on failure.
  *
  * @see SDL_Libretro_LoadGame()
+ * @see SDL_Libretro_PhysFS_LoadGame_IO()
  */
 bool SDL_Libretro_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio) {
     if (!lr || !src || !path) {

@@ -466,6 +466,125 @@ static bool SDL_Libretro_PhysFS_PeekContent(SDL_Libretro* lr, const char* path, 
 #endif
 
 /**
+ * @internal
+ * Hand the raw archive to the plain loader: by its path, or, when `data` is
+ * not NULL, from the archive bytes known by `gamePath`. Doesn't free `data`.
+ */
+static bool SDL_Libretro_PhysFS_LoadRaw(SDL_Libretro* lr, const char* gamePath, const void* data, size_t size) {
+    if (!data) {
+        return SDL_Libretro_LoadGameFile(lr, gamePath);
+    }
+    SDL_IOStream* io = SDL_IOFromConstMem(data, size);
+    return io != NULL && SDL_Libretro_LoadGame_IO(lr, io, gamePath, true);
+}
+
+/**
+ * @internal
+ * Shared body of SDL_Libretro_PhysFS_LoadGame() and
+ * SDL_Libretro_PhysFS_LoadGame_IO() for a .zip.
+ *
+ * Loads the archive at `gamePath`, or, when `data` is not NULL, the archive
+ * bytes in `data` known by `gamePath`. Takes ownership of `data`: once
+ * mounted, PhysFS frees it on unmount. Any running game must be unloaded.
+ */
+static bool SDL_Libretro_PhysFS_LoadArchive(SDL_Libretro* lr, const char* gamePath, void* data, size_t size) {
+    // Initialize PhysFS on demand, and mount the .zip file. Fall back to the
+    // plain loader on failure, or when a loaded core parses archives itself.
+    bool mounted = false;
+    bool coreTakesZip = SDL_Libretro_IsCoreReady(lr) &&
+        (lr->core.blockExtract || SDL_Libretro_ExtensionInList("zip", lr->core.validExtensions));
+    if (SDL_Libretro_PhysFS_Init(lr) && !coreTakesZip) {
+        if (data) {
+            // PhysFS frees the buffer with SDL_free() when it's unmounted.
+            mounted = PHYSFS_mountMemory(data, (PHYSFS_uint64)size, SDL_free, gamePath, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, 1) != 0;
+            if (!mounted) {
+                SDL_SetError("%s", PHYSFS_getErrorByCode(PHYSFS_getLastErrorCode()));
+            }
+        }
+        else {
+            mounted = SDL_PhysFS_Mount(gamePath, SDL_LIBRETRO_PHYSFS_MOUNT_POINT);
+        }
+        if (!mounted) {
+            SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to mount '%s': %s", gamePath, SDL_GetError());
+        }
+    }
+    if (!mounted) {
+        bool result = SDL_Libretro_PhysFS_LoadRaw(lr, gamePath, data, size);
+        SDL_free(data);
+        return result;
+    }
+
+    // Remember which .zip file was mounted.
+    SDL_strlcpy(lr->physfsMountSource, gamePath, sizeof(lr->physfsMountSource));
+
+    // Find the content to load within the mount.
+    char virtualPath[SDL_LIBRETRO_MAX_PATH];
+    if (!SDL_Libretro_PhysFS_PickContent(lr, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, gamePath,
+                                         SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : "",
+                                         virtualPath, sizeof(virtualPath))) {
+        SDL_Libretro_PhysFS_ClearMount(lr);
+        SDL_SetError("[SDL_Libretro] No suitable content found inside '%s'", gamePath);
+        return false;
+    }
+
+    // The core must be loaded to resolve need_fullpath for the picked file.
+    // It's picked by the content and the archive; one that takes the archive
+    // unextracted (block_extract) gets the raw .zip.
+    if (!SDL_Libretro_IsCoreReady(lr)) {
+        const SDL_Libretro_CoreInfo* info = SDL_Libretro_LoadCoreForGame(lr, virtualPath, gamePath);
+        if (!info) {
+            SDL_Libretro_PhysFS_ClearMount(lr);
+            return false;
+        }
+        if (SDL_Libretro_CoreTakesArchive(info, gamePath)) {
+            if (!data) {
+                SDL_Libretro_PhysFS_ClearMount(lr);
+                return SDL_Libretro_LoadGameFile(lr, gamePath);
+            }
+            // Unmounting frees the mounted buffer, so load from it first.
+            bool result = SDL_Libretro_PhysFS_LoadRaw(lr, gamePath, data, size);
+            SDL_Libretro_PhysFS_ClearMount(lr);
+            return result;
+        }
+    }
+
+    // Attempt to load the content.
+    bool result;
+    if (SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(virtualPath)) && lr->core.usedVFS) {
+        // VFS-aware full-path core: pass the virtual path; the PhysFS-backed
+        // VFS serves it straight out of the mount.
+        result = SDL_Libretro_LoadGameFile(lr, virtualPath);
+    }
+    else if (SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(virtualPath))) {
+        // Full-path core that reads from the OS: extract the archive, so the
+        // content finds any files it refers to, and load from there.
+        char dir[SDL_LIBRETRO_MAX_PATH];
+        result = SDL_Libretro_PhysFS_ExtractArchive(lr, gamePath, dir, sizeof(dir));
+        if (result) {
+            char path[SDL_LIBRETRO_MAX_PATH];
+            SDL_snprintf(path, sizeof(path), "%s%s", dir, virtualPath + SDL_strlen(SDL_LIBRETRO_PHYSFS_MOUNT_POINT "/"));
+            result = SDL_Libretro_LoadGameFile(lr, path);
+            if (result) {
+                SDL_strlcpy(lr->core.contentTempDir, dir, sizeof(lr->core.contentTempDir));
+            }
+            else {
+                SDL_Libretro_RemoveTree(dir);
+            }
+        }
+    }
+    else {
+        // Byte-oriented cores get the content bytes.
+        SDL_IOStream* io = SDL_PhysFS_IOFromFile(virtualPath);
+        result = io != NULL && SDL_Libretro_LoadGame_IO(lr, io, virtualPath, true);
+    }
+
+    if (!result) {
+        SDL_Libretro_PhysFS_ClearMount(lr);
+    }
+    return result;
+}
+
+/**
  * Archive-aware replacement for SDL_Libretro_LoadGame().
  *
  * Content that isn't a .zip loads exactly like SDL_Libretro_LoadGame(). For a
@@ -519,85 +638,56 @@ bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
         return SDL_Libretro_LoadGameFile(lr, gamePath);
     }
 
-    // Initialize PhysFS on demand. Fall back to the plain loader on failure.
-    if (!SDL_Libretro_PhysFS_Init(lr)) {
-        return SDL_Libretro_LoadGameFile(lr, gamePath);
+    return SDL_Libretro_PhysFS_LoadArchive(lr, gamePath, NULL, 0);
+}
+
+/**
+ * Archive-aware replacement for SDL_Libretro_LoadGame_IO().
+ *
+ * Works like SDL_Libretro_PhysFS_LoadGame(), reading the content from `src`
+ * rather than from disk. When `path` names a .zip, the stream is read into
+ * memory and mounted with PhysFS, which keeps the buffer until the game
+ * unloads; the content inside is then picked and handed to the core the same
+ * way. Anything else loads exactly like SDL_Libretro_LoadGame_IO().
+ *
+ * Requires the implementation to be compiled with SDL_LIBRETRO_ENABLE_PHYSFS;
+ * otherwise it always fails, closing `src` when `closeio` is true.
+ *
+ * @param lr the libretro context.
+ * @param src the stream to read the content or archive from.
+ * @param path the path the content is known by; its extension decides whether
+ *             it's treated as an archive.
+ * @param closeio if true, close `src` before returning, even on failure.
+ * @returns true when the game loaded, false on failure, including when lr,
+ *          src, or path is NULL, no suitable content is found inside the
+ *          archive, or no core can run it; call SDL_GetError() for more
+ *          information.
+ *
+ * @see SDL_Libretro_PhysFS_LoadGame()
+ * @see SDL_Libretro_LoadGame_IO()
+ */
+bool SDL_Libretro_PhysFS_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio) {
+    if (!lr || !src || !path) {
+        if (src && closeio) SDL_CloseIO(src);
+        return SDL_InvalidParamError("src, path");
     }
 
-    // A loaded core that parses archives itself gets the raw .zip.
-    if (SDL_Libretro_IsCoreReady(lr) &&
-        (lr->core.blockExtract || SDL_Libretro_ExtensionInList("zip", lr->core.validExtensions))) {
-        return SDL_Libretro_LoadGameFile(lr, gamePath);
+    // Unload any running game before touching the mount, as in
+    // SDL_Libretro_PhysFS_LoadGame().
+    SDL_Libretro_UnloadGame(lr);
+    SDL_Libretro_PhysFS_ClearMount(lr);
+
+    // If it's not a .zip file, load it as normal.
+    if (SDL_strcasecmp(SDL_Libretro_GetExtension(path), "zip") != 0) {
+        return SDL_Libretro_LoadGame_IO(lr, src, path, closeio);
     }
 
-    // Mount the .zip file.
-    if (!SDL_PhysFS_Mount(gamePath, SDL_LIBRETRO_PHYSFS_MOUNT_POINT)) {
-        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, "[SDL_Libretro] Failed to mount '%s': %s", gamePath, SDL_GetError());
-        return SDL_Libretro_LoadGameFile(lr, gamePath);
-    }
-
-    // Remember which .zip file was mounted.
-    SDL_strlcpy(lr->physfsMountSource, gamePath, sizeof(lr->physfsMountSource));
-
-    // Find the content to load within the mount.
-    char virtualPath[SDL_LIBRETRO_MAX_PATH];
-    if (!SDL_Libretro_PhysFS_PickContent(lr, SDL_LIBRETRO_PHYSFS_MOUNT_POINT, gamePath,
-                                         SDL_Libretro_IsCoreReady(lr) ? lr->core.validExtensions : "",
-                                         virtualPath, sizeof(virtualPath))) {
-        SDL_Libretro_PhysFS_ClearMount(lr);
-        SDL_SetError("[SDL_Libretro] No suitable content found inside '%s'", gamePath);
-        return false;
-    }
-
-    // The core must be loaded to resolve need_fullpath for the picked file.
-    // It's picked by the content and the archive; one that takes the archive
-    // unextracted (block_extract) gets the raw .zip.
-    if (!SDL_Libretro_IsCoreReady(lr)) {
-        const SDL_Libretro_CoreInfo* info = SDL_Libretro_LoadCoreForGame(lr, virtualPath, gamePath);
-        if (!info) {
-            SDL_Libretro_PhysFS_ClearMount(lr);
-            return false;
-        }
-        if (SDL_Libretro_CoreTakesArchive(info, gamePath)) {
-            SDL_Libretro_PhysFS_ClearMount(lr);
-            return SDL_Libretro_LoadGameFile(lr, gamePath);
-        }
-    }
-
-    // Attempt to load the content.
-    bool result;
-    if (SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(virtualPath)) && lr->core.usedVFS) {
-        // VFS-aware full-path core: pass the virtual path; the PhysFS-backed
-        // VFS serves it straight out of the mount.
-        result = SDL_Libretro_LoadGameFile(lr, virtualPath);
-    }
-    else if (SDL_Libretro_ContentNeedsFullpath(lr, SDL_Libretro_GetExtension(virtualPath))) {
-        // Full-path core that reads from the OS: extract the archive, so the
-        // content finds any files it refers to, and load from there.
-        char dir[SDL_LIBRETRO_MAX_PATH];
-        result = SDL_Libretro_PhysFS_ExtractArchive(lr, gamePath, dir, sizeof(dir));
-        if (result) {
-            char path[SDL_LIBRETRO_MAX_PATH];
-            SDL_snprintf(path, sizeof(path), "%s%s", dir, virtualPath + SDL_strlen(SDL_LIBRETRO_PHYSFS_MOUNT_POINT "/"));
-            result = SDL_Libretro_LoadGameFile(lr, path);
-            if (result) {
-                SDL_strlcpy(lr->core.contentTempDir, dir, sizeof(lr->core.contentTempDir));
-            }
-            else {
-                SDL_Libretro_RemoveTree(dir);
-            }
-        }
-    }
-    else {
-        // Byte-oriented cores get the content bytes.
-        SDL_IOStream* io = SDL_PhysFS_IOFromFile(virtualPath);
-        result = io != NULL && SDL_Libretro_LoadGame_IO(lr, io, virtualPath, true);
-    }
-
-    if (!result) {
-        SDL_Libretro_PhysFS_ClearMount(lr);
-    }
-    return result;
+    // Read the archive into memory, so PhysFS can keep reading it after the
+    // stream is gone.
+    size_t size = 0;
+    void* data = SDL_LoadFile_IO(src, &size, closeio);
+    if (!data) return false;
+    return SDL_Libretro_PhysFS_LoadArchive(lr, path, data, size);
 }
 
 #else
@@ -614,6 +704,13 @@ void SDL_Libretro_PhysFS_Quit(SDL_Libretro* lr) {
 bool SDL_Libretro_PhysFS_LoadGame(SDL_Libretro* lr, const char* gamePath) {
     (void)lr;
     (void)gamePath;
+    return SDL_SetError("SDL_Libretro_PhysFS not enabled");
+}
+
+bool SDL_Libretro_PhysFS_LoadGame_IO(SDL_Libretro* lr, SDL_IOStream* src, const char* path, bool closeio) {
+    (void)lr;
+    (void)path;
+    if (src && closeio) SDL_CloseIO(src);
     return SDL_SetError("SDL_Libretro_PhysFS not enabled");
 }
 
