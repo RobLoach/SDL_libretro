@@ -755,17 +755,20 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE: {
             if (!data) return true;
+            bool wasActive = lr->core.fastforwardOverrideActive;
             lr->core.fastforwardOverride = *(const struct retro_fastforwarding_override*)data;
             lr->core.fastforwardOverrideActive = lr->core.fastforwardOverride.fastforward;
             // Bypass SDL_Libretro_SetSpeed so the inhibit_toggle guard doesn't block the core's own request.
             if (lr->core.fastforwardOverride.fastforward) {
+                if (!wasActive) lr->core.fastforwardOverrideSavedSpeed = lr->core.speed;
                 float ratio = lr->core.fastforwardOverride.ratio;
                 lr->core.speed = ratio > 1.0f ? ratio : 10.0f;
             }
-            else {
-                lr->core.speed = 1.0f;
+            else if (wasActive) {
+                // false hands control back to the frontend: restore the user's speed, don't force 1x.
+                lr->core.speed = lr->core.fastforwardOverrideSavedSpeed;
             }
-            if (lr->core.fastforwardOverride.notification) {
+            if (lr->core.fastforwardOverride.notification && wasActive != lr->core.fastforwardOverrideActive) {
                 SDL_Libretro_SetMessage(lr, lr->core.fastforwardOverride.fastforward ? "Fast-Forward" : "Normal Speed", 3.0);
             }
             return true;

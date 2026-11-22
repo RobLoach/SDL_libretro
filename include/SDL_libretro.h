@@ -814,6 +814,7 @@ typedef struct SDL_LibretroCoreData {
     // Fast-forward override
     struct retro_fastforwarding_override fastforwardOverride;
     bool fastforwardOverrideActive;
+    float fastforwardOverrideSavedSpeed; /**< The speed in effect when the core's fast-forward override became active, restored when it ends. */
 
     // Core Options
     SDL_LibretroOption* options; /**< The options that have been set by the core. The strings are owned by the context. */

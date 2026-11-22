@@ -457,6 +457,38 @@ static int SDLCALL test_VolumeSpeed(void *arg) {
     return TEST_COMPLETED;
 }
 
+/* A core's fastforward=false hands control back without wiping the user's speed. */
+static int SDLCALL test_FastforwardOverrideSpeed(void *arg) {
+    (void)arg;
+#ifndef TEST_CORE_PATH
+    SDLTest_AssertCheck(false, "TEST_CORE_PATH not defined");
+    return TEST_COMPLETED;
+#else
+    SDL_Libretro* lr = SDL_Libretro_Create();
+    SDL_Libretro_LoadCore(lr, TEST_CORE_PATH);
+
+    struct retro_fastforwarding_override off = { 0.0f, false, false, false };
+    struct retro_fastforwarding_override on = { 3.0f, true, false, false };
+
+    // An inactive override receiving false leaves the user's speed alone.
+    SDL_Libretro_SetSpeed(lr, 0.5f);
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE, &off);
+    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.5f, "Override false keeps speed 0.5, got %f", SDL_Libretro_GetSpeed(lr));
+    SDLTest_AssertCheck(!SDL_Libretro_IsFastforwardOverrideActive(lr), "Override inactive after false");
+
+    // Ending an active override restores the speed in effect when it started.
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE, &on);
+    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 3.0f, "Override true sets ratio 3.0, got %f", SDL_Libretro_GetSpeed(lr));
+    SDLTest_AssertCheck(SDL_Libretro_IsFastforwardOverrideActive(lr), "Override active after true");
+    SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_FASTFORWARDING_OVERRIDE, &off);
+    SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 0.5f, "Override false restores speed 0.5, got %f", SDL_Libretro_GetSpeed(lr));
+    SDLTest_AssertCheck(!SDL_Libretro_IsFastforwardOverrideActive(lr), "Override inactive after false");
+
+    SDL_Libretro_Destroy(lr);
+    return TEST_COMPLETED;
+#endif
+}
+
 static int SDLCALL test_DRCDisable(void *arg) {
     (void)arg;
 #ifndef TEST_CORE_PATH
@@ -5508,6 +5540,7 @@ static const SDLTest_TestCaseReference *testCases[] = {
     LIBRETRO_TEST_CASE(test_CoreLibrarySorted, "Core library is sorted by name"),
     LIBRETRO_TEST_CASE(test_CoreForFolder,     "Core picked by the content's folder"),
     LIBRETRO_TEST_CASE(test_VolumeSpeed,      "Volume and speed with clamping"),
+    LIBRETRO_TEST_CASE(test_FastforwardOverrideSpeed, "Fast-forward override restores the user's speed"),
     LIBRETRO_TEST_CASE(test_DRCDisable,       "Disabling DRC unwinds the ratio nudge"),
     LIBRETRO_TEST_CASE(test_Input,            "Keyboard mapping, virtual buttons, port device"),
     LIBRETRO_TEST_CASE(test_GamepadEvents,    "Gamepad hotplug events update gamepadCount"),
