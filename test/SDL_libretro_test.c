@@ -4972,6 +4972,16 @@ static int SDLCALL test_Menu(void *arg) {
         event.key.key = SDLK_EQUALS;
         SDL_Libretro_HandleMenuEvent(menu, &event);
         SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lr) - 0.6f) < 0.001f, "Volume Up raises the volume on release");
+        SDLTest_AssertCheck(menu->volumePercent == 60, "Volume Up keeps the slider in sync, got %d", menu->volumePercent);
+
+        // Volume Up while muted unmutes and steps from the restored volume.
+        menu->muteChecked = nk_true;
+        SDL_Libretro_MenuMuteChanged(menu, NULL);
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        SDLTest_AssertCheck(menu->muteChecked == nk_false && SDL_fabsf(SDL_Libretro_GetVolume(lr) - 0.7f) < 0.001f,
+            "Volume Up while muted unmutes, got %f", SDL_Libretro_GetVolume(lr));
+        SDLTest_AssertCheck(menu->volumePercent == (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f),
+            "Volume Up while muted keeps the slider in sync, got %d", menu->volumePercent);
         SDL_Libretro_SetVolume(lr, 1.0f);
 
         // Letting go of Fast Forward restores the app's own speed.

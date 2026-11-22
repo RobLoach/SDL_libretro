@@ -1045,6 +1045,21 @@ static void SDL_Libretro_MenuMuteChanged(SDL_LibretroMenu* menu, void* userdata)
 
 /**
  * @internal
+ * Steps the volume like the Volume hotkeys, unmuting first so the step starts from the restored volume.
+ */
+static void SDL_Libretro_MenuStepVolume(SDL_LibretroMenu* menu, float delta) {
+    SDL_Libretro* lr = menu->lr;
+    if (menu->muteChecked) {
+        menu->muteChecked = nk_false;
+        SDL_Libretro_MenuMuteChanged(menu, NULL);
+    }
+    SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + delta);
+    menu->volumePercent = (int)(SDL_Libretro_GetVolume(lr) * 100.0f + 0.5f);
+    menu->settingsDirty = true;
+}
+
+/**
+ * @internal
  * Special keys that map between SDL scancodes and NK_CONSOLE_KEY_* runes.
  *
  * Aliases (keypad enter, right-hand modifiers) come after their primary, so
@@ -1581,10 +1596,10 @@ static void SDL_Libretro_MenuRunHotkey(SDL_LibretroMenu* menu, SDL_LibretroMenuH
             SDL_Libretro_SaveScreenshot(lr, NULL);
             break;
         case SDL_LIBRETRO_MENU_HOTKEY_VOLUME_UP:
-            SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) + 0.1f);
+            SDL_Libretro_MenuStepVolume(menu, 0.1f);
             break;
         case SDL_LIBRETRO_MENU_HOTKEY_VOLUME_DOWN:
-            SDL_Libretro_SetVolume(lr, SDL_Libretro_GetVolume(lr) - 0.1f);
+            SDL_Libretro_MenuStepVolume(menu, -0.1f);
             break;
         case SDL_LIBRETRO_MENU_HOTKEY_MUTE:
             menu->muteChecked = (nk_bool)!menu->muteChecked;
