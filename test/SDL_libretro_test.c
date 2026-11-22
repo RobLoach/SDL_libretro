@@ -4917,6 +4917,25 @@ static int SDLCALL test_Menu(void *arg) {
         SDLTest_AssertCheck(SDL_fabsf(SDL_Libretro_GetVolume(lr) - 0.6f) < 0.001f, "Volume Up raises the volume on release");
         SDL_Libretro_SetVolume(lr, 1.0f);
 
+        // Letting go of Fast Forward restores the app's own speed.
+        SDL_Libretro_SetSpeed(lr, 1.5f);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_SPACE;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        event.type = SDL_EVENT_KEY_UP;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 1.5f, "Letting go of Fast Forward restores a custom speed");
+        SDL_Libretro_SetSpeed(lr, 1.0f);
+
+        // Without rewind enabled, holding Rewind doesn't pause the game.
+        SDL_Libretro_SetRewindEnabled(lr, false, 0, 0);
+        event.type = SDL_EVENT_KEY_DOWN;
+        event.key.key = SDLK_BACKSPACE;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+        SDLTest_AssertCheck(SDL_Libretro_GetSpeed(lr) == 1.0f, "Holding Rewind without rewind enabled keeps the speed");
+        event.type = SDL_EVENT_KEY_UP;
+        SDL_Libretro_HandleMenuEvent(menu, &event);
+
         // A held Fast Forward still ends when it's let go in the menu.
         event.type = SDL_EVENT_KEY_DOWN;
         event.key.key = SDLK_SPACE;

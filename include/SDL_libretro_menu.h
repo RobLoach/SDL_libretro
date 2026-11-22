@@ -312,6 +312,7 @@ struct SDL_LibretroMenu {
     nk_console* hotkeysKeyboardButton; /**< The Hot Keys > Keyboard submenu, disabled with the hotkeys. */
     nk_console* hotkeysGamepadButton; /**< The Hot Keys > Gamepad submenu, disabled with the hotkeys. */
     SDL_LibretroMenuHotkey heldHotkey; /**< The Fast Forward, Slow Motion or Rewind hotkey being held, or SDL_LIBRETRO_MENU_HOTKEY_COUNT. */
+    float heldSpeed; /**< The speed from before the held hotkey, restored when it's let go. */
 
     // Disks, rebuilt when the menu opens.
     nk_console* disksButton;
@@ -1536,16 +1537,23 @@ static void SDL_Libretro_MenuRunHotkey(SDL_LibretroMenu* menu, SDL_LibretroMenuH
     switch (hotkey) {
         case SDL_LIBRETRO_MENU_HOTKEY_FAST_FORWARD: heldSpeed = 2.0f; break;
         case SDL_LIBRETRO_MENU_HOTKEY_SLOW_MOTION: heldSpeed = 0.5f; break;
-        case SDL_LIBRETRO_MENU_HOTKEY_REWIND: heldSpeed = -1.0f; break;
+        case SDL_LIBRETRO_MENU_HOTKEY_REWIND:
+            // Without rewind, a negative speed would clamp to 0 and pause.
+            if (!SDL_Libretro_GetRewindEnabled(lr)) return;
+            heldSpeed = -1.0f;
+            break;
         default: break;
     }
     if (heldSpeed != 0.0f) {
         if (pressed) {
+            if (menu->heldHotkey == SDL_LIBRETRO_MENU_HOTKEY_COUNT) {
+                menu->heldSpeed = SDL_Libretro_GetSpeed(lr);
+            }
             SDL_Libretro_SetSpeed(lr, heldSpeed);
             menu->heldHotkey = hotkey;
         }
         else if (menu->heldHotkey == hotkey) {
-            SDL_Libretro_SetSpeed(lr, 1.0f);
+            SDL_Libretro_SetSpeed(lr, menu->heldSpeed);
             menu->heldHotkey = SDL_LIBRETRO_MENU_HOTKEY_COUNT;
         }
         return;
