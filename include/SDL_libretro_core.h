@@ -1526,17 +1526,14 @@ bool SDL_Libretro_Reset(SDL_Libretro* lr) {
 /**
  * Work out the delta handed to the frame-time callback for each of the `ticks` ticks about to run, and stamp the time.
  *
- * Mirrors RetroArch: the first tick (or the first after a load, reset, pause or rewind) has no measured cadence, so it gets the reference the core declared. So does the first after a gap longer than SDL_LIBRETRO_FRAME_TIME_MAX_GAP_NS, which is the application pausing by not calling SDL_Libretro_Update(). At 1x speed the wall-clock time since the previous tick batch is reported. Off 1x speed (fast-forward, slow-motion) the idealized `referenceUsec` is reported instead, since the measured time doesn't describe game time. When one Update runs several catch-up ticks, the measured time is split evenly across them, so each tick still reports its share rather than the first getting it all and the rest ~0.
+ * Mirrors RetroArch: the first tick (or the first after a load, reset, pause or rewind) has no measured cadence, so it gets the reference the core declared. So does the first after a gap longer than SDL_LIBRETRO_FRAME_TIME_MAX_GAP_NS, which is the application pausing by not calling SDL_Libretro_Update(). Pass `restart` to force that too. At 1x speed the wall-clock time since the previous tick batch is reported. Off 1x speed (fast-forward, slow-motion) the core's reference is reported instead, as libretro.h asks, so a core that advances game time by the reported usec runs faster or slower along with the ticks. When one Update runs several catch-up ticks, the measured time is split evenly across them, so each tick still reports its share rather than the first getting it all and the rest ~0.
  */
-static retro_usec_t SDL_Libretro_FrameTimeDelta(SDL_Libretro* lr, retro_usec_t referenceUsec, int ticks) {
+static retro_usec_t SDL_Libretro_FrameTimeDelta(SDL_Libretro* lr, bool restart, int ticks) {
     Uint64 nowNS = SDL_LIBRETRO_GET_TICKS_NS();
     Uint64 lastNS = lr->core.runloop_frame_time_last;
     lr->core.runloop_frame_time_last = nowNS;
-    if (!lastNS || referenceUsec <= 0 || nowNS - lastNS > SDL_LIBRETRO_FRAME_TIME_MAX_GAP_NS) {
+    if (restart || !lastNS || lr->core.speed != 1.0f || nowNS - lastNS > SDL_LIBRETRO_FRAME_TIME_MAX_GAP_NS) {
         return lr->core.runloop_frame_time.reference;
-    }
-    if (lr->core.speed != 1.0f) {
-        return referenceUsec;
     }
     retro_usec_t measured = (retro_usec_t)((nowNS - lastNS) / SDL_NS_PER_US);
     return ticks > 1 ? measured / ticks : measured;
@@ -1665,7 +1662,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
         // First call: seed the clock and run exactly one tick.
         lr->core.lastTickNS = nowNS;
         lr->core.speedAccumulator = 0.0;
-        SDL_Libretro_Tick(lr, SDL_Libretro_FrameTimeDelta(lr, 0, 1));
+        SDL_Libretro_Tick(lr, SDL_Libretro_FrameTimeDelta(lr, true, 1));
         return;
     }
 
@@ -1676,14 +1673,11 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     // Target frame period from the core's declared fps (default 60).
     double framePeriod = (lr->core.fps > 0.0) ? (1.0 / lr->core.fps) : (1.0 / 60.0);
 
-    // Reference frame-time the core is told about, in microseconds.
-    retro_usec_t referenceUsec = (retro_usec_t)(framePeriod * 1.0e6 / (double)lr->core.speed);
-
     // At normal speed, when the loop is already paced close to the core's frame rate (e.g. a vsync'd 60 Hz display with a ~60 fps core), run exactly one tick and discard the accumulator. This avoids the beat-frequency judder of occasionally emitting 0 or 2 ticks. Gating on the *measured* cadence keeps the core bounded when vsync is off / FPS uncapped.
     double cadence = (framePeriod > 0.0) ? (frameTime / framePeriod) : 0.0;
     if (lr->core.speed == 1.0f && cadence > 0.9 && cadence < 1.1) {
         lr->core.speedAccumulator = 0.0;
-        SDL_Libretro_Tick(lr, SDL_Libretro_FrameTimeDelta(lr, referenceUsec, 1));
+        SDL_Libretro_Tick(lr, SDL_Libretro_FrameTimeDelta(lr, false, 1));
         return;
     }
 
@@ -1708,7 +1702,7 @@ void SDL_Libretro_Update(SDL_Libretro* lr) {
     if (ticks == 0) return;
 
     // Run the required number of ticks.
-    retro_usec_t frameTimeUsec = SDL_Libretro_FrameTimeDelta(lr, referenceUsec, ticks);
+    retro_usec_t frameTimeUsec = SDL_Libretro_FrameTimeDelta(lr, false, ticks);
     for (int i = 0; i < ticks && !lr->core.shutdown; i++) {
         SDL_Libretro_Tick(lr, frameTimeUsec);
     }

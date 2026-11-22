@@ -1898,14 +1898,20 @@ static int SDLCALL test_FrameTime(void *arg) {
     SDLTest_AssertCheck(test_FrameTimesAll(25000),
         "Catch-up ticks report their share of the measured time, got %lld", (long long)test_frameTimes[0]);
 
-    // Off 1x speed the idealized per-tick period is reported.
-    SDL_Libretro_SetSpeed(lr, 2.0f);
+    // Off 1x speed the core's reference is reported, so game time follows the tick rate.
+    SDL_Libretro_SetSpeed(lr, 4.0f);
     test_frameTimeCount = 0;
     test_fakeTicksNS += 20 * SDL_NS_PER_MS;
     SDL_Libretro_Update(lr);
-    retro_usec_t fastReference = (retro_usec_t)((1.0 / 60.0) * 1.0e6 / 2.0);
-    SDLTest_AssertCheck(test_FrameTimesAll(fastReference), "Fast-forward reports the idealized period %lld, got %d calls, first %lld",
-        (long long)fastReference, test_frameTimeCount, (long long)test_frameTimes[0]);
+    SDLTest_AssertCheck(test_frameTimeCount > 1 && test_FrameTimesAll(coreReference), "Fast-forward reports the core reference %lld, got %d calls, first %lld",
+        (long long)coreReference, test_frameTimeCount, (long long)test_frameTimes[0]);
+
+    SDL_Libretro_SetSpeed(lr, 0.5f);
+    test_frameTimeCount = 0;
+    test_fakeTicksNS += 40 * SDL_NS_PER_MS;
+    SDL_Libretro_Update(lr);
+    SDLTest_AssertCheck(test_frameTimeCount > 0 && test_FrameTimesAll(coreReference), "Slow-motion reports the core reference %lld, got %d calls, first %lld",
+        (long long)coreReference, test_frameTimeCount, (long long)test_frameTimes[0]);
 
     // Pausing restarts the clock, so the pause isn't reported as one long frame.
     SDL_Libretro_SetSpeed(lr, 0.0f);
