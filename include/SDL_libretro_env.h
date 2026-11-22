@@ -725,7 +725,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
 
         case 72:
         case RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT: {
-            if (!data) return false;
+            if (!data) return true;
             *(unsigned*)data = (unsigned)lr->core.savestateContext;
             return true;
         }
@@ -991,7 +991,7 @@ static bool SDL_Libretro_EnvironmentCallback(unsigned cmd, void* data) {
         }
 
         case RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE: {
-            if (!data) return false;
+            if (!data) return true;
             const struct retro_system_content_info_override* overrides =
                 (const struct retro_system_content_info_override*)data;
             SDL_Libretro_FreeContentInfoOverrides(lr);

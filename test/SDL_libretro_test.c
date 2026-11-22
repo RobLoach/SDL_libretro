@@ -1733,6 +1733,7 @@ static int SDLCALL test_LoadCore(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(lr) == RETRO_SAVESTATE_CONTEXT_RUNAHEAD_SAME_INSTANCE, "Savestate context set to RUNAHEAD");
     SDL_Libretro_SetSavestateContext(lr, RETRO_SAVESTATE_CONTEXT_NORMAL);
     SDLTest_AssertCheck(SDL_Libretro_GetSavestateContext(lr) == RETRO_SAVESTATE_CONTEXT_NORMAL, "Savestate context restored to NORMAL");
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_GET_SAVESTATE_CONTEXT, NULL) == true, "GET_SAVESTATE_CONTEXT with NULL data reports support");
 
     // With a core loaded but no game, game-state operations no-op safely.
     SDLTest_AssertCheck(SDL_Libretro_IsGameReady(lr) == false, "Game not ready with core but no game");
@@ -2082,6 +2083,11 @@ static int SDLCALL test_GameInfoExt(void *arg) {
             "GET_INPUT_MAX_USERS reports SDL_LIBRETRO_MAX_USERS (%d), got %d",
             SDL_LIBRETRO_MAX_USERS, (int)probe[19]);
     }
+
+    // A NULL override list is a support query and leaves the overrides alone.
+    unsigned overrideCount = lr->core.contentInfoOverrideCount;
+    SDLTest_AssertCheck(SDL_Libretro_EnvironmentCallback(RETRO_ENVIRONMENT_SET_CONTENT_INFO_OVERRIDE, NULL) == true, "SET_CONTENT_INFO_OVERRIDE with NULL data reports support");
+    SDLTest_AssertCheck(overrideCount > 0 && lr->core.contentInfoOverrideCount == overrideCount, "SET_CONTENT_INFO_OVERRIDE with NULL data keeps the overrides");
 
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
