@@ -1431,6 +1431,8 @@ void SDL_Libretro_UnloadGame(SDL_Libretro* lr) {
     lr->core.symbols.retro_unload_game();
     lr->core.gameLoaded = false;
     lr->core.frameRun = false;
+    // The memory map points into the game's memory, which the core just freed.
+    SDL_Libretro_FreeMemoryMap(lr);
     // A shutdown request was for the game that's now gone.
     lr->core.shutdown = false;
     SDL_Libretro_ResetContentState(lr);

@@ -3108,6 +3108,19 @@ static int SDLCALL test_Memory(void *arg) {
     SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 64, NULL) == NULL, "MapAddress past the region is NULL");
     SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(NULL, 0, NULL) == NULL, "MapAddress(NULL) NULL");
 
+    // Unloading the game drops its map: the descriptors point into game memory.
+    SDL_Libretro_UnloadGame(lr);
+    SDLTest_AssertCheck(lr->core.memoryMapDescriptors == NULL, "UnloadGame frees the memory map");
+    SDLTest_AssertCheck(lr->core.memoryMapDescriptorCount == 0, "UnloadGame resets the memory map count");
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapCount(lr) == 0, "GetMemoryMapCount 0 after UnloadGame");
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapDescriptor(lr, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL) == false, "GetMemoryMapDescriptor false after UnloadGame");
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 0, NULL) == NULL, "MapAddress NULL after UnloadGame");
+
+    // Reloading the game republishes a fresh map.
+    SDL_Libretro_LoadGame(lr, NULL);
+    SDLTest_AssertCheck(SDL_Libretro_GetMemoryMapCount(lr) == 1, "GetMemoryMapCount 1 after reload");
+    SDLTest_AssertCheck(SDL_Libretro_GetMapAddress(lr, 0, NULL) == SDL_Libretro_GetMemoryData(lr, RETRO_MEMORY_SAVE_RAM, NULL), "MapAddress(0) resolves after reload");
+
     SDL_Libretro_Destroy(lr);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

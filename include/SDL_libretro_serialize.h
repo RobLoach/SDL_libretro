@@ -671,7 +671,7 @@ unsigned SDL_Libretro_GetMemoryMapCount(const SDL_Libretro* lr) {
  *
  *     host = (Uint8*)ptr + offset + ((guest & ~disconnect) - start)
  *
- * Any out-parameter may be NULL if not needed. The returned `ptr` and `addrspace` are owned by the context and remain valid until the core is unloaded; do not free them.
+ * Any out-parameter may be NULL if not needed. The returned `ptr` and `addrspace` are owned by the context and remain valid until the game is unloaded; do not free them.
  *
  * @param lr the libretro context.
  * @param index the descriptor index, in [0, SDL_Libretro_GetMemoryMapCount()).
