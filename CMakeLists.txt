@@ -75,8 +75,9 @@ endif()
 # Menu system (SDL_libretro_menu.h) built on nuklear_console. Kept out of the
 # base SDL_libretro target so consumers that don't want it pull in no Nuklear.
 if(SDL_LIBRETRO_MENU)
-    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/Nuklear/nuklear.h")
-        message(FATAL_ERROR "SDL_LIBRETRO_MENU requires the vendored submodules: git submodule update --init")
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/Nuklear/nuklear.h" OR
+            NOT EXISTS "${PROJECT_SOURCE_DIR}/vendor/nuklear_tinted/vendor/tinted-c/include/tinted.h")
+        message(FATAL_ERROR "SDL_LIBRETRO_MENU requires the vendored submodules: git submodule update --init --recursive")
     endif()
 
     add_library(SDL_libretro_menu INTERFACE)
@@ -87,7 +88,9 @@ if(SDL_LIBRETRO_MENU)
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/Nuklear>
         $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/nuklear_console>
-        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/nuklear_gamepad>)
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/nuklear_gamepad>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/nuklear_tinted>
+        $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/vendor/nuklear_tinted/vendor/tinted-c/include>)
     target_compile_definitions(SDL_libretro_menu INTERFACE SDL_LIBRETRO_ENABLE_MENU)
     target_link_libraries(SDL_libretro_menu INTERFACE SDL_libretro)
     if(UNIX)

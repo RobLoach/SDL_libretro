@@ -7,6 +7,7 @@ static Uint64 test_fakeTicksNS = 0;
 
 #define SDL_LIBRETRO_IMPLEMENTATION
 #define SDL_LIBRETRO_ENABLE_PHYSFS
+#define SDL_LIBRETRO_ENABLE_MENU_THEMES
 #include "SDL_libretro.h"
 
 #include <SDL3/SDL_main.h>
@@ -4608,19 +4609,19 @@ static int SDLCALL test_Menu(void *arg) {
 
         // Regression probes for the theme colors.
         SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA,
-            nk_rgba(205, 214, 244, 255), nk_rgba(30, 30, 46, 235), nk_rgba(180, 190, 254, 255)),
+            nk_rgba(205, 214, 244, 255), nk_rgba(30, 30, 46, 235), nk_rgba(137, 180, 250, 255)),
             "Mocha colors match");
         SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_LATTE,
-            nk_rgba(76, 79, 105, 255), nk_rgba(239, 241, 245, 235), nk_rgba(223, 142, 29, 255)),
+            nk_rgba(76, 79, 105, 255), nk_rgba(239, 241, 245, 235), nk_rgba(30, 102, 245, 255)),
             "Latte colors match");
         SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_FRAPPE,
-            nk_rgba(198, 208, 245, 255), nk_rgba(48, 52, 70, 235), nk_rgba(244, 184, 228, 255)),
+            nk_rgba(198, 208, 245, 255), nk_rgba(48, 52, 70, 235), nk_rgba(140, 170, 238, 255)),
             "Frappe colors match");
         SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MACCHIATO,
-            nk_rgba(202, 211, 245, 255), nk_rgba(36, 39, 58, 235), nk_rgba(238, 212, 159, 255)),
+            nk_rgba(202, 211, 245, 255), nk_rgba(36, 39, 58, 235), nk_rgba(138, 173, 244, 255)),
             "Macchiato colors match");
         SDLTest_AssertCheck(test_MenuStyleHasColors(menu, SDL_LIBRETRO_MENU_STYLE_DRACULA,
-            nk_rgba(248, 248, 242, 255), nk_rgba(40, 42, 54, 235), nk_rgba(255, 121, 198, 255)),
+            nk_rgba(248, 248, 242, 255), nk_rgba(40, 42, 54, 235), nk_rgba(189, 147, 249, 255)),
             "Dracula colors match");
 
         // UI scale: the resolution thresholds step the automatic scale.

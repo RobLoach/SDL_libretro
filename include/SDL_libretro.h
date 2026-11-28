@@ -478,6 +478,9 @@ typedef struct SDL_LibretroMenu SDL_LibretroMenu;
 /**
  * Color themes for the menu.
  *
+ * Every style but SDL_LIBRETRO_MENU_STYLE_DARK needs
+ * SDL_LIBRETRO_ENABLE_MENU_THEMES.
+ *
  * @see SDL_Libretro_SetMenuStyle()
  */
 typedef enum SDL_LibretroMenuStyle {

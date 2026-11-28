@@ -11,6 +11,7 @@
 
 #define SDL_LIBRETRO_IMPLEMENTATION
 #define SDL_LIBRETRO_ENABLE_PHYSFS
+#define SDL_LIBRETRO_ENABLE_MENU_THEMES
 #include "SDL_libretro.h"
 #include "resources/SDL_libretro_icon.h"
 
