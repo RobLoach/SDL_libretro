@@ -33,3 +33,8 @@
 	url = https://github.com/RobLoach/SDL_ini.git
     ignore = dirty
     branch = master
+[submodule "vendor/nuklear_tinted"]
+	path = vendor/nuklear_tinted
+	url = https://github.com/RobLoach/nuklear_tinted.git
+    ignore = dirty
+    branch = master

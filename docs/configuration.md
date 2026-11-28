@@ -17,11 +17,12 @@ Use macros before `SDL_LIBRETRO_IMPLEMENTATION` to change how SDL_Libretro behav
 | `ENABLE_MENU` | Enable the nuklear_console menu |
 | `MENU_TOGGLE_KEY` | The default key of the Menu hotkey, which toggles the menu (default `SDLK_F1`) |
 | `MENU_FONT_HEIGHT` | Base menu font height in pixels (default `13`) |
-| `MENU_DEFAULT_STYLE` | The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA`) |
+| `ENABLE_MENU_THEMES` | Enable the menu's color themes from [nuklear_tinted](https://github.com/RobLoach/nuklear_tinted). Without it, the menu only has Nuklear's Dark style |
+| `MENU_DEFAULT_STYLE` | The initial menu theme (default `SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA` with themes, otherwise `SDL_LIBRETRO_MENU_STYLE_DARK`) |
 | `DISABLE_PHYSFS`, `DISABLE_MENU` | Turn PhysFS or the menu back off, even when enabled |
 | `DISABLE_VFS` | Don't provide the SDL-backed libretro VFS, e.g. when implementing your own (PhysFS requires it) |
 | `NO_INI_IMPLEMENTATION`, `PHYSFS_NO_SDL_PHYSFS_IMPLEMENTATION`, `MENU_NO_NK_IMPLEMENTATION` | Skip compiling the bundled SDL_ini, SDL_PhysFS or Nuklear implementations when they're already compiled elsewhere |
-| `MENU_NUKLEAR_H`, `MENU_NUKLEAR_SDL3_RENDERER_H`, `MENU_NUKLEAR_GAMEPAD_H`, `MENU_NUKLEAR_CONSOLE_H` | Include paths for the menu's Nuklear headers |
+| `MENU_NUKLEAR_H`, `MENU_NUKLEAR_SDL3_RENDERER_H`, `MENU_NUKLEAR_GAMEPAD_H`, `MENU_NUKLEAR_CONSOLE_H`, `MENU_NUKLEAR_TINTED_H` | Include paths for the menu's Nuklear headers |
 
 Define `NK_CONSOLE_FILE_NO_SDL_NATIVE_DIALOG` to Load Game with the menu's own file browser instead of the OS file dialog. Gamepads, and systems where the OS dialog can't open, use the file browser either way.
 

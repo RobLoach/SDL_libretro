@@ -93,6 +93,24 @@
 #include SDL_LIBRETRO_MENU_NUKLEAR_CONSOLE_H
 #include "nuklear_console_sdl.h"
 
+// The theme colors come from nuklear_tinted, compiling in only the tinted-c
+// schemes the menu offers.
+#ifdef SDL_LIBRETRO_ENABLE_MENU_THEMES
+#ifndef SDL_LIBRETRO_MENU_NO_NK_IMPLEMENTATION
+#define NK_TINTED_IMPLEMENTATION
+#define TINTED_IMPLEMENTATION
+#endif
+#ifndef SDL_LIBRETRO_MENU_NUKLEAR_TINTED_H
+#define SDL_LIBRETRO_MENU_NUKLEAR_TINTED_H "nuklear_tinted.h"
+#endif
+#include SDL_LIBRETRO_MENU_NUKLEAR_TINTED_H
+#include "base16-catppuccin-mocha.h"
+#include "base16-catppuccin-latte.h"
+#include "base16-catppuccin-frappe.h"
+#include "base16-catppuccin-macchiato.h"
+#include "base16-dracula.h"
+#endif
+
 #ifndef SDL_LIBRETRO_MENU_TOGGLE_KEY
 /**
  * The default key of the Menu hotkey, which toggles the menu. It can be
@@ -123,11 +141,16 @@
 
 #ifndef SDL_LIBRETRO_MENU_DEFAULT_STYLE
 /**
- * The style applied when the menu is created.
+ * The style applied when the menu is created: Catppuccin Mocha with
+ * SDL_LIBRETRO_ENABLE_MENU_THEMES, otherwise Dark.
  *
  * @see SDL_Libretro_SetMenuStyle()
  */
+#ifdef SDL_LIBRETRO_ENABLE_MENU_THEMES
 #define SDL_LIBRETRO_MENU_DEFAULT_STYLE SDL_LIBRETRO_MENU_STYLE_CATPPUCCIN_MOCHA
+#else
+#define SDL_LIBRETRO_MENU_DEFAULT_STYLE SDL_LIBRETRO_MENU_STYLE_DARK
+#endif
 #endif
 
 /**
@@ -135,6 +158,38 @@
  * The style names, separated by a |, in SDL_LibretroMenuStyle order.
  */
 #define SDL_LIBRETRO_MENU_STYLE_NAMES "Mocha|Latte|Frappe|Macchiato|Dracula|Dark"
+
+#ifdef SDL_LIBRETRO_ENABLE_MENU_THEMES
+/**
+ * @internal
+ * The tinted-c scheme backing a built-in style, or NULL for the Nuklear
+ * default.
+ */
+static const tinted_scheme* SDL_Libretro_MenuGetScheme(SDL_LibretroMenuStyle style) {
+    static const tinted_scheme* const schemes[SDL_LIBRETRO_MENU_STYLE_COUNT] = {
+        &base16_catppuccin_mocha,
+        &base16_catppuccin_latte,
+        &base16_catppuccin_frappe,
+        &base16_catppuccin_macchiato,
+        &base16_dracula,
+        NULL, // SDL_LIBRETRO_MENU_STYLE_DARK is the Nuklear default.
+    };
+    return ((int)style >= 0 && style < SDL_LIBRETRO_MENU_STYLE_COUNT) ? schemes[style] : NULL;
+}
+#endif
+
+/**
+ * @internal
+ * Whether the style is compiled in: every style with
+ * SDL_LIBRETRO_ENABLE_MENU_THEMES, otherwise only Dark.
+ */
+static bool SDL_Libretro_MenuHasStyle(SDL_LibretroMenuStyle style) {
+#ifdef SDL_LIBRETRO_ENABLE_MENU_THEMES
+    return (int)style >= 0 && style < SDL_LIBRETRO_MENU_STYLE_COUNT;
+#else
+    return style == SDL_LIBRETRO_MENU_STYLE_DARK;
+#endif
+}
 
 /**
  * @internal
@@ -1742,7 +1797,8 @@ static void SDL_Libretro_MenuLoadState(SDL_LibretroMenu* menu) {
     SDL_Libretro_MenuLoadHotkeys(menu);
     if (lr->ini != NULL) {
         Sint64 savedStyle = INI_GetInt(lr->ini, NULL, "menutheme", (Sint64)style);
-        if (savedStyle >= 0 && savedStyle < (Sint64)SDL_LIBRETRO_MENU_STYLE_COUNT) {
+        if (savedStyle >= 0 && savedStyle < (Sint64)SDL_LIBRETRO_MENU_STYLE_COUNT &&
+                SDL_Libretro_MenuHasStyle((SDL_LibretroMenuStyle)savedStyle)) {
             style = (SDL_LibretroMenuStyle)savedStyle;
         }
         if (INI_HasValue(lr->ini, NULL, "menuuiscale")) {
@@ -2436,198 +2492,6 @@ static void SDL_Libretro_MenuBuildControllers(SDL_LibretroMenu* menu) {
 
 /**
  * @internal
- * A menu color theme, expressed as the distinct colors the themes vary on.
- *
- * SDL_Libretro_MenuApplyPalette() fans these out over the full Nuklear color
- * table, so adding a theme is ~20 colors instead of ~30 table assignments.
- */
-typedef struct SDL_LibretroMenuPalette {
-    struct nk_color text;
-    struct nk_color window; /**< Window background. */
-    struct nk_color frame; /**< Header and border. */
-    struct nk_color widget; /**< Buttons, selects, properties, edits, combos, charts, tab headers. */
-    struct nk_color widgetHover;
-    struct nk_color widgetActive;
-    struct nk_color selectActive;
-    struct nk_color toggle; /**< Checkbox/toggle track. */
-    struct nk_color toggleHover;
-    struct nk_color toggleCursor;
-    struct nk_color slider; /**< Slider and knob track. */
-    struct nk_color sliderCursor;
-    struct nk_color sliderCursorHover;
-    struct nk_color sliderCursorActive;
-    struct nk_color editCursor;
-    struct nk_color chartColor;
-    struct nk_color chartHighlight;
-    struct nk_color scrollbar; /**< Scrollbar track. */
-    struct nk_color scrollbarCursor;
-    struct nk_color scrollbarCursorHover;
-    struct nk_color scrollbarCursorActive;
-    struct nk_color knobCursor;
-    struct nk_color knobCursorHover;
-    struct nk_color knobCursorActive;
-} SDL_LibretroMenuPalette;
-
-// Catppuccin Mocha: text/base/mantle/surface/overlay neutrals with lavender,
-// green and pink accents. https://catppuccin.com/palette/
-static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteMocha = {
-    .text = {205, 214, 244, 255},
-    .window = {30, 30, 46, 235},
-    .frame = {24, 24, 37, 255},
-    .widget = {49, 50, 68, 255},
-    .widgetHover = {127, 132, 156, 255},
-    .widgetActive = {108, 112, 134, 255},
-    .selectActive = {108, 112, 134, 255},
-    .toggle = {88, 91, 112, 255},
-    .toggleHover = {147, 153, 178, 255},
-    .toggleCursor = {180, 190, 254, 255},
-    .slider = {69, 71, 90, 255},
-    .sliderCursor = {166, 227, 161, 255},
-    .sliderCursorHover = {166, 227, 161, 255},
-    .sliderCursorActive = {166, 227, 161, 255},
-    .editCursor = {180, 190, 254, 255},
-    .chartColor = {180, 190, 254, 255},
-    .chartHighlight = {245, 194, 231, 255},
-    .scrollbar = {49, 50, 68, 255},
-    .scrollbarCursor = {108, 112, 134, 255},
-    .scrollbarCursorHover = {180, 190, 254, 255},
-    .scrollbarCursorActive = {245, 194, 231, 255},
-    .knobCursor = {245, 194, 231, 255},
-    .knobCursorHover = {245, 194, 231, 255},
-    .knobCursorActive = {245, 194, 231, 255},
-};
-
-// Catppuccin Latte: the light variant, with teal, mauve and pink accents.
-static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteLatte = {
-    .text = {76, 79, 105, 255},
-    .window = {239, 241, 245, 235},
-    .frame = {230, 233, 239, 255},
-    .widget = {204, 208, 218, 255},
-    .widgetHover = {124, 127, 147, 55},
-    .widgetActive = {156, 160, 176, 255},
-    .selectActive = {156, 160, 176, 255},
-    .toggle = {172, 176, 190, 255},
-    .toggleHover = {124, 127, 147, 55},
-    .toggleCursor = {223, 142, 29, 255},
-    .slider = {188, 192, 204, 255},
-    .sliderCursor = {23, 146, 153, 255},
-    .sliderCursorHover = {23, 146, 153, 255},
-    .sliderCursorActive = {23, 146, 153, 255},
-    .editCursor = {136, 57, 239, 255},
-    .chartColor = {23, 146, 153, 255},
-    .chartHighlight = {136, 57, 239, 255},
-    .scrollbar = {204, 208, 218, 255},
-    .scrollbarCursor = {156, 160, 176, 255},
-    .scrollbarCursorHover = {136, 57, 239, 255},
-    .scrollbarCursorActive = {136, 57, 239, 255},
-    .knobCursor = {234, 118, 203, 255},
-    .knobCursorHover = {234, 118, 203, 255},
-    .knobCursorActive = {234, 118, 203, 255},
-};
-
-// Catppuccin Frappe, with green, lavender and pink accents.
-static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteFrappe = {
-    .text = {198, 208, 245, 255},
-    .window = {48, 52, 70, 235},
-    .frame = {41, 44, 60, 255},
-    .widget = {65, 69, 89, 255},
-    .widgetHover = {131, 139, 167, 255},
-    .widgetActive = {115, 121, 148, 255},
-    .selectActive = {115, 121, 148, 255},
-    .toggle = {98, 104, 128, 255},
-    .toggleHover = {148, 156, 187, 255},
-    .toggleCursor = {244, 184, 228, 255},
-    .slider = {81, 87, 109, 255},
-    .sliderCursor = {166, 209, 137, 255},
-    .sliderCursorHover = {166, 209, 137, 255},
-    .sliderCursorActive = {166, 209, 137, 255},
-    .editCursor = {244, 184, 228, 255},
-    .chartColor = {186, 187, 241, 255},
-    .chartHighlight = {244, 184, 228, 255},
-    .scrollbar = {65, 69, 89, 255},
-    .scrollbarCursor = {115, 121, 148, 255},
-    .scrollbarCursorHover = {186, 187, 241, 255},
-    .scrollbarCursorActive = {186, 187, 241, 255},
-    .knobCursor = {244, 184, 228, 255},
-    .knobCursorHover = {244, 184, 228, 255},
-    .knobCursorActive = {244, 184, 228, 255},
-};
-
-// Catppuccin Macchiato, with yellow, green, lavender and pink accents.
-static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteMacchiato = {
-    .text = {202, 211, 245, 255},
-    .window = {36, 39, 58, 235},
-    .frame = {30, 32, 48, 255},
-    .widget = {54, 58, 79, 255},
-    .widgetHover = {128, 135, 162, 255},
-    .widgetActive = {110, 115, 141, 255},
-    .selectActive = {110, 115, 141, 255},
-    .toggle = {91, 96, 120, 255},
-    .toggleHover = {147, 154, 183, 255},
-    .toggleCursor = {238, 212, 159, 255},
-    .slider = {73, 77, 100, 255},
-    .sliderCursor = {166, 218, 149, 255},
-    .sliderCursorHover = {166, 218, 149, 255},
-    .sliderCursorActive = {166, 218, 149, 255},
-    .editCursor = {245, 189, 230, 255},
-    .chartColor = {183, 189, 248, 255},
-    .chartHighlight = {238, 212, 159, 255},
-    .scrollbar = {54, 58, 79, 255},
-    .scrollbarCursor = {110, 115, 141, 255},
-    .scrollbarCursorHover = {183, 189, 248, 255},
-    .scrollbarCursorActive = {183, 189, 248, 255},
-    .knobCursor = {245, 189, 230, 255},
-    .knobCursorHover = {245, 189, 230, 255},
-    .knobCursorActive = {245, 189, 230, 255},
-};
-
-// Dracula: background/current-line/comment neutrals with pink and purple
-// accents. https://draculatheme.com/contribute
-static const SDL_LibretroMenuPalette SDL_Libretro_menuPaletteDracula = {
-    .text = {248, 248, 242, 255},
-    .window = {40, 42, 54, 235},
-    .frame = {68, 71, 90, 255},
-    .widget = {68, 71, 90, 255},
-    .widgetHover = {98, 114, 164, 255},
-    .widgetActive = {189, 147, 249, 255},
-    .selectActive = {98, 114, 164, 255},
-    .toggle = {68, 71, 90, 255},
-    .toggleHover = {98, 114, 164, 255},
-    .toggleCursor = {255, 121, 198, 255},
-    .slider = {40, 42, 54, 235},
-    .sliderCursor = {68, 71, 90, 255},
-    .sliderCursorHover = {98, 114, 164, 255},
-    .sliderCursorActive = {98, 114, 164, 255},
-    .editCursor = {248, 248, 242, 255},
-    .chartColor = {98, 114, 164, 255},
-    .chartHighlight = {189, 147, 249, 255},
-    .scrollbar = {40, 42, 54, 235},
-    .scrollbarCursor = {68, 71, 90, 255},
-    .scrollbarCursorHover = {98, 114, 164, 255},
-    .scrollbarCursorActive = {189, 147, 249, 255},
-    .knobCursor = {68, 71, 90, 255},
-    .knobCursorHover = {98, 114, 164, 255},
-    .knobCursorActive = {98, 114, 164, 255},
-};
-
-/**
- * @internal
- * The palette backing a built-in style, or NULL for the Nuklear default.
- */
-static const SDL_LibretroMenuPalette* SDL_Libretro_MenuGetPalette(SDL_LibretroMenuStyle style) {
-    static const SDL_LibretroMenuPalette* const palettes[SDL_LIBRETRO_MENU_STYLE_COUNT] = {
-        &SDL_Libretro_menuPaletteMocha,
-        &SDL_Libretro_menuPaletteLatte,
-        &SDL_Libretro_menuPaletteFrappe,
-        &SDL_Libretro_menuPaletteMacchiato,
-        &SDL_Libretro_menuPaletteDracula,
-        NULL, // SDL_LIBRETRO_MENU_STYLE_DARK is the Nuklear default.
-    };
-    return ((int)style >= 0 && style < SDL_LIBRETRO_MENU_STYLE_COUNT) ? palettes[style] : NULL;
-}
-
-/**
- * @internal
  * The automatic UI scale step for a window of the given logical width,
  * following raylib-libretro's resolution thresholds adapted to the 13px base
  * font.
@@ -2708,47 +2572,6 @@ static void SDL_Libretro_MenuBakeFont(SDL_LibretroMenu* menu) {
 
 /**
  * @internal
- * Fan the palette out over the Nuklear color table.
- */
-static void SDL_Libretro_MenuApplyPalette(struct nk_context* ctx, const SDL_LibretroMenuPalette* palette) {
-    struct nk_color table[NK_COLOR_COUNT];
-    table[NK_COLOR_TEXT] = palette->text;
-    table[NK_COLOR_WINDOW] = palette->window;
-    table[NK_COLOR_HEADER] = palette->frame;
-    table[NK_COLOR_BORDER] = palette->frame;
-    table[NK_COLOR_BUTTON] = palette->widget;
-    table[NK_COLOR_BUTTON_HOVER] = palette->widgetHover;
-    table[NK_COLOR_BUTTON_ACTIVE] = palette->widgetActive;
-    table[NK_COLOR_TOGGLE] = palette->toggle;
-    table[NK_COLOR_TOGGLE_HOVER] = palette->toggleHover;
-    table[NK_COLOR_TOGGLE_CURSOR] = palette->toggleCursor;
-    table[NK_COLOR_SELECT] = palette->widget;
-    table[NK_COLOR_SELECT_ACTIVE] = palette->selectActive;
-    table[NK_COLOR_SLIDER] = palette->slider;
-    table[NK_COLOR_SLIDER_CURSOR] = palette->sliderCursor;
-    table[NK_COLOR_SLIDER_CURSOR_HOVER] = palette->sliderCursorHover;
-    table[NK_COLOR_SLIDER_CURSOR_ACTIVE] = palette->sliderCursorActive;
-    table[NK_COLOR_PROPERTY] = palette->widget;
-    table[NK_COLOR_EDIT] = palette->widget;
-    table[NK_COLOR_EDIT_CURSOR] = palette->editCursor;
-    table[NK_COLOR_COMBO] = palette->widget;
-    table[NK_COLOR_CHART] = palette->widget;
-    table[NK_COLOR_CHART_COLOR] = palette->chartColor;
-    table[NK_COLOR_CHART_COLOR_HIGHLIGHT] = palette->chartHighlight;
-    table[NK_COLOR_SCROLLBAR] = palette->scrollbar;
-    table[NK_COLOR_SCROLLBAR_CURSOR] = palette->scrollbarCursor;
-    table[NK_COLOR_SCROLLBAR_CURSOR_HOVER] = palette->scrollbarCursorHover;
-    table[NK_COLOR_SCROLLBAR_CURSOR_ACTIVE] = palette->scrollbarCursorActive;
-    table[NK_COLOR_TAB_HEADER] = palette->widget;
-    table[NK_COLOR_KNOB] = palette->slider;
-    table[NK_COLOR_KNOB_CURSOR] = palette->knobCursor;
-    table[NK_COLOR_KNOB_CURSOR_HOVER] = palette->knobCursorHover;
-    table[NK_COLOR_KNOB_CURSOR_ACTIVE] = palette->knobCursorActive;
-    nk_style_from_table(ctx, table);
-}
-
-/**
- * @internal
  */
 static void SDL_Libretro_MenuUIScaleChanged(nk_console* widget, void* user_data) {
     (void)widget;
@@ -2763,24 +2586,32 @@ static void SDL_Libretro_MenuUIScaleChanged(nk_console* widget, void* user_data)
  * restored by SDL_Libretro_CreateMenu(). The initial style is
  * SDL_LIBRETRO_MENU_DEFAULT_STYLE.
  *
+ * Every style but SDL_LIBRETRO_MENU_STYLE_DARK needs
+ * SDL_LIBRETRO_ENABLE_MENU_THEMES.
+ *
  * @param menu the menu to style.
  * @param style the theme; must be below SDL_LIBRETRO_MENU_STYLE_COUNT.
- * @returns true on success, false when menu is NULL or style is out of
- *          range.
+ * @returns true on success, false when menu is NULL, or style is out of
+ *          range or not compiled in.
  *
  * @see SDL_Libretro_GetMenuStyle()
  */
 bool SDL_Libretro_SetMenuStyle(SDL_LibretroMenu* menu, SDL_LibretroMenuStyle style) {
-    if (menu == NULL || menu->ctx == NULL || (int)style < 0 || style >= SDL_LIBRETRO_MENU_STYLE_COUNT) {
+    if (menu == NULL || menu->ctx == NULL || !SDL_Libretro_MenuHasStyle(style)) {
         return false;
     }
 
     // Reset to the Nuklear default first; the Dark style is exactly that.
     nk_style_default(menu->ctx);
-    const SDL_LibretroMenuPalette* palette = SDL_Libretro_MenuGetPalette(style);
-    if (palette != NULL) {
-        SDL_Libretro_MenuApplyPalette(menu->ctx, palette);
+#ifdef SDL_LIBRETRO_ENABLE_MENU_THEMES
+    const tinted_scheme* scheme = SDL_Libretro_MenuGetScheme(style);
+    if (scheme != NULL) {
+        nuklear_tinted_set_scheme(menu->ctx, scheme);
+        // Keep the menu translucent over the game.
+        menu->ctx->style.window.background.a = 235;
+        menu->ctx->style.window.fixed_background.data.color.a = 235;
     }
+#endif
 
     menu->style = style;
     menu->styleIndex = (int)style;
@@ -2930,6 +2761,7 @@ bool SDL_Libretro_GetMenuHotkeysEnabled(const SDL_LibretroMenu* menu) {
     return menu != NULL && !menu->hotkeysDisabled;
 }
 
+#ifdef SDL_LIBRETRO_ENABLE_MENU_THEMES
 /**
  * @internal
  */
@@ -2938,6 +2770,7 @@ static void SDL_Libretro_MenuStyleChanged(nk_console* widget, void* user_data) {
     SDL_LibretroMenu* menu = (SDL_LibretroMenu*)user_data;
     SDL_Libretro_SetMenuStyle(menu, (SDL_LibretroMenuStyle)menu->styleIndex);
 }
+#endif
 
 /**
  * @internal
@@ -3105,7 +2938,9 @@ static void SDL_Libretro_MenuBuildSettings(SDL_LibretroMenu* menu) {
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Fit Mode", "Aspect|Integer|Stretch", '|', &menu->fitModeIndex), &SDL_Libretro_MenuFitModeChanged, menu),
         "Aspect keeps the ratio; Integer locks whole-number scales; Stretch fills the window");
+#ifdef SDL_LIBRETRO_ENABLE_MENU_THEMES
     SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "Theme", SDL_LIBRETRO_MENU_STYLE_NAMES, '|', &menu->styleIndex), &SDL_Libretro_MenuStyleChanged, menu);
+#endif
     nk_console_set_tooltip(
         SDL_Libretro_MenuOnChanged(nk_console_combobox(audioVideo, "UI Scale", "Auto|1x|2x|3x|4x", '|', &menu->uiScaleIndex), &SDL_Libretro_MenuUIScaleChanged, menu),
         "Menu size; Auto picks one from the resolution");
